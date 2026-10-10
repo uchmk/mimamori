@@ -1,6 +1,7 @@
-//! Network (7): the interfaces with a minute of traffic on the left, the
-//! sockets in the middle, the selected interface's graphs and addresses
-//! and the selected socket on the right. Enter on a socket opens its
+//! Network (7): the interfaces and their rates on the left; in the middle a
+//! row per interface that is up, its received and sent graphs side by side,
+//! and the sockets under them; the selected interface's details and the
+//! selected socket under them on the right. Enter on a socket opens its
 //! process in procs.
 
 use egui::{Color32, Rect, pos2, vec2};
@@ -56,16 +57,9 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         } else {
             cx.pen.text_r(pos2(row.right() - 6.0, cy), tr("net.down"), theme::dim())
         };
-        let room = rr.left() - row.left() - 6.0 - cx.pen.cw * 2.0;
-        let name_w = (room * 0.6).max(cx.pen.cw * 6.0);
-        let name = cx.pen.fit(&n.name, name_w);
-        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, if n.up { theme::fg() } else { theme::dim() });
-        let sr = Rect::from_min_max(pos2(t.right() + cx.pen.cw, row.top() + 4.0), pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0));
-        if let (true, Some((rx, tx))) = (n.up, m.net_hist.get(&n.name)) {
-            let max = rx.max().max(tx.max()).max(FLOOR);
-            graph::spark(&cx.pen, sr, tx.iter(), max, theme::magenta());
-            graph::spark(&cx.pen, sr, rx.iter(), max, theme::cyan());
-        }
+        let room = (rr.left() - row.left() - 6.0 - cx.pen.cw).max(cx.pen.cw * 6.0);
+        let name = cx.pen.fit(&n.name, room);
+        cx.pen.text(pos2(row.left() + 6.0, cy), &name, if n.up { theme::fg() } else { theme::dim() });
     });
     if !m.conn_read {
         return;
@@ -159,7 +153,56 @@ fn cell(c: &Conn, col: Col, process: Option<&str>) -> (String, Color32) {
     }
 }
 
+/// The interfaces that are up, at most `fit` of them; when the selected
+/// one would be left out it takes the last place.
+fn graphed<'a>(nics: &'a [Nic], sel: Option<&str>, fit: usize) -> Vec<&'a Nic> {
+    let mut up: Vec<&Nic> = nics.iter().filter(|n| n.up).collect();
+    if let Some(i) = sel.and_then(|s| up.iter().position(|n| n.name == s)).filter(|&i| fit > 0 && i >= fit) {
+        up.swap(fit - 1, i);
+    }
+    up.truncate(fit);
+    up
+}
+
+/// A row of graphs per interface that is up, together up to half the
+/// column, and the sockets under them; a short column keeps only the
+/// sockets.
 fn draw_mid(cx: &mut Cx, r: Rect) {
+    let app = cx.app;
+    let room = (r.height() * 0.5).min(r.height() - GAP - ROW * 8.0);
+    let fit = ((room + GAP) / (ROW * 3.5 + GAP)).floor().max(0.0) as usize;
+    let nics = graphed(&app.model.nics, app.selected_nic().map(|n| n.name.as_str()), fit);
+    if nics.is_empty() {
+        draw_conns(cx, r);
+        return;
+    }
+    let h = ((room + GAP) / nics.len() as f32 - GAP).min(150.0);
+    let half = (r.width() - GAP) / 2.0;
+    let mut y = r.top();
+    for n in nics {
+        let rx = Rect::from_min_size(pos2(r.left(), y), vec2(half, h));
+        let tx = Rect::from_min_max(pos2(rx.right() + GAP, y), pos2(r.right(), rx.bottom()));
+        draw_traffic(cx, n, rx, tx);
+        y = rx.bottom() + GAP;
+    }
+    draw_conns(cx, Rect::from_min_max(pos2(r.left(), y), r.max));
+}
+
+/// A graph each way, so a quiet upload is not flattened by a download.
+fn draw_traffic(cx: &mut Cx, n: &Nic, rx: Rect, tx: Rect) {
+    let hist = cx.app.model.net_hist.get(&n.name);
+    let ways =
+        [(rx, "net.rx", hist.map(|h| &h.0), n.rx_rate, theme::cyan()), (tx, "net.tx", hist.map(|h| &h.1), n.tx_rate, theme::magenta())];
+    for (r, label, ring, now, color) in ways {
+        let title = format!("{} · {}", tr(label), n.name);
+        let body = panel(&cx.pen, r, &title, &rate(now), false);
+        if let Some(ring) = ring {
+            graph::line(&cx.pen, body, ring.iter(), ring.max().max(FLOOR), color);
+        }
+    }
+}
+
+fn draw_conns(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
     let info = if m.conn_read { trf("net.count", &[&app.net_rows.len().to_string()]) } else { String::new() };
@@ -215,6 +258,7 @@ fn nic_rows(n: &Nic) -> Vec<(&'static str, String)> {
         (true, None) => tr("net.up").to_string(),
     };
     vec![
+        (tr("net.name"), n.name.clone()),
         (tr("net.desc"), if n.desc.is_empty() { dash() } else { n.desc.clone() }),
         (tr("net.type"), tr(n.kind.key()).to_string()),
         (tr("net.link"), link),
@@ -230,42 +274,35 @@ fn nic_rows(n: &Nic) -> Vec<(&'static str, String)> {
 fn draw_right(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
-    let Some(n) = app.selected_nic() else {
-        let body = panel(&cx.pen, r, tr("net.detail"), "", cx.focused(Pane::Right));
-        if m.nic_read {
+    let rows = app.selected_nic().map(nic_rows);
+    // The details take what they need up to a little over half; the
+    // selected socket the rest.
+    let want = 26.0 + 6.0 + ROW * rows.as_ref().map_or(10.0, |r| r.len() as f32);
+    let top_h = want.min(r.height() * 0.6).max(r.height().min(ROW * 4.0));
+    let top = Rect::from_min_size(r.min, vec2(r.width(), top_h));
+    let bottom = Rect::from_min_max(pos2(r.left(), top.bottom() + GAP), r.max);
+
+    let body = panel(&cx.pen, top, tr("net.details"), "", false);
+    match &rows {
+        Some(rows) => {
+            kv_rows(&cx.pen, body, body.top(), rows);
+        }
+        None if m.nic_read => {
             cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("net.none"), theme::dim());
+        }
+        None => {}
+    }
+
+    if bottom.height() < ROW * 2.0 {
+        return;
+    }
+    let body = panel(&cx.pen, bottom, tr("net.conn"), "", cx.focused(Pane::Right));
+    let Some(c) = app.selected_conn() else {
+        if m.conn_read {
+            para(&cx.pen, body, body.top(), tr("net.no_conn"), theme::dim());
         }
         return;
     };
-    let body = panel(&cx.pen, r, &n.name, tr(n.kind.key()), cx.focused(Pane::Right));
-    let mut y = body.top();
-    // A graph each way, so a quiet upload is not flattened by a download.
-    if let Some((rx, tx)) = m.net_hist.get(&n.name) {
-        let h = (body.height() * 0.16).clamp(28.0, 90.0);
-        for (label, ring, now, color) in [("net.rx", rx, n.rx_rate, theme::cyan()), ("net.tx", tx, n.tx_rate, theme::magenta())] {
-            if y + ROW + h > body.bottom() {
-                break;
-            }
-            cx.pen.pair(row_at(body, y), tr(label), theme::dim(), &rate(now), color);
-            y += ROW;
-            graph::line(
-                &cx.pen,
-                Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), h)),
-                ring.iter(),
-                ring.max().max(FLOOR),
-                color,
-            );
-            y += h + GAP;
-        }
-    }
-    y = kv_rows(&cx.pen, body, y, &nic_rows(n)) + GAP;
-
-    let Some(c) = app.selected_conn() else { return };
-    if y + ROW * 2.0 > body.bottom() {
-        return;
-    }
-    cx.pen.section(row_at(body, y), tr("net.conn"));
-    y += ROW;
     let dash = || "—".to_string();
     let rows = [
         (tr("net.proto"), c.proto.label().to_string()),
@@ -276,7 +313,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         (tr("net.process"), app.proc_name(c.pid).map_or_else(dash, str::to_string)),
         (tr("net.source"), m.conns.source.to_string()),
     ];
-    y = kv_rows(&cx.pen, body, y, &rows) + GAP;
+    let y = kv_rows(&cx.pen, body, body.top(), &rows) + GAP;
     if c.pid.is_some() {
         para(&cx.pen, body, y, tr("net.hint"), theme::dim());
     }
@@ -295,5 +332,17 @@ mod tests {
         // The two addresses share what is left.
         let cols = columns(120.0, 1.0);
         assert_eq!(cols[1].2, cols[2].2);
+    }
+
+    #[test]
+    fn graphs_go_to_the_interfaces_that_are_up_and_keep_the_selected_one() {
+        let nic = |name: &str, up: bool| Nic { name: name.into(), up, ..Nic::default() };
+        let nics = [nic("eth0", true), nic("wlan0", true), nic("tun0", false), nic("lo", true)];
+        let names = |sel: Option<&str>, fit: usize| graphed(&nics, sel, fit).into_iter().map(|n| n.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(names(None, 5), ["eth0", "wlan0", "lo"]);
+        assert_eq!(names(Some("eth0"), 2), ["eth0", "wlan0"]);
+        assert_eq!(names(Some("lo"), 2), ["eth0", "lo"]);
+        assert_eq!(names(Some("tun0"), 2), ["eth0", "wlan0"]);
+        assert!(names(Some("lo"), 0).is_empty());
     }
 }
