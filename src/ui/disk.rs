@@ -7,7 +7,7 @@ use egui::{Color32, Rect, pos2, vec2};
 use ito_layout::{Dir, Node};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at, shown};
-use crate::collect::disk::{Drive, Health, Smart, Temp, Volume};
+use crate::collect::disk::{self, Drive, Health, Smart, Temp, Volume};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::model::Ring;
@@ -168,11 +168,12 @@ type Graph<'a> = (&'static str, Option<String>, Option<&'a Ring>, Option<f32>, C
 fn draw_mid(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
-    // The traffic side by side over the volumes: read, write and busy for
-    // the selected drive, or read and write for the selected volume when
-    // there are no drives (macOS, or the counters are off).
+    // The traffic stacked over the volumes, each graph the column's width
+    // like the CPU and memory screens: read, write and busy for the selected
+    // drive, or read and write for the selected volume when there are no
+    // drives (macOS, or the counters are off).
     let n: u8 = if m.disks.drives.is_empty() { 2 } else { 3 };
-    let rects = cx.stack(Pane::Mid, r, stacks::split(Dir::Down, 0.4, stacks::chain(Dir::Right, 0, n), Node::Leaf(n)));
+    let rects = cx.stack(Pane::Mid, r, stacks::split(Dir::Down, 0.6, stacks::chain(Dir::Down, 0, n), Node::Leaf(n)));
     // Each way on its own scale, so quiet writes are not flattened by reads.
     let mut list: Vec<Graph> = vec![
         (tr("disk.read"), None, None, None, theme::cyan()),
@@ -307,7 +308,7 @@ fn smart_rows(s: &Smart) -> Vec<(&'static str, String, Color32)> {
     if let Some(p) = s.life_used {
         let color = if p >= 100 {
             theme::red()
-        } else if p >= 80 {
+        } else if p >= disk::WORN {
             theme::yellow()
         } else {
             theme::fg()

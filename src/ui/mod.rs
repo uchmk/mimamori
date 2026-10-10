@@ -6,7 +6,7 @@
 mod confirm;
 mod cpu;
 mod disk;
-mod fleet;
+pub mod fleet;
 mod gpu;
 mod graph;
 mod help;

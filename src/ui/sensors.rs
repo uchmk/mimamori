@@ -7,14 +7,11 @@
 use egui::{Color32, Rect, Stroke, pos2, vec2};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
-use crate::collect::sensors::{Kind, Sensor, Sensors};
+use crate::collect::sensors::{self, Kind, Sensor, Sensors};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::model::Ring;
 use crate::screen::Pane;
-
-/// Where a temperature counts as hot when the chip gives no limit.
-const HOT: f32 = 90.0;
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
     draw_left(cx, left);
@@ -25,10 +22,9 @@ pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
 /// Green, yellow within 10 degrees of the limit, red at it or over the
 /// critical mark.
 fn heat(v: f32, high: Option<f32>, crit: Option<f32>) -> Color32 {
-    let limit = high.or(crit).unwrap_or(HOT);
-    if crit.is_some_and(|c| v >= c) || v >= limit {
+    if sensors::hot(v, high, crit) {
         theme::red()
-    } else if v >= limit - 10.0 {
+    } else if v >= sensors::limit(high, crit) - 10.0 {
         theme::yellow()
     } else {
         theme::green()

@@ -5,7 +5,7 @@
 use egui::{Align2, Rect, pos2, vec2};
 use ito_layout::Dir;
 
-use super::tiles::{tiles, tiles_height};
+use super::tiles::tiles;
 use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at, shown};
 use crate::collect::topo::CoreKind;
 use crate::config::theme::{self, ROW, ramp};
@@ -84,11 +84,10 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
 
     if shown(rects[0]) {
         let body = panel(&cx.pen, rects[0], tr("cpu.cores"), &st.topo.summary(), cx.focused(Pane::Mid));
-        // Full tiles when they fit over the legend, compact ones otherwise.
-        let full = tiles_height(&st.topo, body.width(), true) + ROW <= body.height();
+        // The tiles fill the room over the legend.
         let area = Rect::from_min_max(body.min, pos2(body.right(), body.bottom() - ROW));
         let sel = cx.sel(Pane::Mid);
-        tiles(cx, area, full, Some(sel), Some(Pane::Mid));
+        tiles(cx, area, Some(sel), Some(Pane::Mid));
         // The legend of the usage ramp, at the bottom.
         let cy = body.bottom() - ROW / 2.0;
         let mut x = body.left() + 4.0;

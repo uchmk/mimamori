@@ -116,7 +116,7 @@ pub fn union(wants: impl IntoIterator<Item = Want>) -> Want {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collect::{Mem, Static, disk, gpu, hw, net, sensors, svc, topo};
+    use crate::collect::{Mem, Static, battery, disk, gpu, hw, net, sensors, svc, topo};
     use crate::remote::proto;
 
     fn every_msg() -> Vec<Msg> {
@@ -179,6 +179,7 @@ mod tests {
             }),
             Msg::Conns(net::Conns { list: vec![conn], source: "/proc/net", note: Some(net::Note::OtherUsers) }),
             Msg::Hardware(Box::new(hw::Hardware { source: "SMBIOS 3.3".into(), ..hw::Hardware::default() })),
+            Msg::Battery(Some(battery::Battery { pct: 87.0, charging: true, plugged: true })),
         ]
     }
 

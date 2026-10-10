@@ -21,16 +21,16 @@ inside each tile.
 | Key | Screen   | What it shows |
 | --- | -------- | ------------- |
 | `1` | overview | CPU / memory / swap gauges, then one per GPU and NPU (its usage) and per drive (how busy it is), and the system with what each device is; a graph for every gauge, laid out evenly (two columns of three for CPU, memory, swap, two GPUs and a drive; clicking one selects its gauge); the top processes by CPU and by memory |
-| `2` | cpu      | Groups and counts; the core tiles, the total over the last minute and a thread heatmap, a third of the column each; the selected core's threads and the top CPU users |
+| `2` | cpu      | Groups and counts; the core tiles (grown to fill their panel in balanced rows, each at most twice as wide as tall), the total over the last minute and a thread heatmap, a third of the column each; the selected core's threads and the top CPU users |
 | `3` | mem      | Used / available / swap; memory and swap stacked, each a bar and its last minute (swap only when there is some); the processes using the most memory |
 | `4` | gpu·npu  | The GPUs and NPUs found, with their usage now (and why a missing one is missing); the selected device's usage, engines and memory (dedicated and shared, with the VRAM graph) stacked; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
 | `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
 | `6` | svc      | Services: Windows' services, systemd's units, launchd's jobs (with their plists, so disabled jobs show too). Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`; on Windows `u` switches it to the kernel and file-system drivers and back); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). `S` starts, `x` stops and `R` restarts the selected one after asking; the question shows the same thing as a command line (`systemctl restart foo.service`, `launchctl kickstart -k gui/501/…`, `Restart-Service foo`, or `sc.exe stop foo` for a driver). Read every 5 s, and only while the screen shows |
 | `7` | net      | The network interfaces with their rates, and counts of the sockets; in the middle, a row per interface that is up (loopback included) with its received and sent graphs over the last minute side by side, above every TCP and UDP socket (protocol, local and remote address, state, PID, process; it scrolls with the wheel, `j` / `k`, `PageDown` / `PageUp`; filter with `/`, only the listening ones with `u`; `Enter` on an interface keeps only the sockets on its addresses and those bound to any address, until `Esc`); on the right, the selected interface's details (name, adapter, kind, link speed, addresses, MAC, MTU, totals) and under them the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
-| `8` | disk     | The drives with their traffic now, and the totals of all of them; the selected drive's read, write and busy graphs side by side over every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
+| `8` | disk     | The drives with their traffic now, and the totals of all of them; the selected drive's read, write and busy graphs stacked, each the column's width, over every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
-| `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own |
-| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the uptime or when it was last seen, the agent's version and what it allows. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
+| `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own. Under the processor, the fleet agent: whether one listens on this machine's port (asked every 5 s while the screen shows), its version, process, what it allows, its interval and how many viewers it has, or, when none runs, the port, what `[agent] allow` would allow and how to start one; inside another machine's screens, that machine's agent |
+| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the battery on a laptop (`87% charging`, `87% plugged in`), the uptime or when it was last seen, the agent's version and what it allows, and what is wrong there (hot sensors, drives SMART warns about, failed services), yellow, or red when a service failed. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`. A column
@@ -227,8 +227,11 @@ addr = "pi.tail1234.ts.net"    # through tailscale serve
 ```
 
 The agent samples like the window does (`interval`) and sends a summary each
-round: CPU, memory, the first GPU's usage and the hottest temperature, with its
-host name, OS, CPU, uptime and version once at the start.
+round: CPU, memory, the first GPU's usage, the hottest temperature, the
+battery, how many viewers it has and counts of what is wrong (temperatures
+drawn red, drives failing or with SMART counts drawn yellow, failed services; services are read every minute for this even while no svc screen
+shows), with its host name, OS, CPU, uptime, version and port once at the
+start (protocol 4).
 
 `Enter` on a card (or `[` / `]` from any screen) shows that machine's screens:
 the viewer then asks its agent for every reading the window draws from, and the
@@ -267,9 +270,32 @@ if the link drops before it comes, a toast says so (look at its screen to see
 what happened), and a request is never sent again on the next connection.
 The agent writes each request and its outcome to its console
 (`yagura agent: 127.0.0.1:52144 asks to end 1234 (started …): Kill(Ended)`).
-A v0.36 viewer and a v0.31–v0.35 agent do not connect (the card says which
-side to update). On Windows, `yagura.exe --agent` run from a
-console writes there; run it at logon with Task Scheduler to keep it up.
+A viewer and an agent of different protocols do not connect (v0.40 and
+v0.39, say; the card says which side to update).
+
+To keep an agent up, let the OS start it at logon:
+
+```sh
+yagura --install-service     # and starts it now
+yagura --uninstall-service   # stops it and forgets it
+```
+
+Neither needs an administrator. On Linux it writes a systemd user unit
+(`~/.config/systemd/user/yagura-agent.service`) and runs `systemctl --user
+enable --now`; what the agent says goes to `journalctl --user -u
+yagura-agent`. On macOS it writes a LaunchAgent
+(`~/Library/LaunchAgents/io.github.uchmk.yagura-agent.plist`, started again
+if it fails) and bootstraps it; it writes to `agent.log` in yagura's state
+folder. On Windows it sets a value in the user's `Run` key (a logon task in
+the Task Scheduler would need an administrator) and starts the agent now
+without a window, writing to `agent.log` in the state folder. `UCHMK_CONFIG_DIR`,
+`YAGURA_CONFIG_HOME` and `YAGURA_STATE_HOME` are carried into the unit and the
+LaunchAgent; on Windows they are not, and it says so.
+
+`yagura.exe --agent` run from a console writes there. Anywhere,
+`--agent --log FILE` also appends each line, with the time, to `FILE`
+(started over past 1 MiB): Windows' release build has no console to write to
+otherwise.
 
 ## Languages
 

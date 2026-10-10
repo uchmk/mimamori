@@ -11,20 +11,23 @@
 //! A viewer may also ask the agent to end a process or start, stop or
 //! restart a service ([`ToAgent::Act`]). The agent decides from its own
 //! `[agent] allow` and its own readings ([`check`]), runs each request on a
-//! thread of its own, logs it to stderr and answers with
+//! thread of its own, logs it to stderr (and to `--log`) and answers with
 //! [`FromAgent::Done`].
 
-use std::io;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Write};
 use std::mem::Discriminant;
 use std::net::{Shutdown, TcpListener, TcpStream};
-use std::sync::Arc;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded, select, unbounded};
 
-use super::proto::{self, Act, Done, FromAgent, Hello, PROTO, Refusal, Summary, ToAgent, Want};
+use super::proto::{self, Act, Done, FromAgent, Hello, PROTO, Refusal, Summary, ToAgent, Want, Warn};
 use super::wire::{self, Route};
+use crate::collect::svc::State;
 use crate::collect::{self, Ctl, Msg, gpu};
 use crate::model::Model;
 use crate::{kill, svcctl};
@@ -47,31 +50,66 @@ pub struct Config {
     pub interval: f32,
 }
 
+/// The `--log` file, when given.
+static LOG: OnceLock<Mutex<File>> = OnceLock::new();
+
+/// A log larger than this is started over when the agent starts.
+const LOG_MAX: u64 = 1 << 20;
+
+/// Also write what the agent says to `path` (Windows' release build has no
+/// console, so an agent started at logon would say it to nobody).
+pub fn log_to(path: &Path) -> io::Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let big = std::fs::metadata(path).is_ok_and(|m| m.len() > LOG_MAX);
+    let f = OpenOptions::new().create(true).append(!big).write(true).truncate(big).open(path)?;
+    let _ = LOG.set(Mutex::new(f));
+    Ok(())
+}
+
+/// A line to stderr and the log.
+fn say(line: std::fmt::Arguments) {
+    eprintln!("{line}");
+    if let Some(f) = LOG.get()
+        && let Ok(mut f) = f.lock()
+    {
+        let _ = writeln!(f, "{} {line}", chrono::Local::now().format("%F %T"));
+    }
+}
+
 /// Listen on `127.0.0.1:port` until killed.
 pub fn run(port: u16, cfg: Config) -> io::Result<()> {
-    let listener = TcpListener::bind(("127.0.0.1", port))?;
+    let listener = match TcpListener::bind(("127.0.0.1", port)) {
+        Ok(l) => l,
+        Err(e) => {
+            say(format_args!("yagura agent: cannot listen on 127.0.0.1:{port}: {e}"));
+            return Err(e);
+        }
+    };
     let what = if cfg.allow.is_empty() { "view only".to_string() } else { format!("allows {}", cfg.allow.join(", ")) };
-    eprintln!("yagura {} agent: listening on {} ({what})", env!("CARGO_PKG_VERSION"), listener.local_addr()?);
-    eprintln!(
+    say(format_args!("yagura {} agent: listening on {} ({what})", env!("CARGO_PKG_VERSION"), listener.local_addr()?));
+    say(format_args!(
         "yagura agent: reach it with `ssh -L {port}:localhost:{port} <this host>` or `tailscale serve --bg --tcp {port} tcp://localhost:{port}`"
-    );
+    ));
     serve(listener, cfg)
 }
 
 /// Serve viewers on `listener` (the tests pass one on port 0).
 pub fn serve(listener: TcpListener, cfg: Config) -> io::Result<()> {
+    let port = listener.local_addr()?.port();
     let (hub_tx, hub_rx) = unbounded();
-    std::thread::Builder::new().name("yagura-agent".into()).spawn(move || hub(&cfg, &hub_rx))?;
+    std::thread::Builder::new().name("yagura-agent".into()).spawn(move || hub(&cfg, port, &hub_rx))?;
     for conn in listener.incoming() {
         match conn {
             Ok(s) => {
                 let hub = hub_tx.clone();
                 let spawned = std::thread::Builder::new().name("yagura-viewer".into()).spawn(move || viewer(s, &hub));
                 if let Err(e) = spawned {
-                    eprintln!("yagura agent: {e}");
+                    say(format_args!("yagura agent: {e}"));
                 }
             }
-            Err(e) => eprintln!("yagura agent: {e}"),
+            Err(e) => say(format_args!("yagura agent: {e}")),
         }
     }
     Ok(())
@@ -148,7 +186,7 @@ fn msg_frame(m: &Msg) -> Option<Frame> {
     (f.len() <= 4 + proto::MAX_FRAME).then(|| Arc::new(f))
 }
 
-fn hub(cfg: &Config, ins: &Receiver<HubIn>) {
+fn hub(cfg: &Config, port: u16, ins: &Receiver<HubIn>) {
     // `ctl` stays alive here: the sampler stops when it is dropped.
     let (rx, ctl) = collect::spawn(None, Duration::from_secs_f32(cfg.interval));
     // Processes, services and sockets only while somebody watches.
@@ -175,11 +213,12 @@ fn hub(cfg: &Config, ins: &Receiver<HubIn>) {
                 }
                 model.apply(m);
                 let f = if first {
-                    let f: Frame = Arc::new(proto::frame(&FromAgent::Hello(hello_of(&model, cfg))));
+                    let f: Frame = Arc::new(proto::frame(&FromAgent::Hello(hello_of(&model, cfg, port))));
                     hello = Some(f.clone());
                     f
                 } else if round {
-                    let f: Frame = Arc::new(proto::frame(&FromAgent::Summary(summary(&model))));
+                    let s = Summary { viewers: viewers.len().min(usize::from(u16::MAX)) as u16, ..summary(&model) };
+                    let f: Frame = Arc::new(proto::frame(&FromAgent::Summary(s)));
                     last = Some(f.clone());
                     f
                 } else {
@@ -291,11 +330,11 @@ fn do_job(id: u64, who: String, act: Act, job: Result<Job, Refusal>, tx: Sender<
                 Done::Svc(o)
             }
         };
-        eprintln!("yagura agent: {who} asks to {what}: {outcome:?}");
+        say(format_args!("yagura agent: {who} asks to {what}: {outcome:?}"));
         let _ = tx.send_timeout(Arc::new(proto::frame(&FromAgent::Done { id, outcome })), ANSWER);
     };
     if let Err(e) = std::thread::Builder::new().name("yagura-act".into()).spawn(run) {
-        eprintln!("yagura agent: {e}");
+        say(format_args!("yagura agent: {e}"));
     }
 }
 
@@ -304,7 +343,7 @@ fn send(viewers: &mut Vec<Viewer>, f: &Frame, to: impl Fn(Want) -> bool) {
     viewers.retain(|v| !to(v.want) || !matches!(v.tx.try_send(f.clone()), Err(TrySendError::Disconnected(_))));
 }
 
-fn hello_of(m: &Model, cfg: &Config) -> Hello {
+fn hello_of(m: &Model, cfg: &Config, port: u16) -> Hello {
     let st = m.st.as_ref();
     let text = |f: fn(&collect::Static) -> &String| st.map(f).cloned().unwrap_or_default();
     Hello {
@@ -319,6 +358,7 @@ fn hello_of(m: &Model, cfg: &Config) -> Hello {
         allow: cfg.allow.clone(),
         interval: cfg.interval,
         pid: std::process::id(),
+        port,
     }
 }
 
@@ -328,7 +368,22 @@ pub fn summary(m: &Model) -> Summary {
         let name = if d.name.is_empty() { d.vendor.unwrap_or("GPU").to_string() } else { d.name.clone() };
         d.usage.map(|u| (name, u))
     });
-    Summary { cpu: m.total, mem_used: m.mem.used, mem_total: m.mem.total, gpu, temp: m.sensors.hottest().map(|s| s.value) }
+    let n = |c: usize| c.min(usize::from(u16::MAX)) as u16;
+    let warn = Warn {
+        hot: n(m.sensors.hot()),
+        drives: n(m.disks.drives.iter().filter(|d| d.warns()).count()),
+        failed: m.svc_read.then(|| n(m.services.count(State::Failed))),
+    };
+    Summary {
+        cpu: m.total,
+        mem_used: m.mem.used,
+        mem_total: m.mem.total,
+        gpu,
+        temp: m.sensors.hottest().map(|s| s.value),
+        battery: m.battery,
+        warn,
+        viewers: 0,
+    }
 }
 
 /// One viewer: its hello, then frames out and pings in until either side
@@ -336,7 +391,7 @@ pub fn summary(m: &Model) -> Summary {
 fn viewer(s: TcpStream, hub: &Sender<HubIn>) {
     let peer = s.peer_addr().map(|a| a.to_string()).unwrap_or_default();
     if let Err(e) = talk(&s, &peer, hub) {
-        eprintln!("yagura agent: {peer}: {e}");
+        say(format_args!("yagura agent: {peer}: {e}"));
     }
     let _ = s.shutdown(Shutdown::Both);
 }
@@ -357,7 +412,7 @@ fn talk(s: &TcpStream, who: &str, hub: &Sender<HubIn>) -> io::Result<()> {
     let mut r = s.try_clone()?;
     let first = proto::read_body(&mut r)?;
     match proto::head(&first) {
-        Some((0, p)) if p != PROTO => eprintln!("yagura agent: a viewer speaks protocol {p}, this agent {PROTO}"),
+        Some((0, p)) if p != PROTO => say(format_args!("yagura agent: a viewer speaks protocol {p}, this agent {PROTO}")),
         Some((0, _)) => {}
         _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "not a yagura viewer")),
     }

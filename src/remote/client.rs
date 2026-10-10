@@ -21,6 +21,8 @@ const CONNECT: Duration = Duration::from_secs(5);
 /// The agent sends a summary every interval (10 s at most); nothing for this
 /// long is a dead link.
 const QUIET: Duration = Duration::from_secs(15);
+/// [`probe`]'s wait for the hello: it is this machine.
+const PROBE: Duration = Duration::from_secs(2);
 const PING_EVERY: Duration = Duration::from_secs(5);
 const RETRY_MIN: Duration = Duration::from_secs(2);
 const RETRY_MAX: Duration = Duration::from_secs(30);
@@ -214,6 +216,27 @@ fn write(mut w: TcpStream, t0: Instant, wants: &Wants, stop: &Receiver<()>) {
     }
 }
 
+/// Whether an agent listens on this machine's `port`: its hello and the
+/// summary it sends a new viewer (the latest, made before this joined, so
+/// its viewers are the others). For the sys screen; it blocks, so it runs on
+/// a thread.
+pub fn probe(port: u16) -> Result<(Hello, Summary), Why> {
+    // Windows retries a refused connection for about a second before it says so.
+    let mut s = connect(&format!("127.0.0.1:{port}"))?;
+    s.set_read_timeout(Some(PROBE)).map_err(|e| why(&e))?;
+    let hello = greet(&mut s)?;
+    // An agent that has not sampled yet sends its first summary within its
+    // interval (10 s at most).
+    s.set_read_timeout(Some(QUIET)).map_err(|e| why(&e))?;
+    loop {
+        match proto::read_frame::<FromAgent>(&mut s) {
+            Ok(FromAgent::Summary(sum)) => return Ok((hello, sum)),
+            Ok(_) => {}
+            Err(e) => return Err(why(&e)),
+        }
+    }
+}
+
 fn connect(addr: &str) -> Result<TcpStream, Why> {
     let to = addr.to_socket_addrs().map_err(|_| Why::Unknown)?.next().ok_or(Why::Unknown)?;
     let s = TcpStream::connect_timeout(&to, CONNECT).map_err(|e| why(&e))?;
@@ -294,7 +317,7 @@ mod tests {
     #[test]
     fn a_viewer_gets_the_hello_summaries_and_round_trips() {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = l.local_addr().unwrap().to_string();
+        let (addr, port) = (l.local_addr().unwrap().to_string(), l.local_addr().unwrap().port());
         let cfg = Config { allow: vec!["kill".into()], interval: 0.5 };
         std::thread::spawn(move || agent::serve(l, cfg));
         let rx = watch_one(addr);
@@ -312,6 +335,35 @@ mod tests {
         let sum = sum.unwrap();
         assert!(sum.mem_total > 0 && sum.mem_used <= sum.mem_total, "{sum:?}");
         assert!(lat.unwrap() < Duration::from_secs(5));
+        assert_eq!(h.port, port);
+        // The first summary may be from before this viewer joined.
+        let counted = std::iter::from_fn(|| Some(next(&rx))).any(|e| matches!(e, Event::Summary(s) if s.viewers == 1));
+        assert!(counted, "a later summary counts this viewer");
+    }
+
+    #[test]
+    fn a_probe_reads_the_agent_on_this_machine() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let cfg = Config { allow: vec!["service".into()], interval: 0.25 };
+        std::thread::spawn(move || agent::serve(l, cfg));
+        let (h, sum) = probe(port).expect("an agent");
+        assert_eq!((h.port, h.allow.as_slice(), h.pid), (port, ["service".to_string()].as_slice(), std::process::id()));
+        assert!(sum.mem_total > 0, "{sum:?}");
+    }
+
+    #[test]
+    fn a_probe_of_nobody_is_refused() {
+        // A port just freed; another test's agent may take it meanwhile.
+        let mut got = Vec::new();
+        for _ in 0..5 {
+            let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+            match probe(port) {
+                Err(Why::Refused) => return,
+                r => got.push(r.map(|(h, _)| h.port)),
+            }
+        }
+        panic!("never refused: {got:?}");
     }
 
     #[test]

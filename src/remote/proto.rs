@@ -12,12 +12,13 @@ use std::io::{self, Read, Write};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::collect::Msg;
+pub use crate::collect::battery::Battery;
 use crate::{kill, svcctl};
 
 /// Where the agent listens on 127.0.0.1 unless `[agent] port` says otherwise.
 pub const PORT: u16 = 7313;
 /// Raised whenever a message changes shape.
-pub const PROTO: u16 = 3;
+pub const PROTO: u16 = 4;
 /// A frame larger than this is not ours (another service on the port). The
 /// process list of a busy machine is the largest that is.
 pub const MAX_FRAME: usize = 16 << 20;
@@ -136,6 +137,8 @@ pub struct Hello {
     pub interval: f32,
     /// The agent's own process, which it does not end.
     pub pid: u32,
+    /// The port it listens on, on 127.0.0.1.
+    pub port: u16,
 }
 
 /// The card's numbers.
@@ -149,6 +152,31 @@ pub struct Summary {
     pub gpu: Option<(String, f32)>,
     /// The hottest temperature, °C.
     pub temp: Option<f32>,
+    /// A laptop's; `None` without a battery.
+    pub battery: Option<Battery>,
+    pub warn: Warn,
+    /// Viewers connected to the agent when the summary was made (0 on the
+    /// window's own card). The one a new viewer gets first was made before
+    /// it joined.
+    pub viewers: u16,
+}
+
+/// What on the machine wants a look: the counts its screens draw in yellow
+/// or red.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Warn {
+    /// Temperatures at or past their limit.
+    pub hot: u16,
+    /// Drives whose health, SMART counts or wear warn.
+    pub drives: u16,
+    /// Services that failed; `None` until services are read.
+    pub failed: Option<u16>,
+}
+
+impl Warn {
+    pub fn total(&self) -> u32 {
+        u32::from(self.hot) + u32::from(self.drives) + u32::from(self.failed.unwrap_or(0))
+    }
 }
 
 impl Summary {
@@ -226,7 +254,18 @@ mod tests {
     #[test]
     fn frames_go_round() {
         let hello = Hello { proto: PROTO, version: "0.31.0".into(), host: "nas".into(), allow: vec!["kill".into()], ..Hello::default() };
-        let sum = Summary { cpu: 12.5, mem_used: 3 << 30, mem_total: 16 << 30, gpu: Some(("RTX 4070".into(), 40.0)), temp: Some(61.0) };
+        let hello = Hello { port: 7314, ..hello };
+        let sum = Summary {
+            cpu: 12.5,
+            mem_used: 3 << 30,
+            mem_total: 16 << 30,
+            gpu: Some(("RTX 4070".into(), 40.0)),
+            temp: Some(61.0),
+            battery: Some(Battery { pct: 87.0, charging: true, plugged: true }),
+            warn: Warn { hot: 1, drives: 0, failed: Some(2) },
+            viewers: 3,
+        };
+        assert_eq!(sum.warn.total(), 3);
         let mut wire = Vec::new();
         write_frame(&mut wire, &FromAgent::Hello(hello.clone())).unwrap();
         write_frame(&mut wire, &FromAgent::Summary(sum.clone())).unwrap();
@@ -238,6 +277,7 @@ mod tests {
         assert_eq!(read_frame::<FromAgent>(&mut r).unwrap(), FromAgent::Summary(sum));
         assert_eq!(read_frame::<FromAgent>(&mut r).unwrap(), FromAgent::Pong(7));
         assert!(read_frame::<FromAgent>(&mut r).is_err(), "nothing left");
+        assert_eq!(Warn::default().total(), 0);
     }
 
     #[test]

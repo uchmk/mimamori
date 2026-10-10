@@ -18,6 +18,7 @@ mod persist;
 mod prefs;
 mod remote;
 mod screen;
+mod service;
 mod stacks;
 mod svcctl;
 mod tree;
@@ -42,7 +43,8 @@ const USAGE: &str = "\
 yagura — a keyboard-driven system monitor
 
 usage: yagura [--keys SCRIPT]
-       yagura --agent
+       yagura --agent [--log FILE]
+       yagura --install-service | --uninstall-service
 
   --keys SCRIPT  press these keys once the window is up, as kura's --keys
                  (`<Wait:ms>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`,
@@ -53,6 +55,14 @@ usage: yagura [--keys SCRIPT]
                  reach it through `ssh -L 7313:localhost:7313 HOST` or
                  `tailscale serve --bg --tcp 7313 tcp://localhost:7313`.
                  View only unless `[agent] allow` says otherwise
+  --log FILE     with --agent: append what the agent says to FILE as well
+                 (Windows has no console to say it to when started at logon)
+  --install-service
+                 start the agent at logon from now on, and now: a systemd
+                 user unit on Linux, a LaunchAgent on macOS, the user's Run
+                 key on Windows. Needs no administrator
+  --uninstall-service
+                 stop that agent and remove what --install-service added
   --version      print the version
   --help         print this
 
@@ -192,6 +202,9 @@ impl eframe::App for Yagura {
         if let Some(left) = self.app.toast_left() {
             ctx.request_repaint_after(left);
         }
+        if let Some(left) = self.app.probe_agent() {
+            ctx.request_repaint_after(left);
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -218,6 +231,8 @@ fn main() -> eframe::Result {
     }
     let mut script = None;
     let mut agent = false;
+    let mut log = None;
+    let mut service = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--version" | "-V" => {
@@ -229,6 +244,15 @@ fn main() -> eframe::Result {
                 return Ok(());
             }
             "--agent" => agent = true,
+            "--log" => {
+                let Some(p) = args.next() else {
+                    eprintln!("yagura: --log needs a file");
+                    std::process::exit(2);
+                };
+                log = Some(PathBuf::from(p));
+            }
+            "--install-service" => service = Some(true),
+            "--uninstall-service" => service = Some(false),
             "--keys" => {
                 let Some(s) = args.next() else {
                     eprintln!("yagura: --keys needs a script");
@@ -250,7 +274,24 @@ fn main() -> eframe::Result {
     }
 
     let s = settings::load(None);
+    if let Some(install) = service {
+        for w in &s.warnings {
+            eprintln!("yagura: {w}");
+        }
+        let done = if install { service::install(s.port) } else { service::uninstall(s.port) };
+        if let Err(e) = done {
+            eprintln!("yagura: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if agent {
+        if let Some(path) = &log
+            && let Err(e) = remote::agent::log_to(path)
+        {
+            eprintln!("yagura --log: {}: {e}", path.display());
+            std::process::exit(1);
+        }
         for w in &s.warnings {
             eprintln!("yagura: {w}");
         }

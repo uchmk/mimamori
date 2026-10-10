@@ -284,6 +284,25 @@ pub struct Drive {
     pub smart: Smart,
 }
 
+/// The life used from which the disk screen draws it yellow.
+pub const WORN: u32 = 80;
+
+impl Smart {
+    /// What the disk screen draws yellow or red: worn to [`WORN`], or any
+    /// remapped, pending or media error.
+    pub fn warns(&self) -> bool {
+        self.life_used.is_some_and(|p| p >= WORN) || [self.remapped, self.pending, self.media_errors].into_iter().flatten().any(|n| n > 0)
+    }
+}
+
+impl Drive {
+    /// Failing, or its SMART counts warn; the fleet card counts these (a hot
+    /// drive is counted with the temperatures).
+    pub fn warns(&self) -> bool {
+        self.health == Some(Health::Failing) || self.smart.warns()
+    }
+}
+
 /// A mounted file system.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Volume {
@@ -478,6 +497,16 @@ impl Reader {
 mod tests {
     use super::*;
     use crate::i18n::tr;
+
+    #[test]
+    fn a_drive_warns_when_failing_worn_or_counting_errors() {
+        let d = |health, smart| Drive { health, smart, ..Drive::default() };
+        assert!(!d(Some(Health::Good), Smart { life_used: Some(79), remapped: Some(0), ..Smart::default() }).warns());
+        assert!(d(Some(Health::Failing), Smart::default()).warns());
+        assert!(d(None, Smart { life_used: Some(WORN), ..Smart::default() }).warns());
+        assert!(d(None, Smart { pending: Some(1), ..Smart::default() }).warns());
+        assert!(d(None, Smart { media_errors: Some(2), ..Smart::default() }).warns());
+    }
 
     #[test]
     fn every_kind_note_health_and_reason_has_english() {

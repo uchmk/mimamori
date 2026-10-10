@@ -14,7 +14,11 @@ use crate::config::cmd::{Act, Goto};
 use crate::config::keys::render_seq;
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
+use crate::remote::Link;
+use crate::remote::client::Why;
+use crate::remote::proto::Hello;
 use crate::screen::{Pane, Screen};
+use crate::ui::fleet::why_text;
 use crate::util::{fmt_bytes, fmt_epoch, fmt_uptime};
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
@@ -63,6 +67,7 @@ pub fn lines(app: &App) -> Vec<Line> {
     }
     section(tr("sys.system"), system);
     section(tr("sys.processor"), processor(app, hw));
+    section(tr("sys.agent"), agent(app));
     if m.hw.is_none() {
         out.push(Line::Head(tr("misc.reading")));
         return out;
@@ -184,6 +189,45 @@ fn processor(app: &App, hw: &Hardware) -> Vec<(&'static str, String)> {
         (tr("sys.l2"), cache(1)),
         (tr("sys.l3"), cache(2)),
     ]
+}
+
+/// The fleet agent of the machine whose screens show: the one this window
+/// is inside, else what the last look on this machine's port found.
+fn agent(app: &App) -> Vec<(&'static str, String)> {
+    let allow = |a: &[String]| if a.is_empty() { tr("fleet.view_only").to_string() } else { a.join(", ") };
+    let up = |h: &Hello, viewers: Option<u16>| {
+        vec![
+            (tr("sys.agent_state"), trf("sys.agent_listening", &[&format!("127.0.0.1:{}", h.port)])),
+            (tr("sys.version"), h.version.clone()),
+            (tr("sys.agent_pid"), h.pid.to_string()),
+            (tr("sys.agent_user"), h.user.clone()),
+            (tr("sys.agent_allow"), allow(&h.allow)),
+            (tr("sys.agent_interval"), trf("settings.seconds", &[&h.interval.to_string()])),
+            (tr("sys.agent_viewers"), viewers.map(|v| v.to_string()).unwrap_or_default()),
+        ]
+    };
+    if let Some(p) = app.away_peer() {
+        return match (&p.link, &p.hello) {
+            (Link::Up, Some(h)) => up(h, p.summary.as_ref().map(|s| s.viewers)),
+            (Link::Down(why), _) => vec![(tr("sys.agent_state"), why_text(why))],
+            _ => vec![(tr("sys.agent_state"), tr("fleet.connecting").to_string())],
+        };
+    }
+    let settings = &app.prefs.settings;
+    let off = |state: String| {
+        vec![
+            (tr("sys.agent_state"), state),
+            (tr("sys.agent_port"), settings.port.to_string()),
+            (tr("sys.agent_allow"), allow(&settings.allow)),
+            (tr("sys.agent_start"), tr("sys.agent_start_how").to_string()),
+        ]
+    };
+    match &app.probe.last {
+        Some(Ok((h, sum))) => up(h, Some(sum.viewers)),
+        Some(Err(Why::Refused)) => off(tr("sys.agent_off").to_string()),
+        Some(Err(why)) => off(why_text(why)),
+        None => vec![(tr("sys.agent_state"), tr("sys.agent_looking").to_string())],
+    }
 }
 
 /// The machine in a few words: its maker and model, else the host's name.

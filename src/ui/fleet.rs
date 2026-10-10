@@ -16,7 +16,7 @@ use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::model::Ring;
 use crate::remote::client::Why;
-use crate::remote::proto::PROTO;
+use crate::remote::proto::{Battery, PROTO, Summary, Warn};
 use crate::remote::{self, Link, Peer, Status, agent};
 use crate::util::fmt_uptime;
 
@@ -76,7 +76,8 @@ struct Card<'a> {
     right_c: Color32,
     system: String,
     gauges: [Gauge<'a>; 3],
-    facts: Vec<(&'static str, String)>,
+    /// Name, value and the value's colour.
+    facts: Vec<(&'static str, String, Color32)>,
     last: String,
     last_c: Color32,
     faded: bool,
@@ -145,12 +146,9 @@ fn this_machine(app: &App) -> Card<'_> {
     // The GPU the summary names, by its history.
     let gpu_ring =
         m.gpus.iter().find(|d| d.kind == gpu::Kind::Gpu && d.usage.is_some()).and_then(|d| m.gpu_hist.get(&d.id)).map(|(u, _)| u);
-    let mut facts = Vec::new();
-    if let Some(t) = sum.temp {
-        facts.push((tr("fleet.temp"), format!("{t:.0}°C")));
-    }
+    let mut facts = sum_facts(&sum);
     if let Some(st) = st {
-        facts.push((tr("fleet.up"), fmt_uptime(now_secs().saturating_sub(st.boot_time))));
+        facts.push((tr("fleet.up"), fmt_uptime(now_secs().saturating_sub(st.boot_time)), theme::fg()));
     }
     Card {
         name: st.map_or("", |s| s.host.as_str()),
@@ -184,17 +182,14 @@ fn peer(p: &Peer, now: Instant) -> Card<'_> {
         (Link::Up, Some(l)) => trf("fleet.latency", &[&l.as_millis().to_string()]),
         _ => String::new(),
     };
-    let mut facts = Vec::new();
-    if let Some(t) = sum.and_then(|s| s.temp) {
-        facts.push((tr("fleet.temp"), format!("{t:.0}°C")));
-    }
+    let mut facts = sum.map(sum_facts).unwrap_or_default();
     if let Some(h) = hello.filter(|h| h.boot_time > 0 && p.link == Link::Up) {
-        facts.push((tr("fleet.up"), fmt_uptime(now_secs().saturating_sub(h.boot_time))));
+        facts.push((tr("fleet.up"), fmt_uptime(now_secs().saturating_sub(h.boot_time)), theme::fg()));
     }
     if status != Status::Ok
         && let Some(seen) = p.seen.and_then(|t| t.elapsed().ok())
     {
-        facts.push((tr("fleet.seen"), fmt_uptime(seen.as_secs())));
+        facts.push((tr("fleet.seen"), fmt_uptime(seen.as_secs()), theme::fg()));
     }
     let (last, last_c) = match &p.link {
         Link::Down(why) => (why_text(why), theme::red()),
@@ -228,6 +223,44 @@ fn peer(p: &Peer, now: Instant) -> Card<'_> {
         last,
         last_c,
         faded: status == Status::Down,
+    }
+}
+
+/// The facts a summary gives: what warns first, then the hottest
+/// temperature and the battery.
+fn sum_facts(s: &Summary) -> Vec<(&'static str, String, Color32)> {
+    let mut facts = Vec::new();
+    if let Some((text, red)) = warn_text(&s.warn) {
+        facts.push((tr("fleet.warn"), text, if red { theme::red() } else { theme::yellow() }));
+    }
+    if let Some(t) = s.temp {
+        facts.push((tr("fleet.temp"), format!("{t:.0}°C"), theme::fg()));
+    }
+    if let Some(b) = &s.battery {
+        facts.push((tr("fleet.battery"), battery_text(b), if b.pct < 15.0 && !b.plugged { theme::yellow() } else { theme::fg() }));
+    }
+    facts
+}
+
+/// The counts that are not zero, and whether a service failed (red); `None`
+/// when nothing warns.
+pub fn warn_text(w: &Warn) -> Option<(String, bool)> {
+    let failed = w.failed.unwrap_or(0);
+    let parts: Vec<String> = [("fleet.warn_hot", w.hot), ("fleet.warn_drives", w.drives), ("fleet.warn_failed", failed)]
+        .into_iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(k, n)| trf(k, &[&n.to_string()]))
+        .collect();
+    (w.total() > 0).then(|| (parts.join(" · "), failed > 0))
+}
+
+/// `87%`, and whether it charges or is plugged in and full.
+pub fn battery_text(b: &Battery) -> String {
+    let pct = format!("{:.0}%", b.pct);
+    match (b.charging, b.plugged) {
+        (true, _) => trf("fleet.battery_charging", &[&pct]),
+        (false, true) => trf("fleet.battery_plugged", &[&pct]),
+        _ => pct,
     }
 }
 
@@ -272,12 +305,12 @@ fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
     let facts = line(5);
     let mut x = facts.left();
     let y = facts.center().y;
-    for (k, (name, value)) in c.facts.iter().enumerate() {
+    for (k, (name, value, color)) in c.facts.iter().enumerate() {
         if k > 0 {
             x = pen.text(pos2(x, y), " · ", theme::dim()).right();
         }
         x = pen.text(pos2(x, y), &format!("{name} "), theme::dim()).right();
-        x = pen.text(pos2(x, y), value, fade(theme::fg())).right();
+        x = pen.text(pos2(x, y), value, fade(*color)).right();
     }
     // A long reason takes the facts' line when there are none.
     let last = line(6);
@@ -354,5 +387,27 @@ fn hint(cx: &mut Cx, r: Rect) {
             }
         }
         pen.text(pos2(inner.left(), y), &pen.fit(&s, inner.width()), color);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_card_counts_warnings_and_says_the_battery() {
+        assert_eq!(warn_text(&Warn::default()), None);
+        // Services not read yet count as none failed.
+        assert_eq!(warn_text(&Warn { hot: 0, drives: 0, failed: None }), None);
+        let (text, red) = warn_text(&Warn { hot: 2, drives: 0, failed: Some(0) }).unwrap();
+        assert!(text.contains('2') && !red, "{text}");
+        let (text, red) = warn_text(&Warn { hot: 1, drives: 1, failed: Some(3) }).unwrap();
+        assert_eq!(text.matches(" · ").count(), 2, "{text}");
+        assert!(red);
+        let b = |charging, plugged| Battery { pct: 86.6, charging, plugged };
+        assert_eq!(battery_text(&b(false, false)), "87%");
+        assert_ne!(battery_text(&b(true, true)), "87%");
+        assert_ne!(battery_text(&b(false, true)), battery_text(&b(true, true)));
+        assert!(battery_text(&b(false, true)).contains("87%"));
     }
 }

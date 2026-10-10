@@ -1,11 +1,12 @@
 //! The sampler: one thread that reads the machine through sysinfo on its own
-//! schedule (CPU, memory, GPUs, network interfaces, disks and sensors every interval, processes every other
-//! or as [`Ctl::Procs`] says) and sends
+//! schedule (CPU, memory, GPUs, network interfaces, disks, sensors and the battery every interval, processes
+//! every other or as [`Ctl::Procs`] says, services every minute for the warning count) and sends
 //! each reading to the UI, waking it. The UI steers it with [`Ctl`]: the
 //! interval, pause, whether services or sockets are wanted. Dropping the
 //! receiver ends the thread. The hardware (`hw`) is read once on a thread of
 //! its own.
 
+pub mod battery;
 pub mod disk;
 pub mod gpu;
 pub mod hw;
@@ -94,7 +95,8 @@ pub enum Msg {
     },
     /// GPUs first, then NPUs.
     Gpu(Vec<gpu::Device>),
-    /// Only while the svc screen wants them.
+    /// Every [`SVC_EVERY`] while the svc screen wants them, every
+    /// [`SVC_IDLE`] otherwise (the failed ones are counted on the fleet card).
     Svc(svc::Services),
     /// Every interval, so each interface has its history.
     Nics(Vec<net::Nic>),
@@ -106,13 +108,16 @@ pub enum Msg {
     Conns(net::Conns),
     /// Once, from its own thread.
     Hardware(Box<hw::Hardware>),
+    /// Every interval, before the sensors; `None` without a battery.
+    Battery(Option<battery::Battery>),
 }
 
 #[derive(Debug)]
 pub enum Ctl {
     Interval(Duration),
     Pause(bool),
-    /// Read services (at once, then every [`SVC_EVERY`]) or stop reading them.
+    /// Read services at once and then every [`SVC_EVERY`], or go back to
+    /// every [`SVC_IDLE`].
     Services(bool),
     /// Read sockets (at once, then every [`NET_EVERY`]) or stop reading them.
     Net(bool),
@@ -124,6 +129,18 @@ pub enum Ctl {
 /// How often services are read while wanted: listing them spawns `systemctl`
 /// or opens every service, so not at the sampling interval.
 pub const SVC_EVERY: Duration = Duration::from_secs(5);
+
+/// How often services are read while no screen shows them, for the count of
+/// failed ones on the fleet card.
+pub const SVC_IDLE: Duration = Duration::from_secs(60);
+
+/// The first idle read waits this long, so startup reads only what is drawn.
+const SVC_FIRST: Duration = Duration::from_secs(10);
+
+/// The gap until the next services read.
+fn svc_gap(wanted: bool) -> Duration {
+    if wanted { SVC_EVERY } else { SVC_IDLE }
+}
 
 /// How often sockets are read while wanted: on Linux that walks every
 /// process's open files.
@@ -171,8 +188,9 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
     // Opened here: the counter handles stay on this thread.
     let mut gpus = gpu::Sampler::new();
     let mut services = svc::Reader::default();
-    // When services are next due; `None` while nobody wants them.
-    let mut svc_next: Option<Instant> = None;
+    // Services are always due at some point: wanted, or idle for the count.
+    let mut svc_on = false;
+    let mut svc_next = Instant::now() + SVC_FIRST;
     let mut nics = net::NicReader::new();
     let mut disks = disk::Reader::new();
     let mut sensors = sensors::Reader::new();
@@ -183,7 +201,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
     let mut tick: u64 = 0;
     loop {
-        let due = if paused { None } else { [Some(next), svc_next, net_next].into_iter().flatten().min() };
+        let due = if paused { None } else { [Some(next), Some(svc_next), net_next].into_iter().flatten().min() };
         let got = match due {
             Some(t) => ctl.recv_timeout(t.saturating_duration_since(Instant::now())),
             None => ctl.recv().map_err(|_| RecvTimeoutError::Disconnected),
@@ -204,7 +222,8 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
                 if on && !send(Msg::Svc(services.read())) {
                     return;
                 }
-                svc_next = on.then(|| Instant::now() + SVC_EVERY);
+                svc_on = on;
+                svc_next = Instant::now() + svc_gap(on);
                 continue;
             }
             Ok(Ctl::Net(on)) => {
@@ -223,13 +242,11 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
             Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {}
         }
-        if let Some(t) = svc_next
-            && Instant::now() >= t
-        {
+        if Instant::now() >= svc_next {
             if !send(Msg::Svc(services.read())) {
                 return;
             }
-            svc_next = Some(Instant::now() + SVC_EVERY);
+            svc_next = Instant::now() + svc_gap(svc_on);
         }
         if let Some(t) = net_next
             && Instant::now() >= t
@@ -261,7 +278,13 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
         let devs = gpus.sample();
         let disk = disks.read();
         let temps = sensors.read(&devs, &disk.drives);
-        if !send(Msg::Gpu(devs)) || !send(Msg::Nics(nics.read())) || !send(Msg::Disks(disk)) || !send(Msg::Sensors(temps)) {
+        // Before the sensors: the agent's summary follows them.
+        if !send(Msg::Gpu(devs))
+            || !send(Msg::Nics(nics.read()))
+            || !send(Msg::Disks(disk))
+            || !send(Msg::Battery(battery::read()))
+            || !send(Msg::Sensors(temps))
+        {
             return;
         }
         if procs_every > 0 && tick.is_multiple_of(u64::from(procs_every)) {
@@ -413,5 +436,12 @@ mod tests {
         let stat = "1234 (a (weird) name) S 1 1234 1234 0 -1 4194560 100 0 0 0 5 3 0 0 20 0 7 0 12345 1000 50";
         assert_eq!(stat_threads(stat), Some(7));
         assert_eq!(stat_threads("garbage"), None);
+    }
+
+    #[test]
+    fn services_are_read_often_when_shown_and_each_minute_otherwise() {
+        assert_eq!(svc_gap(true), SVC_EVERY);
+        assert_eq!(svc_gap(false), SVC_IDLE);
+        assert!(SVC_FIRST < SVC_IDLE && SVC_EVERY < SVC_IDLE);
     }
 }

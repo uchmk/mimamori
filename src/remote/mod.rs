@@ -158,7 +158,7 @@ mod tests {
         assert_eq!(p.status(now), Status::Connecting);
         p.apply(Event::Up(Hello { interval: 1.0, ..Hello::default() }));
         assert_eq!(p.status(Instant::now()), Status::Ok);
-        p.apply(Event::Summary(Summary { cpu: 30.0, mem_used: 4, mem_total: 16, gpu: Some(("GPU".into(), 50.0)), temp: None }));
+        p.apply(Event::Summary(Summary { cpu: 30.0, mem_used: 4, mem_total: 16, gpu: Some(("GPU".into(), 50.0)), ..Summary::default() }));
         assert_eq!((p.cpu.last(), p.mem.last(), p.gpu.last()), (Some(30.0), Some(25.0), Some(50.0)));
         assert!(p.seen.is_some());
         p.apply(Event::Latency(Duration::from_millis(250)));

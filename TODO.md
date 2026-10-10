@@ -110,9 +110,15 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] fleet: `[agent] allow` に書いたものだけ、ほかの機械で操作を受ける（`kill`・`service`）。エージェントの側で確かめ、確認の窓にどの機械かを出す。
   → プロトコル 3。エージェントが自分の `allow` と自分の一覧で確かめ（自分自身は終わらせない、plist は自分の読んだもの）、1 回ごとのスレッドで実行して答える。
   確認の窓の頭に機械と実行するユーザー、答えは機械の名前付きのトースト。切れたら送り直さない (v0.36.0)
-- [ ] fleet: sys の画面にエージェントの節（待ち受けているか・ポート・allow・つないでいる見る側の数）。
-- [ ] fleet: カードに電池（ノート PC）と、警告の数（温度・SMART・落ちたサービス）。
-- [ ] fleet: `--install-service`（Windows はタスク スケジューラ、Linux は systemd の user unit、macOS は launchd の LaunchAgent）で、ログオン時にエージェントを立てる。
+- [x] fleet: sys の画面にエージェントの節（待ち受けているか・ポート・allow・つないでいる見る側の数）。
+  → 手元は sys が出ている間だけ 5 秒ごとに `client::probe` で自分のポートに聞く（Hello と最初の Summary）。ほかの機械はその Hello と Summary から。
+  動いていなければポート・`[agent] allow`・立て方を出す。プロトコル 4 で Hello に `port`、Summary に `viewers` (v0.40.0)
+- [x] fleet: カードに電池（ノート PC）と、警告の数（温度・SMART・落ちたサービス）。
+  → `collect/battery/`（Linux は sysfs、Windows は `GetSystemPowerStatus`、macOS は `AppleSmartBattery`）。警告は赤い温度・SMART が黄色のドライブ・落ちたサービスの数で、
+  サービスは画面に出ていなくても 60 秒ごとに読む。警告があれば facts の行が黄色、サービスが落ちていれば赤 (v0.40.0)
+- [x] fleet: `--install-service`（Windows はタスク スケジューラ、Linux は systemd の user unit、macOS は launchd の LaunchAgent）で、ログオン時にエージェントを立てる。
+  → Windows はタスク スケジューラの ONLOGON が管理者を要るので、HKCU の `Run` キーにし、その場でも窓なしで立てる（`--log` で `agent.log` に書く）。
+  Linux は `~/.config/systemd/user/yagura-agent.service`、macOS は `~/Library/LaunchAgents/io.github.uchmk.yagura-agent.plist`。`--uninstall-service` で止めて消す (v0.40.0)
 - [ ] fleet: 要約を差分にする・間隔を見る側から変える（細い回線のため）。使ってみて要ると分かってから。
 - [ ] fleet: 直接つなぐ形（Q1 の 2 か 3）。SSH / Tailscale で足りないと分かってから。
 

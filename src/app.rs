@@ -16,8 +16,8 @@ use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
 use crate::persist::{Saver, Stacks};
 use crate::prefs::{Prefs, Reload};
-use crate::remote::client::{Event, ToHost};
-use crate::remote::proto::{self, Done, Refusal, Want};
+use crate::remote::client::{self, Event, ToHost, Why};
+use crate::remote::proto::{self, Done, Hello, Refusal, Summary, Want};
 use crate::remote::{self, Link, Peer};
 use crate::screen::{Pane, Screen};
 use crate::stacks;
@@ -29,6 +29,8 @@ pub const INTERVALS: [f32; 6] = [0.5, 1.0, 2.0, 3.0, 5.0, 10.0];
 pub const TOAST: Duration = Duration::from_secs(3);
 /// How far a resize key moves a divider, as a share of the room.
 const NUDGE: f32 = 0.03;
+/// How often sys looks for this machine's agent while it shows.
+const PROBE_EVERY: Duration = Duration::from_secs(5);
 /// Rows the overview lists in each of its two top lists.
 pub const OVW_TOP: usize = 5;
 
@@ -340,6 +342,26 @@ pub struct App {
     pub prefs: Prefs,
     /// Words to put on the clipboard this frame.
     pub copy: Option<String>,
+    /// This machine's agent, for sys.
+    pub probe: Probe,
+}
+
+/// What sys last found on this machine's agent port, looked at on a thread
+/// every [`PROBE_EVERY`] while it shows.
+pub struct Probe {
+    /// `None` until the first look comes back.
+    pub last: Option<Result<(Hello, Summary), Why>>,
+    tx: Sender<Result<(Hello, Summary), Why>>,
+    rx: Receiver<Result<(Hello, Summary), Why>>,
+    busy: bool,
+    next: Option<Instant>,
+}
+
+impl Default for Probe {
+    fn default() -> Self {
+        let (tx, rx) = crossbeam_channel::unbounded();
+        Self { last: None, tx, rx, busy: false, next: None }
+    }
 }
 
 impl App {
@@ -403,6 +425,7 @@ impl App {
             fleet_cols: 1,
             prefs: Prefs::empty(),
             copy: None,
+            probe: Probe::default(),
         }
     }
 
@@ -820,6 +843,30 @@ impl App {
     }
 
     /// How long the toast has left in the status bar.
+    /// While sys shows this machine: look for its agent when it is time,
+    /// and say when the next look is due.
+    pub fn probe_agent(&mut self) -> Option<Duration> {
+        let p = &mut self.probe;
+        while let Ok(r) = p.rx.try_recv() {
+            (p.last, p.busy) = (Some(r), false);
+        }
+        if self.screen != Screen::Sys || self.away.is_some() || self.mode == Mode::Settings {
+            return None;
+        }
+        let now = Instant::now();
+        if !p.busy && p.next.is_none_or(|t| t <= now) {
+            let (tx, wake, port) = (p.tx.clone(), self.wake.clone(), self.prefs.settings.port);
+            let spawned = std::thread::Builder::new().name("yagura-probe".into()).spawn(move || {
+                let _ = tx.send(client::probe(port));
+                if let Some(w) = wake {
+                    w.request_repaint();
+                }
+            });
+            (p.busy, p.next) = (spawned.is_ok(), Some(now + PROBE_EVERY));
+        }
+        p.next.map(|t| t.saturating_duration_since(now))
+    }
+
     pub fn toast_left(&self) -> Option<Duration> {
         self.toast.as_ref().map(|(_, at)| TOAST.saturating_sub(at.elapsed()))
     }

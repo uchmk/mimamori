@@ -119,6 +119,21 @@ pub struct Sensor {
     pub pci: Option<String>,
 }
 
+/// Where a temperature counts as hot when the chip gives no limit.
+pub const HOT: f32 = 90.0;
+
+/// Where a temperature should stay below: the chip's high mark, else its
+/// critical one, else [`HOT`].
+pub fn limit(high: Option<f32>, crit: Option<f32>) -> f32 {
+    high.or(crit).unwrap_or(HOT)
+}
+
+/// At or past its limit or the critical mark: drawn red, and counted on the
+/// fleet card.
+pub fn hot(v: f32, high: Option<f32>, crit: Option<f32>) -> bool {
+    crit.is_some_and(|c| v >= c) || v >= limit(high, crit)
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Sensors {
     pub list: Vec<Sensor>,
@@ -155,6 +170,11 @@ impl Sensors {
 
     pub fn count(&self, k: Kind) -> usize {
         self.list.iter().filter(|s| s.kind == k).count()
+    }
+
+    /// Temperatures that are [`hot`].
+    pub fn hot(&self) -> usize {
+        self.list.iter().filter(|s| s.kind == Kind::Temp && hot(s.value, s.high, s.crit)).count()
     }
 }
 
@@ -326,6 +346,19 @@ mod tests {
             value: v,
             ..Sensor::default()
         }
+    }
+
+    #[test]
+    fn hot_is_past_the_limit_or_the_critical_mark() {
+        assert!(!hot(89.0, None, None) && hot(HOT, None, None));
+        assert!(hot(80.0, Some(80.0), Some(100.0)));
+        assert!(!hot(79.0, Some(80.0), Some(100.0)));
+        // A critical mark under the high one still counts.
+        assert!(hot(70.0, Some(90.0), Some(70.0)));
+        assert!(hot(95.0, None, Some(95.0)));
+        let mut s = Sensors { list: vec![temp("a", "x", 95.0), temp("a", "y", 40.0)], note: None };
+        s.list.push(Sensor { kind: Kind::Fan, value: 5000.0, ..Sensor::default() });
+        assert_eq!(s.hot(), 1);
     }
 
     #[test]
