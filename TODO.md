@@ -87,8 +87,11 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 - [x] 日本語の表（`src/lang/ja.toml`）と CJK のフォント（tsumugi の `fonts.rs` の取り方）。
   → `fonts.rs` が OS のフォントをスレッドで読んで後ろに足す。全角は 2 桁で数えて切る。ヘルプの説明は `[keydesc]` で訳す（v0.25.0）
-- [ ] `i18n` と `common.toml` の読み込みを tsumugi の workspace の共有クレートに切り出し、filer と tsumugi から使う（tsumugi を `access:"push"` で付け直す）。
+- [x] `i18n` と `common.toml` の読み込みを tsumugi の workspace の共有クレートに切り出し、filer と tsumugi から使う（tsumugi を `access:"push"` で付け直す）。
   tsumugi の設定画面の言語の欄もそれにつなぐ。
+  → `tsumugi-i18n`（tsumugi v0.78.0）: 設定の置き場所・`common.toml` の `language` の読み書き・言語の決め方・表・表とソースの検査。
+  tsumugi の設定画面の General → Language が `common.toml` に書く。mimamori はこのクレートで読む（v0.26.0）。
+  filer はまだ画面の文字を表に通していないので、filer の i18n は別の仕事（filer の TODO に積むのは filer のセッションで）
 - [ ] keymap の読み込み（`config/keys.rs`・`keymap.rs`）も共有のクレートにするか、filer と見比べて決める。
 
 ## 4. リモート

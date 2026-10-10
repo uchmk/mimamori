@@ -32,12 +32,9 @@ pub struct Settings {
     pub warnings: Vec<String>,
 }
 
-/// The `uchmk` folder.
+/// The `uchmk` folder (the same for every uchmk app; `tsumugi-i18n`).
 pub fn base_dir() -> Option<PathBuf> {
-    match std::env::var_os("UCHMK_CONFIG_DIR") {
-        Some(d) if !d.is_empty() => Some(PathBuf::from(d)),
-        _ => dirs::config_dir().map(|d| d.join("uchmk")),
-    }
+    tsumugi_i18n::base_dir()
 }
 
 fn read_table(path: &Path, warn: &mut Vec<String>) -> Option<toml::Table> {
@@ -71,8 +68,9 @@ pub fn load(base: Option<&Path>) -> Settings {
     let mut common_lang = None;
     let mut app_lang = None;
     if let Some(base) = &base {
-        if let Some(t) = read_table(&base.join("common.toml"), &mut warn) {
-            common_lang = string(&t, "language", "common.toml", &mut warn);
+        match tsumugi_i18n::read_common_language(base) {
+            Ok(l) => common_lang = l,
+            Err(e) => warn.push(e),
         }
         let dir = base.join("mimamori");
         if let Some(t) = read_table(&dir.join("config.toml"), &mut warn) {
@@ -95,7 +93,7 @@ pub fn load(base: Option<&Path>) -> Settings {
         s.keymap = std::fs::read_to_string(dir.join("keymap.toml")).ok();
         s.dir = Some(dir);
     }
-    let os = sys_locale::get_locale();
+    let os = tsumugi_i18n::os_language();
     s.language = crate::i18n::resolve_language(app_lang.as_deref(), common_lang.as_deref(), os.as_deref());
     s.warnings = warn;
     s
@@ -136,5 +134,10 @@ mod tests {
         assert_eq!(s.interval, 1.0);
         assert!(s.backend.is_none());
         assert_eq!(s.warnings.len(), 2, "{:?}", s.warnings);
+
+        // A bad common.toml is said, and the language falls to the OS's.
+        std::fs::write(d.join("common.toml"), "language = 1\n").unwrap();
+        let s = load(Some(&d));
+        assert!(s.warnings.iter().any(|w| w.contains("common.toml")), "{:?}", s.warnings);
     }
 }

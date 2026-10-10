@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.25.0"
+version = "0.26.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -15,12 +15,13 @@ crossbeam-channel = "0.5"
 serde = { version = "1", features = ["derive"] }
 toml = "1.1"
 dirs = "7"
-sys-locale = "0.3"
 png = "0.18"
 # The split tree behind the resizable panels, shared with tsumugi and filer.
 # Pinned to the commit filer reads; to take a fix, move `rev` and run
 # `cargo build` so Cargo.lock follows. It depends on nothing but egui.
-tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "085c421f5c3c738f9d5782c39aae68d31ee7db37", features = ["egui", "serde"] }
+tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "b6c16fcc991e5ec61fe5ffd1f6591d8b23c85358", features = ["egui", "serde"] }
+# The translation table and the language setting in common.toml, shared with tsumugi.
+tsumugi-i18n = { git = "https://github.com/uchmk/tsumugi", rev = "b6c16fcc991e5ec61fe5ffd1f6591d8b23c85358" }
 
 # NVIDIA's management library, loaded at run time: without the driver it is
 # simply not there and no NVIDIA device is listed from it. macOS has no NVML.

@@ -126,6 +126,10 @@ has the same keys, and any key it leaves out reads in English; its
 `[keydesc]` translates the built-in keymap's descriptions in `?` help (one
 you wrote yourself reads as you wrote it). The language is picked from
 `config.toml`, then `common.toml`, then the OS (`ja-JP` is Japanese).
+The table and that choice come from `tsumugi-i18n`, a crate in
+[tsumugi](https://github.com/uchmk/tsumugi)'s workspace; tsumugi's Settings
+window (General → Language) writes `common.toml`, so setting it there
+changes mimamori's language from its next start.
 
 Japanese, and the CJK in process names, service descriptions and volume
 labels whatever the language, is drawn with a system font behind the

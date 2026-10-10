@@ -1819,7 +1819,7 @@ dependencies = [
 
 [[package]]
 name = "mimamori"
-version = "0.25.0"
+version = "0.26.0"
 dependencies = [
  "crossbeam-channel",
  "dirs",
@@ -1832,9 +1832,9 @@ dependencies = [
  "plist",
  "png",
  "serde",
- "sys-locale",
  "sysinfo",
  "toml",
+ "tsumugi-i18n",
  "tsumugi-layout",
  "windows",
 ]
@@ -3397,9 +3397,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "tsumugi-i18n"
+version = "0.78.0"
+source = "git+https://github.com/uchmk/tsumugi?rev=b6c16fcc991e5ec61fe5ffd1f6591d8b23c85358#b6c16fcc991e5ec61fe5ffd1f6591d8b23c85358"
+dependencies = [
+ "sys-locale",
+ "toml",
+]
+
+[[package]]
 name = "tsumugi-layout"
-version = "0.76.0"
-source = "git+https://github.com/uchmk/tsumugi?rev=085c421f5c3c738f9d5782c39aae68d31ee7db37#085c421f5c3c738f9d5782c39aae68d31ee7db37"
+version = "0.78.0"
+source = "git+https://github.com/uchmk/tsumugi?rev=b6c16fcc991e5ec61fe5ffd1f6591d8b23c85358#b6c16fcc991e5ec61fe5ffd1f6591d8b23c85358"
 dependencies = [
  "egui",
  "serde",

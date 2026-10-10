@@ -4,6 +4,15 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.26.0] - 2026-10-10
+
+### 変更
+
+- 言語の表・言語の決め方・`common.toml` の読み方を、tsumugi の workspace の共有クレート `tsumugi-i18n` に移した。
+  tsumugi の設定画面（General → Language）で選んだ言語が `common.toml` に書かれ、mimamori も次の起動からそれに従う。
+  `tsumugi-layout` も同じ `rev` に上げた（中身は変わっていない）。
+- `common.toml` が読めないとき（`language` が文字列でない、TOML でない）は警告に出し、言語は OS のものになる。
+
 ## [0.25.0] - 2026-10-10
 
 ### 追加
