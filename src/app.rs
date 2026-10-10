@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use tsumugi_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc, disk, gpu, net, svc};
+use crate::collect::{Ctl, Msg, Proc, disk, gpu, net, sensors, svc};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -400,6 +400,16 @@ impl App {
         self.model.disks.volumes.get(self.view_of(Screen::Disk).sel[1])
     }
 
+    /// The chip the sensors screen has selected.
+    pub fn selected_chip(&self) -> Option<sensors::Chip<'_>> {
+        self.model.sensors.chips().into_iter().nth(self.view_of(Screen::Sensors).sel[0])
+    }
+
+    /// The sensor the sensors screen has selected.
+    pub fn selected_sensor(&self) -> Option<&sensors::Sensor> {
+        self.model.sensors.list.get(self.view_of(Screen::Sensors).sel[1])
+    }
+
     /// The name of the process with `pid`, if it is in the process list.
     pub fn proc_name(&self, pid: Option<u32>) -> Option<&str> {
         let pid = pid?;
@@ -539,6 +549,8 @@ impl App {
             (Screen::Net, Pane::Mid) => self.net_rows.len(),
             (Screen::Disk, Pane::Left) => self.model.disks.drives.len(),
             (Screen::Disk, Pane::Mid) => self.model.disks.volumes.len(),
+            (Screen::Sensors, Pane::Left) => self.model.sensors.chips().len(),
+            (Screen::Sensors, Pane::Mid) => self.model.sensors.list.len(),
             _ => 0,
         }
     }
@@ -992,6 +1004,23 @@ impl App {
                     v.focus = Pane::Left.index();
                 }
             }
+            // A chip: over to its first sensor. A sensor: back to its chip.
+            (Screen::Sensors, Pane::Left) => {
+                let first = self.selected_chip().map(|c| c.first);
+                let v = self.view_mut();
+                if let Some(i) = first {
+                    v.sel[Pane::Mid.index()] = i;
+                }
+                v.focus = Pane::Mid.index();
+            }
+            (Screen::Sensors, Pane::Mid) => {
+                let sel = self.view_of(Screen::Sensors).sel[Pane::Mid.index()];
+                if let Some(i) = self.model.sensors.chips().iter().position(|c| (c.first..c.first + c.len).contains(&sel)) {
+                    let v = self.view_mut();
+                    v.sel[Pane::Left.index()] = i;
+                    v.focus = Pane::Left.index();
+                }
+            }
             _ => {}
         }
     }
@@ -1067,6 +1096,11 @@ impl App {
             let drives: Vec<&str> = d.drives.iter().map(|x| x.id.as_str()).collect();
             let vols: Vec<&str> = d.volumes.iter().map(|v| v.mount.as_str()).collect();
             s += &format!("disks: {} ({}); volumes: {} ({})\n", drives.len(), drives.join(" "), vols.len(), vols.join(" "));
+        }
+        if self.model.sensor_read {
+            let m = &self.model.sensors;
+            let (t, f) = (m.count(sensors::Kind::Temp), m.count(sensors::Kind::Fan) + m.count(sensors::Kind::Duty));
+            s += &format!("sensors: {} (temps {t}, fans {f}; chips {})\n", m.list.len(), m.chips().len());
         }
         if let Some(st) = &self.model.st {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
@@ -1217,6 +1251,8 @@ mod tests {
         assert_eq!(a.screen, Screen::Net);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Disk);
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Sensors);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Ovw);
         tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
@@ -1502,6 +1538,26 @@ mod tests {
         keys(&mut a, "l G <Enter>");
         assert_eq!((a.focus(), a.selected_volume().map(|v| v.mount.as_str())), (Pane::Mid, Some("/net")));
         assert!(a.report().contains("disks: 2 (sda sdb); volumes: 4"));
+    }
+
+    #[test]
+    fn enter_on_the_sensors_screen_moves_between_a_chip_and_its_sensors() {
+        let (mut a, tx, _ctl) = app();
+        let temp = |chip: &str, label: &str| sensors::Sensor {
+            id: format!("{chip}/{label}"),
+            chip_id: chip.into(),
+            chip: chip.into(),
+            label: label.into(),
+            ..sensors::Sensor::default()
+        };
+        let list = vec![temp("coretemp", "core0"), temp("coretemp", "core1"), temp("nvme", "temp1"), temp("nvme", "temp2")];
+        tx.send(Msg::Sensors(sensors::Sensors { list, note: None })).unwrap();
+        a.pump();
+        keys(&mut a, "9 j <Enter>");
+        assert_eq!((a.focus(), a.selected_sensor().map(|s| s.id.as_str())), (Pane::Mid, Some("nvme/temp1")));
+        keys(&mut a, "j k k <Enter>");
+        assert_eq!((a.focus(), a.selected_chip().map(|c| c.name)), (Pane::Left, Some("coretemp")));
+        assert!(a.report().contains("sensors: 4 (temps 4, fans 0; chips 2)"));
     }
 
     #[test]

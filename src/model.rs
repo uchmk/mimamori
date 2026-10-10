@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, disk, gpu, net, svc};
+use crate::collect::{Mem, Msg, Proc, Static, disk, gpu, net, sensors, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -31,6 +31,11 @@ impl Ring {
 
     pub fn max(&self) -> f32 {
         self.0.iter().copied().fold(0.0, f32::max)
+    }
+
+    /// The least value, 0 when empty.
+    pub fn min(&self) -> f32 {
+        if self.0.is_empty() { 0.0 } else { self.0.iter().copied().fold(f32::INFINITY, f32::min) }
     }
 
     pub fn len(&self) -> usize {
@@ -84,6 +89,10 @@ pub struct Model {
     /// Read and written bytes per second per mounted volume, by mount point.
     pub vol_hist: HashMap<String, (Ring, Ring)>,
     pub disk_read: bool,
+    pub sensors: sensors::Sensors,
+    /// Each live sensor's values, by its id.
+    pub sensor_hist: HashMap<String, Ring>,
+    pub sensor_read: bool,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -178,6 +187,16 @@ impl Model {
                 self.disks = d;
                 self.disk_read = true;
             }
+            Msg::Sensors(s) => {
+                let mut hist = std::mem::take(&mut self.sensor_hist);
+                hist.retain(|id, _| s.list.iter().any(|x| x.id == *id));
+                for x in &s.list {
+                    hist.entry(x.id.clone()).or_default().push(x.value);
+                }
+                self.sensor_hist = hist;
+                self.sensors = s;
+                self.sensor_read = true;
+            }
         }
     }
 
@@ -216,6 +235,8 @@ mod tests {
         assert_eq!(r.iter().next(), Some(40.0));
         assert_eq!(r.last(), Some(99.0));
         assert_eq!(r.max(), 99.0);
+        assert_eq!(r.min(), 40.0);
+        assert_eq!(Ring::default().min(), 0.0);
     }
 
     #[test]
@@ -281,5 +302,16 @@ mod tests {
         let (r, w, b) = &m.drive_hist["sda"];
         assert_eq!((r.len(), r.last(), w.last(), b.last()), (2, Some(10.0), Some(20.0), Some(5.0)));
         assert_eq!(m.vol_hist["/"].0.last(), Some(30.0));
+    }
+
+    #[test]
+    fn sensor_history_follows_the_live_sensors() {
+        let temp = |id: &str, v: f32| sensors::Sensor { id: id.into(), value: v, ..sensors::Sensor::default() };
+        let mut m = Model::default();
+        m.apply(Msg::Sensors(sensors::Sensors { list: vec![temp("a", 40.0), temp("b", 50.0)], note: None }));
+        m.apply(Msg::Sensors(sensors::Sensors { list: vec![temp("a", 45.0)], note: None }));
+        assert!(m.sensor_read && !m.sensor_hist.contains_key("b"));
+        let a = &m.sensor_hist["a"];
+        assert_eq!((a.len(), a.min(), a.max()), (2, 40.0, 45.0));
     }
 }

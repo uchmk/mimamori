@@ -1,5 +1,5 @@
 //! The sampler: one thread that reads the machine through sysinfo on its own
-//! schedule (CPU, memory, GPUs, network interfaces and disks every interval, processes every other) and sends
+//! schedule (CPU, memory, GPUs, network interfaces, disks and sensors every interval, processes every other) and sends
 //! each reading to the UI, waking it. The UI steers it with [`Ctl`]: the
 //! interval, pause, whether services or sockets are wanted. Dropping the
 //! receiver ends the thread.
@@ -9,6 +9,7 @@ pub mod gpu;
 pub mod net;
 #[cfg(windows)]
 mod pdh;
+pub mod sensors;
 pub mod svc;
 pub mod topo;
 
@@ -87,6 +88,8 @@ pub enum Msg {
     Nics(Vec<net::Nic>),
     /// Every interval, so each drive and volume has its history.
     Disks(disk::Disks),
+    /// Every interval, so each sensor has its history.
+    Sensors(sensors::Sensors),
     /// Only while the net screen wants them.
     Conns(net::Conns),
 }
@@ -151,6 +154,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
     let mut svc_next: Option<Instant> = None;
     let mut nics = net::NicReader::new();
     let mut disks = disk::Reader::new();
+    let mut sensors = sensors::Reader::new();
     let mut net_next: Option<Instant> = None;
     let mut paused = false;
     // The first CPU reading needs a gap after the first refresh.
@@ -226,7 +230,9 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
         if !send(Msg::Cpu { usage, freq_mhz, total, load }) || !send(Msg::Mem(mem)) {
             return;
         }
-        if !send(Msg::Gpu(gpus.sample())) || !send(Msg::Nics(nics.read())) || !send(Msg::Disks(disks.read())) {
+        let devs = gpus.sample();
+        let temps = sensors.read(&devs);
+        if !send(Msg::Gpu(devs)) || !send(Msg::Nics(nics.read())) || !send(Msg::Disks(disks.read())) || !send(Msg::Sensors(temps)) {
             return;
         }
         if tick.is_multiple_of(2) {

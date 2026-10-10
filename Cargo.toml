@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -28,9 +28,11 @@ tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "085c421f5c3c
 nvml-wrapper = { version = "0.13", default-features = false }
 
 # launchd's plists, XML or binary: pure Rust. The tests read plists on every
-# OS, so it is a dev-dependency too.
+# OS, so it is a dev-dependency too. sysinfo's components are the SMC and HID
+# temperatures; Linux and Windows read their sensors themselves.
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = { version = "1.8", default-features = false }
+sysinfo = { version = "0.39", default-features = false, features = ["component"] }
 
 [dev-dependencies]
 plist = { version = "1.8", default-features = false }

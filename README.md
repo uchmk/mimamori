@@ -11,8 +11,8 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.8** has eight screens: overview, cpu, mem, gpu·npu, procs, svc, net and disk. The other two tabs
-> are there with their final numbers, so the keys will not move, and say
+> **v0.9** has nine screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk and sensors. The last tab
+> is there with its final number, so the keys will not move, and says
 > "Not yet". See [TODO.md](TODO.md).
 
 ## Screens
@@ -27,7 +27,8 @@ inside each tile.
 | `6` | svc      | Services: Windows' services, systemd's units, launchd's jobs (with their plists, so disabled jobs show too). Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`; on Windows `u` switches it to the kernel and file-system drivers and back); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). `S` starts, `x` stops and `R` restarts the selected one after asking; the question shows the same thing as a command line (`systemctl restart foo.service`, `launchctl kickstart -k gui/501/…`, `Restart-Service foo`, or `sc.exe stop foo` for a driver). Read every 5 s, and only while the screen shows |
 | `7` | net      | The network interfaces, each with its traffic over the last minute, and counts of the sockets; every TCP and UDP socket (protocol, local and remote address, state, PID, process; filter with `/`, only the listening ones with `u`; `Enter` on an interface keeps only the sockets on its addresses and those bound to any address, until `Esc`); the selected interface's received and sent graphs, adapter, kind, link speed, addresses, MAC, MTU and totals, and the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
 | `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
-| `9`–`0` | sensors, sys | Not yet |
+| `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
+| `0` | sys      | Not yet |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`.
@@ -43,7 +44,7 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `h` `l` / `←` `→` | Column to the left, to the right |
 | `Alt+Shift+←→↑↓` (macOS `Cmd+Ctrl+arrow`) | Move the focused column's divider (tsumugi's keys) |
 | `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) | Columns back to equal widths |
-| `Enter` | Open the selection (a gauge's screen, a process in procs, a service's or a socket's process). On a net interface: only the sockets on it. On disk: a drive's first volume, or a volume's drive |
+| `Enter` | Open the selection (a gauge's screen, a process in procs, a service's or a socket's process). On a net interface: only the sockets on it. On disk: a drive's first volume, or a volume's drive. On sensors: a chip's first sensor, or a sensor's chip |
 | `/` | Filter processes, or on svc services by name and description, or on net sockets by protocol, address, state, PID and process (`Enter` keeps it, `Esc` drops it). One filter serves all three |
 | `s` | Next sort column |
 | `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |
@@ -168,6 +169,14 @@ The disk screen reads:
 | Windows | The `PhysicalDisk` performance counters (PDH) for the traffic and busy time; `IOCTL_STORAGE_QUERY_PROPERTY` and `IOCTL_DISK_GET_DRIVE_GEOMETRY_EX` on `\\.\PhysicalDriveN` for the model, bus, SSD / HDD and size, asked once per drive without administrator. Volumes are linked by their drive letters. If the counters are off (`diskperf -n`), the screen says so and shows the volumes alone | sysinfo |
 | Linux | `/proc/diskstats` for the traffic, totals and busy time; `/sys/block` for the whole drives (not `loop`, `ram`, `zram` or partitions), their size, model, bus and `rotational`. Volumes are linked through the device they were mounted from | sysinfo |
 | macOS | Not read yet: the screen says so, and each volume shows its own traffic in the right column | sysinfo |
+
+The sensors screen reads:
+
+| OS | Sensors |
+| --- | --- |
+| Windows | The ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH), without administrator. Fans and the cores' own temperatures need the board maker's driver, so the screen says so; NVIDIA GPUs add their temperature and fan from NVML |
+| Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice |
+| macOS | sysinfo's components: the SMC and HID temperatures. Fans are not read yet |
 
 On Windows and Linux, NVIDIA cards are read through NVML, loaded from the
 driver at run time (`nvml.dll` / `libnvidia-ml.so.1`); without it they are

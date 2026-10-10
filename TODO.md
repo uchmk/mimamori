@@ -29,8 +29,16 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   Windows は PhysicalDisk のパフォーマンスカウンター（PDH）と `IOCTL_STORAGE_QUERY_PROPERTY`（管理者は要らない）、Linux は `/proc/diskstats` と `/sys/block`、ボリュームはどの OS も sysinfo（v0.8.0）。
 - [ ] disk: macOS のドライブ（IOKit の `IOBlockStorageDriver` の `Statistics`）。今はボリュームだけで、ボリュームごとの読み書きを右に出す。
 - [ ] disk: SMART の状態と温度（Windows は `MSFT_PhysicalDisk` / `StorageReliabilityCounter`、Linux は NVMe の `hwmon` と `smartctl`）。sensors の画面と合わせて決める。
+  Linux の NVMe の温度は v0.9.0 から sensors の画面に出る（hwmon の `nvme`）。残るのは SATA の温度（`drivetemp` が無いとき）と、Windows・macOS の温度、SMART の健康状態。
 - [ ] disk の実機の確認 `【実機】`（TESTING.md 3d）。
-- [ ] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
+- [x] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
+  → 左がチップ（チップごとの一番熱い温度の 1 分のグラフ）、真ん中が温度とファンの一覧（今・1 分の最低と最高・高温の目安・限界）、右が選んだセンサーのグラフと目安の線。
+  sysinfo の `Components` は macOS だけで使う。Linux は sysinfo がファンを読まずチップでまとめないので `/sys/class/hwmon` を自分で読み（温度が無ければ `/sys/class/thermal`）、
+  Windows は sysinfo が管理者の要る WMI（`MSAcpi_ThermalZoneTemperature`）を使うので、管理者の要らない `Thermal Zone Information` のパフォーマンスカウンター（PDH）を読む。
+  NVIDIA の GPU は NVML の温度とファンを足し、amdgpu のように OS が並べているものは PCI のアドレスで重ねない（v0.9.0）。
+- [ ] sensors: macOS のファンと、SMC のキーで読める温度の名前（`TC0P` などを「CPU proximity」に）。今は sysinfo の components の温度だけ。
+- [ ] sensors: Windows のファンとコアの温度。メーカーのドライバーか、LibreHardwareMonitor のようなカーネルドライバーが要る（署名・管理者・同梱の是非を QUESTIONS で決めてから）。今は ACPI の熱ゾーンだけ。
+- [ ] sensors の実機の確認 `【実機】`（TESTING.md 3e）。
 - [ ] sys（`0`）: OS・BIOS・メモリのスロットなど、変わらない情報。
 
 ## 2. 構成と OS

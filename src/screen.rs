@@ -56,7 +56,7 @@ impl Screen {
 
     /// Whether this version draws it; the others open on a "not yet" note.
     pub fn built(self) -> bool {
-        matches!(self, Self::Ovw | Self::Cpu | Self::Mem | Self::Gpu | Self::Procs | Self::Svc | Self::Net | Self::Disk)
+        matches!(self, Self::Ovw | Self::Cpu | Self::Mem | Self::Gpu | Self::Procs | Self::Svc | Self::Net | Self::Disk | Self::Sensors)
     }
 
     /// The `tr` key of its tab label.

@@ -89,6 +89,15 @@ back to `[ ]`.
 - [ ] 3d.6 macOS: the left column says the drives are not read yet; the volumes match `df -h` / Disk Utility, and selecting one shows its read and written graphs, which move while a large file is copied.
 - [ ] 3d.7 `Enter` on a drive selects its first volume in the middle; `Enter` on a volume selects its drive on the left. A volume over 90 % full shows its `USE%` in red and a red bar on the right; a narrow window drops the device and file system columns first.
 
+## 3e. Sensors (`9`)
+
+- [ ] 3e.1 Windows: as a normal user, the left column says only the thermal zones are read; the zones (`TZ00`, `THRM`…) match `Get-CimInstance -Namespace root/wmi MSAcpi_ThermalZoneTemperature` run as administrator (Kelvin × 10); a machine without zones lists nothing and says so. An NVIDIA card adds its own chip with its temperature and fan, matching `nvidia-smi`.
+- [ ] 3e.2 Windows: a long CPU load (a build, `Prime95`) raises the zone temperature on its graph within a few seconds, and it falls back after.
+- [ ] 3e.3 Linux: the chips and values match `sensors` (lm-sensors): `coretemp` or `k10temp` with `Package id 0` / `Tctl`, `nvme` with the drive's model, the board chip (`nct6798`, `it87`…) with its fans in rpm; the high mark and critical point match `sensors`' `high` and `crit`.
+- [ ] 3e.4 Linux: an AMD GPU is listed once (its `amdgpu` chip), an NVIDIA GPU once (from NVML); on a Raspberry Pi or another board with no hwmon temperature, the thermal zones (`cpu-thermal`) show with the note.
+- [ ] 3e.5 macOS: the SMC and HID temperatures show under one `SMC` chip and match a tool such as `stats` or `iStat Menus`; with no sensors (a virtual machine) the screen says there is nothing to read.
+- [ ] 3e.6 `Enter` on a chip selects its first sensor in the middle; `Enter` on a sensor selects its chip on the left. A temperature within 10 °C of its high mark is yellow and past it red; a stopped fan is dim; a narrow window drops the chip, low, critical and high columns in that order.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

@@ -13,6 +13,7 @@ mod mem;
 mod net;
 mod overview;
 mod procs;
+mod sensors;
 mod svc;
 mod tiles;
 
@@ -254,6 +255,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Svc => svc::draw(&mut cx, rects),
                     Screen::Net => net::draw(&mut cx, rects),
                     Screen::Disk => disk::draw(&mut cx, rects),
+                    Screen::Sensors => sensors::draw(&mut cx, rects),
                     _ => {}
                 }
             }
@@ -352,6 +354,14 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
             let (rd, wr) = d.rates();
             let r = |b: f64| fmt_bytes(b as u64);
             trf("crumb.disk", &[&d.drives.len().to_string(), &d.volumes.len().to_string(), &r(rd), &r(wr)])
+        }
+        Screen::Sensors if !m.sensor_read => tr("misc.reading").to_string(),
+        Screen::Sensors => {
+            use crate::collect::sensors::Kind;
+            let s = &m.sensors;
+            let hottest = s.hottest().map_or_else(|| "—".to_string(), |x| x.kind.show(x.value));
+            let fans = (s.count(Kind::Fan) + s.count(Kind::Duty)).to_string();
+            trf("crumb.sensors", &[&s.list.len().to_string(), &hottest, &fans])
         }
         _ => tr("misc.not_yet").to_string(),
     };

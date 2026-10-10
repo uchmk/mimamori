@@ -24,6 +24,7 @@ procs = "{0} processes · {1} threads"
 svc = "{0} services · {1} running · {2} failed · {3}"
 net = "{0} interfaces · {1} up · {2} sockets · {3}"
 disk = "{0} drives · {1} volumes · read {2}/s · write {3}/s"
+sensors = "{0} sensors · hottest {1} · {2} fans"
 
 [misc]
 reading = "Reading the system…"
@@ -402,6 +403,49 @@ unknown = "unknown"
 not_read = "Drives are not read on macOS yet: each volume shows its own traffic"
 counters_off = "The PhysicalDisk performance counters are off (turn them on with diskperf -y or lodctr /E:PerfDisk)"
 no_diskstats = "/proc/diskstats could not be read"
+
+[sensors]
+chips = "Chips"
+chip_count = "{0} chips"
+all = "All sensors"
+count = "Sensors"
+temps = "Temperatures"
+fans = "Fans"
+hottest = "Hottest"
+sensors = "Sensors"
+sensor_count = "{0} sensors"
+none = "No sensor selected"
+empty = "No sensors"
+detail = "Sensor"
+chip = "Chip"
+sensor = "Sensor"
+type = "Kind"
+now = "Now"
+low = "Lowest (1 min)"
+high = "Highest (1 min)"
+limit = "High mark"
+crit = "Critical"
+min = "Least before failed"
+source = "Read from"
+
+[sensors.col]
+chip = "CHIP"
+sensor = "SENSOR"
+now = "NOW"
+low = "LOW"
+high = "HIGH"
+limit = "LIMIT"
+crit = "CRIT"
+
+[sensors.kind]
+temp = "Temperature"
+fan = "Fan"
+duty = "Fan (% of most)"
+
+[sensors.note]
+empty = "No sensor to read: a virtual machine, a container, or no driver for the chip"
+zones_only = "Windows shows only the ACPI thermal zones: fans and the cores need the maker's driver"
+thermal_only = "No hwmon chip has a temperature: the thermal zones instead"
 
 [help]
 title = "Keys"
