@@ -1,5 +1,5 @@
-//! `mimamori --keys "2<A-S-Right><Shot:cpu>"`: keys pressed by mimamori
-//! itself once it has started, the way filer's `--keys` works, so a test
+//! `yagura --keys "2<A-S-Right><Shot:cpu>"`: keys pressed by yagura
+//! itself once it has started, the way kura's `--keys` works, so a test
 //! session can drive it without reaching into the window from outside.
 //!
 //! The keys go in as the `egui::Event`s a keyboard would have produced,
@@ -7,7 +7,7 @@
 //! Which events a key becomes is read back out of [`keys::from_egui`]
 //! rather than written down a second time.
 //!
-//! When the script ends, `MIMAMORI_KEYS_DONE` (a path) gets the state a
+//! When the script ends, `YAGURA_KEYS_DONE` (a path) gets the state a
 //! check reads; `<Shot:name>` and `<State:name>` write beside it.
 
 use std::collections::VecDeque;
@@ -34,7 +34,7 @@ pub enum Step {
     Wait(Duration),
     /// `<Shot:name>`: the window as it is now, as `name.png`.
     Shot(String),
-    /// `<State:name>`: what `MIMAMORI_KEYS_DONE` would say now, as `name.txt`.
+    /// `<State:name>`: what `YAGURA_KEYS_DONE` would say now, as `name.txt`.
     State(String),
     /// `<Quit>`: close the window.
     Quit,
@@ -181,7 +181,7 @@ pub struct Runner {
     pointer: VecDeque<Vec<egui::Event>>,
     /// Where `<Shot:>` and `<State:>` write.
     pub dir: PathBuf,
-    /// `MIMAMORI_KEYS_DONE`.
+    /// `YAGURA_KEYS_DONE`.
     pub done: Option<PathBuf>,
     finished: bool,
 }

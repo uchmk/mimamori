@@ -1,4 +1,4 @@
-//! The Windows resource file (`.res`) that gives `mimamori.exe` its icon and
+//! The Windows resource file (`.res`) that gives `yagura.exe` its icon and
 //! its version information, written byte by byte.
 //!
 //! Windows' `rc.exe`, which crates such as `winresource` run, comes with the
@@ -24,7 +24,7 @@ pub struct Info<'a> {
     pub version: [u16; 3],
     /// The version as text, `0.29.0`.
     pub text: &'a str,
-    /// The program's name, `mimamori`: Task Manager lists the process by it.
+    /// The program's name, `yagura`: Task Manager lists the process by it.
     pub name: &'a str,
     /// A line on what it is.
     pub comments: &'a str,
@@ -230,7 +230,7 @@ mod tests {
 
     fn sample() -> Vec<u8> {
         let icons = vec![(16, vec![1u8; 10]), (256, vec![2u8; 7])];
-        let info = Info { version: [0, 29, 3], text: "0.29.3", name: "mimamori", comments: "A monitor" };
+        let info = Info { version: [0, 29, 3], text: "0.29.3", name: "yagura", comments: "A monitor" };
         res(&icons, &info)
     }
 
@@ -276,8 +276,8 @@ mod tests {
             .collect();
         let get = |k: &str| pairs.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str());
         assert_eq!(get("FileVersion"), Some("0.29.3"));
-        assert_eq!(get("FileDescription"), Some("mimamori"));
-        assert_eq!(get("OriginalFilename"), Some("mimamori.exe"));
+        assert_eq!(get("FileDescription"), Some("yagura"));
+        assert_eq!(get("OriginalFilename"), Some("yagura.exe"));
         assert_eq!(get("Comments"), Some("A monitor"));
 
         let (key, _, vars) = walk(children[1]);

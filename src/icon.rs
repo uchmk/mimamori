@@ -1,9 +1,9 @@
-//! mimamori's icon, drawn in code: four core tiles on the theme's dark panel,
+//! yagura's icon, drawn in code: four core tiles on the theme's dark panel,
 //! each filled from the bottom to a load in the colour the usage ramp gives
 //! it, the way the cpu screen draws a core.
 //!
 //! Drawn rather than kept as a picture so that the window's icon (set at
-//! startup) and the one `build.rs` bakes into `mimamori.exe` are the same at
+//! startup) and the one `build.rs` bakes into `yagura.exe` are the same at
 //! every size, with no image decoder and no file to keep in step. `build.rs`
 //! includes this file as it is, so it uses nothing but `std`.
 

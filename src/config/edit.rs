@@ -1,4 +1,4 @@
-//! Writing the settings screen's changes into mimamori's config.toml, one
+//! Writing the settings screen's changes into yagura's config.toml, one
 //! key at a time so a person's comments and order stay. common.toml's part
 //! (the language, the theme, the clock) is `ito-common`'s.
 
@@ -39,9 +39,9 @@ impl Edit {
     }
 }
 
-/// mimamori's config.toml in the `uchmk` folder `base`.
+/// yagura's config.toml in the `uchmk` folder `base`.
 pub fn config_path(base: &Path) -> std::path::PathBuf {
-    base.join("mimamori").join("config.toml")
+    base.join(super::settings::DIR).join("config.toml")
 }
 
 /// Make the change in the file at once. Call it off the UI thread.

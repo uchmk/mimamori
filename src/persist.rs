@@ -1,4 +1,4 @@
-//! `state.toml`: what mimamori writes for itself, the column widths of each
+//! `state.toml`: what yagura writes for itself, the column widths of each
 //! screen. Read once at startup; written by a thread of its own whenever a
 //! divider settles, so the UI never waits on the disk.
 
@@ -66,13 +66,13 @@ impl Saver {
     pub fn new(dir: Option<PathBuf>) -> Self {
         let Some(dir) = dir else { return Self { tx: None } };
         let (tx, rx) = unbounded::<String>();
-        let spawned = std::thread::Builder::new().name("mimamori-saver".into()).spawn(move || {
+        let spawned = std::thread::Builder::new().name("yagura-saver".into()).spawn(move || {
             while let Ok(mut text) = rx.recv() {
                 while let Ok(newer) = rx.try_recv() {
                     text = newer;
                 }
                 if let Err(e) = write(&dir, &text) {
-                    eprintln!("mimamori: state.toml: {e}");
+                    eprintln!("yagura: state.toml: {e}");
                 }
             }
         });

@@ -1,6 +1,6 @@
 //! Windows: HWiNFO's shared memory (`Global\HWiNFO_SENS_SM2`), there while
 //! HWiNFO runs with "Shared Memory Support" on. HWiNFO reads the board's
-//! chips and the cores through its own driver; mimamori only reads what it
+//! chips and the cores through its own driver; yagura only reads what it
 //! publishes, so it needs no driver and no administrator.
 //!
 //! The layout is HWiNFO's SDK (`hwisenssm2.h`), packed: a header, then the

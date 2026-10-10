@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
-# Run mimamori once on a virtual X display and keep what it showed, the way
-# filer's scripts/xrun.sh does.
+# Run yagura once on a virtual X display and keep what it showed, the way
+# kura's scripts/xrun.sh does.
 #
-#   scripts/xrun.sh OUTDIR [mimamori arguments...]
+#   scripts/xrun.sh OUTDIR [yagura arguments...]
 #
-# Starts its own Xvfb, launches mimamori with the arguments (`--keys`
+# Starts its own Xvfb, launches yagura with the arguments (`--keys`
 # included), and with `--keys` waits until the last step has run
-# (MIMAMORI_KEYS_DONE, at most XRUN_KEYS_TIMEOUT seconds, default 120), then
+# (YAGURA_KEYS_DONE, at most XRUN_KEYS_TIMEOUT seconds, default 120), then
 # XRUN_WAIT seconds more (default 1). Without `--keys` it waits XRUN_WAIT
 # seconds (default 3). Writes into OUTDIR:
 #
 #   shot.png       the whole screen
-#   mimamori.log   what mimamori printed
+#   yagura.log     what yagura printed
 #   keys.done      there when every `--keys` step ran (last line `keys: done`)
-#   cpu.txt        mimamori's own CPU time over the run (`ps` TIME, then the
+#   cpu.txt        yagura's own CPU time over the run (`ps` TIME, then the
 #                  last XRUN_IDLE seconds of it, default 0 = skipped)
 #
 # `<Shot:name>` and `<State:name>` steps write name.png / name.txt into the
-# folder MIMAMORI_KEYS_DONE is in, which is OUTDIR. MIMAMORI_BIN overrides the
-# binary (default target/debug/mimamori). The settings are read from
+# folder YAGURA_KEYS_DONE is in, which is OUTDIR. YAGURA_BIN overrides the
+# binary (default target/debug/yagura). The settings are read from
 # OUTDIR/config (UCHMK_CONFIG_DIR), so the column widths a run leaves behind
 # do not carry into the next one or into the machine's own config; put files
 # there first to test them. Needs Xvfb, xdotool, ImageMagick.
 
 set -u
-out="${1:?usage: scripts/xrun.sh OUTDIR [mimamori arguments...]}"
+out="${1:?usage: scripts/xrun.sh OUTDIR [yagura arguments...]}"
 shift
 mkdir -p -- "$out"
 out=$(cd -- "$out" && pwd)
-bin="${MIMAMORI_BIN:-target/debug/mimamori}"
+bin="${YAGURA_BIN:-target/debug/yagura}"
 keyed=0
 for a in "$@"; do [ "$a" = "--keys" ] && keyed=1; done
 if [ "$keyed" = 1 ]; then wait_s="${XRUN_WAIT:-1}"; else wait_s="${XRUN_WAIT:-3}"; fi
@@ -49,7 +49,7 @@ export DISPLAY=":$n"
 for _ in $(seq 1 50); do xdotool getdisplaygeometry >/dev/null 2>&1 && break; sleep 0.1; done
 
 mkdir -p -- "$out/config"
-UCHMK_CONFIG_DIR="$out/config" MIMAMORI_KEYS_DONE="$out/keys.done" "$bin" "$@" >"$out/mimamori.log" 2>&1 &
+UCHMK_CONFIG_DIR="$out/config" YAGURA_KEYS_DONE="$out/keys.done" "$bin" "$@" >"$out/yagura.log" 2>&1 &
 pid=$!
 win=""
 for _ in $(seq 1 100); do
@@ -59,7 +59,7 @@ for _ in $(seq 1 100); do
     sleep 0.2
 done
 if [ -z "$win" ]; then
-    echo "xrun: no window appeared; see $out/mimamori.log" >&2
+    echo "xrun: no window appeared; see $out/yagura.log" >&2
     kill "$pid" 2>/dev/null
     exit 1
 fi

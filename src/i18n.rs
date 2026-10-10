@@ -6,7 +6,7 @@
 //! in English; a table's `[keydesc]` translates the built-in ones
 //! ([`tr_desc`]).
 //!
-//! Which language: the app's own `language` (mimamori's `config.toml`), else
+//! Which language: the app's own `language` (yagura's `config.toml`), else
 //! the one in the `common.toml` all of uchmk's apps share, else the OS's
 //! (`auto`). The table, the choice and the checks live in `ito-i18n`,
 //! shared with tsumugi (whose Settings window writes common.toml).
@@ -21,7 +21,7 @@ pub const AVAILABLE: &[(&str, &str)] = &[("en", include_str!("lang/en.toml")), (
 
 /// One table per language in [`AVAILABLE`], built on first use and kept, so
 /// [`tr`] can hand out `&'static str` and the language can still change
-/// while mimamori runs (the settings screen, common.toml being edited).
+/// while yagura runs (the settings screen, common.toml being edited).
 static TABLES: OnceLock<Vec<Table>> = OnceLock::new();
 /// Which of [`TABLES`] is in force.
 static CHOSEN: AtomicUsize = AtomicUsize::new(0);
@@ -41,7 +41,7 @@ pub fn current_language() -> &'static str {
 fn table(code: &str) -> Table {
     let (t, errors) = Table::new(AVAILABLE, code);
     for e in errors {
-        eprintln!("mimamori: {e}");
+        eprintln!("yagura: {e}");
     }
     t
 }

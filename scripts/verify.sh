@@ -4,7 +4,7 @@
 #
 #   scripts/verify.sh
 #
-# The same steps as filer's, plus a macOS clippy. The Windows and macOS
+# The same steps as kura's, plus a macOS clippy. The Windows and macOS
 # clippy runs are type checks only -- they never run that code.
 
 set -o pipefail

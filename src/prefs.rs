@@ -1,6 +1,6 @@
 //! What the settings screen reads and writes (ito's `docs/common-spec.md`):
 //! common.toml (the language, the theme and the clock, shared by every uchmk
-//! app), mimamori's own config.toml, and the user's themes. The files are
+//! app), yagura's own config.toml, and the user's themes. The files are
 //! watched every 2 s and written on threads of their own; what was read
 //! comes back as a [`Reload`], which `App::pump` folds in.
 
@@ -172,7 +172,7 @@ impl Prefs {
             return;
         };
         std::thread::spawn(move || {
-            let path = if file { edit::config_path(&base) } else { base.join("mimamori") };
+            let path = if file { edit::config_path(&base) } else { base.join(crate::config::settings::DIR) };
             let made = if file && !path.exists() {
                 write_atomic(&path, "")
             } else if !file {

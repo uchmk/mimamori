@@ -40,9 +40,9 @@ pub enum Why {
     Quiet,
     /// The other end closed: through a tunnel, the agent is not running.
     Closed,
-    /// An agent of another protocol (another mimamori version).
+    /// An agent of another protocol (another yagura version).
     Proto(u16),
-    /// Something that is not a mimamori agent answered.
+    /// Something that is not a yagura agent answered.
     NotAgent,
 }
 
@@ -51,7 +51,7 @@ pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> Receiver<(usize, Ev
     let (tx, rx) = unbounded();
     for (i, h) in hosts.iter().enumerate() {
         let (tx, wake, addr) = (tx.clone(), wake.clone(), proto::with_port(&h.addr));
-        let spawned = std::thread::Builder::new().name(format!("mimamori-host-{i}")).spawn(move || {
+        let spawned = std::thread::Builder::new().name(format!("yagura-host-{i}")).spawn(move || {
             watch(&addr, &|e| {
                 let ok = tx.send((i, e)).is_ok();
                 if let Some(w) = &wake {
@@ -61,7 +61,7 @@ pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> Receiver<(usize, Ev
             })
         });
         if let Err(e) = spawned {
-            eprintln!("mimamori: {}: {e}", h.name);
+            eprintln!("yagura: {}: {e}", h.name);
         }
     }
     rx
@@ -101,7 +101,7 @@ fn session(addr: &str, emit: &dyn Fn(Event) -> bool) -> Option<(bool, Why)> {
     // Dropped when this returns, which stops the pinger at once.
     let (_stop, stop_rx) = bounded::<()>(0);
     if let Ok(mut w) = s.try_clone() {
-        let _ = std::thread::Builder::new().name("mimamori-ping".into()).spawn(move || {
+        let _ = std::thread::Builder::new().name("yagura-ping".into()).spawn(move || {
             loop {
                 let n = t0.elapsed().as_micros() as u64;
                 if proto::write_frame(&mut w, &ToAgent::Ping(n)).is_err() {

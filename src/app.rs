@@ -1490,7 +1490,7 @@ mod tests {
     fn t_shows_the_tree_and_u_switches_the_scope() {
         let (mut a, tx, _ctl) = app();
         let child = |pid, ppid, cpu, user: &str| Proc { ppid: Some(ppid), user: Some(user.into()), ..proc(pid, "c", cpu, 1) };
-        let me = Proc { user: Some("me".into()), ..proc(std::process::id(), "mimamori", 0.0, 1) };
+        let me = Proc { user: Some("me".into()), ..proc(std::process::id(), "yagura", 0.0, 1) };
         let init = Proc { user: Some("root".into()), ..proc(1, "init", 0.0, 1) };
         let procs = vec![init, child(10, 1, 5.0, "root"), child(11, 1, 9.0, "me"), child(20, 10, 1.0, "me"), me];
         tx.send(Msg::Procs { procs, total_threads: None }).unwrap();
@@ -1549,8 +1549,8 @@ mod tests {
         assert_eq!(a.copy.take().as_deref(), Some("localhost:7314"));
         assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.copied", &["localhost:7314"])));
         // A line clicked in the fleet's hint.
-        a.apply_out(Out { copy: Some("mimamori --agent".into()), ..Out::default() }, &egui::Context::default());
-        assert_eq!(a.copy.as_deref(), Some("mimamori --agent"));
+        a.apply_out(Out { copy: Some("yagura --agent".into()), ..Out::default() }, &egui::Context::default());
+        assert_eq!(a.copy.as_deref(), Some("yagura --agent"));
     }
 
     #[test]
@@ -1601,7 +1601,7 @@ mod tests {
         let (mut a, tx, _ctl) = app();
         keys(&mut a, "x");
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.as_str())), (Mode::Normal, Some(tr("toast.kill_none"))));
-        tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(std::process::id(), "mimamori", 1.0, 1)], total_threads: None })
+        tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(std::process::id(), "yagura", 1.0, 1)], total_threads: None })
             .unwrap();
         a.pump();
         keys(&mut a, "5 l x");
@@ -1747,7 +1747,7 @@ mod tests {
     fn y_on_a_service_runs_on_a_thread_and_the_list_is_read_again() {
         let (mut a, tx, ctl) = app();
         // A name no OS has: the worker comes back refused or failed.
-        let name = "mimamori-test-no-such-service";
+        let name = "yagura-test-no-such-service";
         let list = vec![svc::Service { name: name.into(), state: svc::State::Running, ..svc::Service::default() }];
         tx.send(Msg::Svc(svc::Services { list, source: "test", note: None })).unwrap();
         keys(&mut a, "6");

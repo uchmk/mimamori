@@ -1,6 +1,6 @@
 //! The colours, from the theme in force (common.toml's `theme`, shared by
 //! every uchmk app; `tsumugi Dark` until one is read). Each is a function,
-//! so a theme picked while mimamori runs is drawn from the next frame.
+//! so a theme picked while yagura runs is drawn from the next frame.
 
 use egui::Color32;
 use ito_theme::{Colors, mix};
@@ -103,7 +103,7 @@ mod tests {
         assert_eq!(ramp(90.0), red());
     }
 
-    /// The default theme keeps mimamori's colours from before themes: the
+    /// The default theme keeps yagura's colours from before themes: the
     /// bar and the selection within a few steps of the old constants.
     #[test]
     fn tsumugi_dark_is_the_old_look() {

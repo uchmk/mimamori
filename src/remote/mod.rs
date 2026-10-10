@@ -1,4 +1,4 @@
-//! The fleet: other machines' mimamori, each run as `mimamori --agent`.
+//! The fleet: other machines' yagura, each run as `yagura --agent`.
 //!
 //! The agent listens on 127.0.0.1 only and has no keys or passwords of its
 //! own: the viewer reaches it through `ssh -L` or `tailscale serve`, which
@@ -19,7 +19,7 @@ use proto::{Hello, Summary};
 
 /// A round trip slower than this marks the card slow.
 /// The command that serves this machine to the fleet screens of others.
-pub const AGENT_LINE: &str = "mimamori --agent";
+pub const AGENT_LINE: &str = "yagura --agent";
 
 /// How to reach a machine's agent through ssh.
 pub fn ssh_line() -> String {

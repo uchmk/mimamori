@@ -125,7 +125,7 @@ pub fn spawn(wake: Option<egui::Context>, interval: Duration) -> (Receiver<Msg>,
     let (ctl_tx, ctl_rx) = unbounded();
     hw::spawn(tx.clone(), wake.clone());
     std::thread::Builder::new()
-        .name("mimamori-sampler".into())
+        .name("yagura-sampler".into())
         .spawn(move || run(&tx, &ctl_rx, &wake, interval))
         .expect("spawn the sampler thread");
     (rx, ctl_tx)

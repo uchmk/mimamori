@@ -1,15 +1,15 @@
-# mimamori — Claude 向けメモ
+# yagura — Claude 向けメモ
 
 キーボードで操作するシステムモニター。Rust + egui 0.36、Windows 優先で macOS / Linux（それぞれ x86_64 / ARM64）も動かす。
-姉妹プロジェクトは [filer](https://github.com/uchmk/filer)（yazi 風のファイルマネージャー）と [tsumugi](https://github.com/uchmk/tsumugi)（AI CLI のためのターミナル）。共有のクレート（`ito-*`）は [ito](https://github.com/uchmk/ito) にある（v0.32.1 で移した）。
-見た目・キー・設定の置き場所は filer と揃える。画面の設計の元は HTML の見本（https://claude.ai/artifact/QhsVSAEHsUZmxbZbqyuGjj の「設計」タブ）。
+姉妹プロジェクトは [kura](https://github.com/uchmk/kura)（yazi 風のファイルマネージャー）と [tsumugi](https://github.com/uchmk/tsumugi)（AI CLI のためのターミナル）。共有のクレート（`ito-*`）は [ito](https://github.com/uchmk/ito) にある（v0.32.1 で移した）。
+見た目・キー・設定の置き場所は kura と揃える。画面の設計の元は HTML の見本（https://claude.ai/artifact/QhsVSAEHsUZmxbZbqyuGjj の「設計」タブ）。
 
 ## 作業ルール
 
 - 返答は日本語。コード・コメント・コミットメッセージは英語。
 - 頼まれるまでコミットしない。
 - 改行は LF（`.gitattributes` の `eol=lf`）。スクリプトで書き換えるときは改行を変えない（Python なら `newline=''`）。
-- タスクは [TODO.md](TODO.md)、人への確認事項は [QUESTIONS.md](QUESTIONS.md)（filer と同じ形。選択肢に推奨を 1 つ、止まっている項目に `（要確認: Qn）`）。実機でしか確かめられないことは [TESTING.md](TESTING.md) に積む（機能を足したら行を足してから完了にする）。
+- タスクは [TODO.md](TODO.md)、人への確認事項は [QUESTIONS.md](QUESTIONS.md)（kura と同じ形。選択肢に推奨を 1 つ、止まっている項目に `（要確認: Qn）`）。実機でしか確かめられないことは [TESTING.md](TESTING.md) に積む（機能を足したら行を足してから完了にする）。
   `[x]` を付けてよいのは実機のセッションと持ち主だけ。動きを変えた行は `[ ]` に戻す。
 
 ## 版・変更ログ・push
@@ -32,7 +32,7 @@
 
 ## ビルド・検証
 
-- **filer / tsumugi と違い、`cargo fmt` を使ってよい**（`rustfmt.toml` で `max_width = 140`）。CI は `cargo fmt --check` を見る。
+- **kura / tsumugi と違い、`cargo fmt` を使ってよい**（`rustfmt.toml` で `max_width = 140`）。CI は `cargo fmt --check` を見る。
 - clippy は `--all-targets -- -D warnings` で警告ゼロ。Linux では `#[cfg(windows)]` のコードがコンパイルされないので、Windows と macOS のターゲットの clippy も回す（macOS だけで使われないコードの警告も、Linux からはここでしか出ない）。
 - テストは機械の設定ファイルに左右されてはいけない。一時ディレクトリは `util::test_dir("ラベル")`、設定は `settings::load(Some(dir))` に渡す。
 - **画面は Xvfb で確かめる**: `scripts/xrun.sh OUTDIR --keys '<Wait:2000>2<Shot:cpu><State:a>'`。
@@ -40,7 +40,7 @@
   - `<Click:x,y>` と `<Drag:x1,y1-x2,y2>` の座標は窓に対する割合（0〜1）。境目を掴むときは `<State>` の `widths`（1000 分率）から位置を出す。
   - 設定は OUTDIR/config から読む（`UCHMK_CONFIG_DIR`）。前の回の列の幅は持ち越さない。
   - `XRUN_IDLE=10` で、最後の 10 秒の CPU 使用率を `cpu.txt` に書く。Xvfb は llvmpipe（ソフトウェア描画）なので、
-    再描画 1 回が重く、1 秒ごとのサンプリングで 1 コアの 10% 前後に見える。mimamori 自身（収集 0.1%・UI 0.7% ほど）とは分けて読む。
+    再描画 1 回が重く、1 秒ごとのサンプリングで 1 コアの 10% 前後に見える。yagura 自身（収集 0.1%・UI 0.7% ほど）とは分けて読む。
 - CI の `smoke` は `scripts/smoke-linux.sh`（xrun.sh で 1〜0 と F（fleet）の画面を順に撮り、panic・別の画面・真っ平らな画像で落ちる）。画像は成果物 `linux-smoke` に残る。
   画面を足したら、このスクリプトの `screens` にも足す。
 
@@ -56,7 +56,7 @@
   テストがキーと `{0}` の数の食い違いを落とす）。既定の keymap の `desc` を変えたら `ja.toml` の `[keydesc]` も直す。
   幅は `util::width`（全角は 2 桁）で数える。
   言語は `config.toml` → `common.toml`（uchmk のアプリで共通。設定の画面が書く）→ OS の順で決まる。表に無いキーはテストが落とす。
-- **uchmk の共通仕様**（ito の [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)）: 設定の置き場所（`<config>/uchmk/common.toml`・`mimamori/config.toml`・`themes/`）、
+- **uchmk の共通仕様**（ito の [docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md)）: 設定の置き場所（`<config>/uchmk/common.toml`・`yagura/config.toml`・`themes/`）、
   テーマと時計は common.toml だけに置く（2 秒ごとに見て当て直す）、設定の画面は Ctrl+, で tsumugi と同じレイアウト（`ito-prefs`）、
   時計はステータスバーの右端。色は `config/theme.rs` の関数（`bg()`・`fg()`…）で今のテーマを読む。テストで全体のテーマを変えない（色を確かめるテストとぶつかる）。
 - **列の大きさは `ito-layout`**（ito のクレート、`Cargo.toml` の `rev` で固定。ito のクレートは全部同じ `rev` にそろえる）。直すときは ito 側で直して push し、`rev` を上げる。

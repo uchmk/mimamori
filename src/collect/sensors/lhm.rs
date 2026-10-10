@@ -1,7 +1,7 @@
 //! Windows: LibreHardwareMonitor's WMI classes (`root\LibreHardwareMonitor`,
 //! or `root\OpenHardwareMonitor` for its predecessor, with the same schema),
 //! there while it runs. Like HWiNFO's shared memory, the tool reads the
-//! chips through its own driver and mimamori only reads what it publishes.
+//! chips through its own driver and yagura only reads what it publishes.
 //!
 //! [`fold`] turns the `Sensor` and `Hardware` rows into sensors and is pure;
 //! [`Reader`] holds the WMI connection on the collect thread (COM in the

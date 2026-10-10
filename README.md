@@ -1,8 +1,8 @@
-# mimamori
+# yagura
 
 A keyboard-driven system monitor for Windows, macOS and Linux, written in Rust
 with [egui](https://github.com/emilk/egui). It is the sibling of
-[filer](https://github.com/uchmk/filer) (a yazi-style file manager) and
+[kura](https://github.com/uchmk/kura) (a yazi-style file manager) and
 [tsumugi](https://github.com/uchmk/tsumugi) (a terminal for AI CLI sessions),
 and shares their look, their keys and their settings folder.
 
@@ -29,7 +29,7 @@ inside each tile.
 | `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
 | `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own |
-| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the uptime or when it was last seen, the agent's version and what it allows. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a mimamori agent). `h` `j` `k` `l` move between cards, `Enter` on this machine's card goes back to its screens. See [Fleet](#fleet) |
+| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the uptime or when it was last seen, the agent's version and what it allows. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on this machine's card goes back to its screens. See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`.
@@ -51,7 +51,7 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |
 | `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column). On net: every socket, or only the listening ones (TCP `LISTEN` and unconnected UDP). On svc (Windows): services, or drivers |
 | `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem. On svc it stops the selected service instead |
-| `S`, `R` | On svc: start, restart the selected service, after asking. Windows asks the Service Control Manager (run mimamori as administrator); Linux runs `systemctl` (root or polkit); macOS runs `launchctl kickstart` / `kill` in the domain the list came from (system jobs need `sudo`); a job that is not loaded is loaded from its plist first (`launchctl bootstrap`), while a disabled one is left disabled and the toast says the `launchctl enable` line. A start on a running service, or a stop on a stopped one, only says so |
+| `S`, `R` | On svc: start, restart the selected service, after asking. Windows asks the Service Control Manager (run yagura as administrator); Linux runs `systemctl` (root or polkit); macOS runs `launchctl kickstart` / `kill` in the domain the list came from (system jobs need `sudo`); a job that is not loaded is loaded from its plist first (`launchctl bootstrap`), while a disabled one is left disabled and the toast says the `launchctl enable` line. A start on a running service, or a stop on a stopped one, only says so |
 | `F` | The fleet screen, and back (`Esc` or a screen key also leave it). On it, `h` `j` `k` `l` and the arrows move between cards, `gg` / `G` to the first and last. `x`, `S`, `R` on another machine's card say what its agent allows; acting on another machine comes later |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
@@ -66,18 +66,19 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 Everything lives in one folder shared by uchmk's apps:
 
 ```text
-<config dir>/uchmk/common.toml           settings every uchmk app reads
-<config dir>/uchmk/mimamori/config.toml  mimamori's own settings
-<config dir>/uchmk/mimamori/keymap.toml  laid over the built-in keymap
-<config dir>/uchmk/mimamori/state.toml   the column widths (mimamori writes it)
+<config dir>/uchmk/common.toml         settings every uchmk app reads
+<config dir>/uchmk/yagura/config.toml  yagura's own settings
+<config dir>/uchmk/yagura/keymap.toml  laid over the built-in keymap
+<config dir>/uchmk/yagura/state.toml   the column widths (yagura writes it)
 ```
 
 `<config dir>` is `%APPDATA%` on Windows, `~/Library/Application Support` on
 macOS and `~/.config` on Linux. `UCHMK_CONFIG_DIR` moves the whole `uchmk`
-folder.
+folder. yagura was called mimamori before v0.33.0; its first start moves
+`uchmk/mimamori/` to `uchmk/yagura/` when only the old folder is there.
 
-`common.toml` is shared: change it and every uchmk app (tsumugi, mimamori,
-and filer to come) follows within 2 s, with no restart:
+`common.toml` is shared: change it and every uchmk app (tsumugi, yagura,
+and kura to come) follows within 2 s, with no restart:
 
 ```toml
 language = "auto"            # "auto" follows the OS; "en" or "ja"
@@ -105,10 +106,10 @@ keeps (where the files are, the settings screen, the clock) are ito's
 
 ```toml
 interval = 1.0      # seconds between samples, 0.5 to 10
-language = "en"     # overrides common.toml for mimamori alone
+language = "en"     # overrides common.toml for yagura alone
 backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
 
-[agent]             # for `mimamori --agent` on this machine
+[agent]             # for `yagura --agent` on this machine
 port = 7313         # listens on 127.0.0.1 only
 allow = []          # "kill", "service": what a fleet viewer may do (read and shown; acting comes later)
 
@@ -143,8 +144,8 @@ says otherwise.
 | Page | Rows |
 | ---- | ---- |
 | General | Language (common.toml), the update interval, the clock card (common.toml) |
-| Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with mimamori's own tiles, process rows and status bar (common.toml) |
-| Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); and the setup lines (`mimamori --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path), each with Copy |
+| Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with yagura's own tiles, process rows and status bar (common.toml) |
+| Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); and the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path), each with Copy |
 | Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
 
 Only the `[settings]` section's keys are taken (`Esc` and `Ctrl+,` close, a
@@ -182,7 +183,7 @@ The fleet screen (`F`) shows other machines next to this one. On each of them
 run the same binary without a window:
 
 ```sh
-mimamori --agent
+yagura --agent
 ```
 
 It listens on `127.0.0.1:7313` only and has no keys or passwords of its own:
@@ -218,7 +219,7 @@ protocols say so instead of misreading each other.
 
 The agent is view only. `[agent] allow = ["kill", "service"]` is read and
 shown on its card, but acting on another machine (and entering its screens)
-comes in a later version. On Windows, `mimamori.exe --agent` run from a
+comes in a later version. On Windows, `yagura.exe --agent` run from a
 console writes there; run it at logon with Task Scheduler to keep it up.
 
 ## Languages
@@ -231,7 +232,7 @@ you wrote yourself reads as you wrote it). The language is picked from
 `config.toml`, then `common.toml`, then the OS (`ja-JP` is Japanese).
 The table and that choice come from `ito-i18n`, a crate in
 [ito](https://github.com/uchmk/ito), the uchmk apps' shared crates; the settings screen's
-Language row (in mimamori or tsumugi) writes `common.toml`, and every running
+Language row (in yagura or tsumugi) writes `common.toml`, and every running
 app changes language within 2 s.
 
 Japanese, and the CJK in process names, service descriptions and volume
@@ -244,7 +245,7 @@ is cut to fit.
 ## Downloading
 
 Each release on the
-[Releases page](https://github.com/uchmk/mimamori/releases) has six files:
+[Releases page](https://github.com/uchmk/yagura/releases) has six files:
 Windows (`.zip`), macOS and Linux (`.tar.gz`), each on x86_64 and ARM64,
 holding the executable and the licence files. The notes list every file's
 SHA-256. Nothing is code-signed: SmartScreen warns about an unknown
@@ -259,7 +260,7 @@ cargo build --release
 
 Pure Rust apart from the OS's own libraries; the six targets (Windows, macOS
 and Linux on x86_64 and ARM64) need no C toolchain beyond the platform's
-linker. `build.rs` gives `mimamori.exe` its icon and version information on
+linker. `build.rs` gives `yagura.exe` its icon and version information on
 the MSVC targets, writing the resource file in Rust (`src/winres.rs`), so no
 `rc.exe` is needed, from Windows or not. The icon is drawn in code
 (`src/icon.rs`); the window uses the same drawing on every OS. The core layout comes from sysfs on Linux and
@@ -274,7 +275,7 @@ The gpu·npu screen reads, without linking anything at build time:
 | OS | GPUs | NPUs |
 | --- | --- | --- |
 | Windows | The `GPU Engine` and `GPU Adapter Memory` performance counters (PDH) for usage, engines, memory and per-process use, named through DXGI; temperature, fan and clock from D3DKMT (`D3DKMTQueryAdapterInfo`, what Task Manager shows) where the driver keeps them, and from NVML for NVIDIA | One with an MCDM driver, the kind Task Manager shows, from the same counters |
-| Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter. Per-process use and memory come from the DRM fdinfo (`/proc/<pid>/fdinfo`, written by i915, xe, amdgpu, panfrost, msm…), and so does the usage of a GPU sysfs gives none for: only the processes mimamori may read count, so run it as root to see everyone's | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
+| Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter. Per-process use and memory come from the DRM fdinfo (`/proc/<pid>/fdinfo`, written by i915, xe, amdgpu, panfrost, msm…), and so does the usage of a GPU sysfs gives none for: only the processes yagura may read count, so run it as root to see everyone's | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
 | macOS | IOKit's `IOAccelerator` services and their `PerformanceStatistics`: Apple silicon has usage, the renderer and tiler engines and the unified memory in use; Intel GPUs have usage; AMD cards also VRAM and, on some, temperature, fan, power and clock. No per-process use; the SMC's GPU temperatures are on the sensors screen | The Neural Engine reports no usage to other programs |
 
 The svc screen reads:
@@ -314,7 +315,7 @@ The sensors screen reads:
 
 | OS | Sensors |
 | --- | --- |
-| Windows | While [HWiNFO](https://www.hwinfo.com/) runs with Shared Memory Support on, every chip it reads (cores, board, fans, drives, GPUs) from its shared memory; else, while [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (or OpenHardwareMonitor) runs, its WMI classes. Both read the chips through their own driver; mimamori ships none and needs no administrator. Always the ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH). With neither tool running, fans and the cores' own temperatures are not readable, so the screen says so and names the tools; GPUs add their temperature and fan from D3DKMT (and NVML for NVIDIA), and the drives theirs from the disk reading |
+| Windows | While [HWiNFO](https://www.hwinfo.com/) runs with Shared Memory Support on, every chip it reads (cores, board, fans, drives, GPUs) from its shared memory; else, while [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (or OpenHardwareMonitor) runs, its WMI classes. Both read the chips through their own driver; yagura ships none and needs no administrator. Always the ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH). With neither tool running, fans and the cores' own temperatures are not readable, so the screen says so and names the tools; GPUs add their temperature and fan from D3DKMT (and NVML for NVIDIA), and the drives theirs from the disk reading |
 | Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice. A drive with no hwmon chip (SATA without `drivetemp`) adds the temperature smartctl read |
 | macOS | The SMC itself, through the `AppleSMC` user client: the temperatures with a known key, named (`TC0P` is "CPU proximity" on Intel Macs; Apple silicon's `Tp…` / `Te…` / `Tg…` families are numbered "CPU 1", "GPU 1"…), and every fan with its least and most rpm. On Apple silicon also the HID temperatures sysinfo reads, under their own chip with friendlier names ("CPU die 3", "SSD", "Battery") |
 
@@ -333,7 +334,7 @@ decoder, averaged since the last reading; Maxwell or newer); without it they are
 listed from sysfs on Linux with nothing read, and on Windows keep only what
 D3DKMT gives (temperature, fan and clock, no power).
 
-`mimamori --keys SCRIPT` presses keys once the window is up (as filer's
+`yagura --keys SCRIPT` presses keys once the window is up (as kura's
 `--keys`), and `scripts/xrun.sh` runs it on a virtual X display and keeps the
 screenshots: that is how changes are checked without a screen. CI does the
 same on every push (`scripts/smoke-linux.sh`): it visits every screen on

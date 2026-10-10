@@ -1,5 +1,5 @@
-# mimamori's built-in keymap. A keymap.toml beside config.toml is laid over
-# it, section by section, the way yazi's and filer's are: `keymap` replaces a
+# yagura's built-in keymap. A keymap.toml beside config.toml is laid over
+# it, section by section, the way yazi's and kura's are: `keymap` replaces a
 # section's list, `prepend_keymap` and `append_keymap` go before and after it.
 #
 # `on` is one key token or several separated by spaces ("g g"), or an array

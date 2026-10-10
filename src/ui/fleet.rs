@@ -162,7 +162,7 @@ fn this_machine(app: &App) -> Card<'_> {
             Gauge { label: tr("fleet.gpu"), ring: gpu_ring, value: sum.gpu.map(|g| g.1), color: theme::magenta() },
         ],
         facts,
-        last: format!("mimamori {}", env!("CARGO_PKG_VERSION")),
+        last: format!("yagura {}", env!("CARGO_PKG_VERSION")),
         last_c: theme::dim(),
         faded: false,
     }

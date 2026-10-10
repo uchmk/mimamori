@@ -2,14 +2,16 @@
 //!
 //! ```text
 //! <config dir>/uchmk/common.toml          language = "auto" | "en" | …
-//! <config dir>/uchmk/mimamori/config.toml interval, language, backend,
+//! <config dir>/uchmk/yagura/config.toml  interval, language, backend,
 //!                                         [agent], [[host]]
-//! <config dir>/uchmk/mimamori/keymap.toml laid over the built-in keymap
-//! <config dir>/uchmk/mimamori/state.toml  the column widths (written by mimamori)
+//! <config dir>/uchmk/yagura/keymap.toml  laid over the built-in keymap
+//! <config dir>/uchmk/yagura/state.toml   the column widths (written by yagura)
 //! ```
 //!
 //! `<config dir>` is the OS's (`%APPDATA%`, `~/Library/Application Support`,
 //! `~/.config`); `UCHMK_CONFIG_DIR` points the whole `uchmk` folder elsewhere.
+//! Before v0.33.0 the app was called mimamori and its folder `mimamori/`;
+//! [`load`] moves that folder to `yagura/` the first time it finds it alone.
 
 use std::path::{Path, PathBuf};
 
@@ -18,6 +20,10 @@ pub const INTERVAL_MAX: f32 = 10.0;
 pub const BACKENDS: [&str; 5] = ["auto", "gl", "vulkan", "dx12", "metal"];
 /// What `[agent] allow` may let a fleet viewer do on this machine.
 pub const ALLOW: [&str; 2] = ["kill", "service"];
+/// yagura's own folder in the `uchmk` one.
+pub const DIR: &str = "yagura";
+/// The folder's name before v0.33.0, when the app was called mimamori.
+const OLD_DIR: &str = "mimamori";
 
 /// A machine on the fleet screen: `[[host]] name = "nas", addr = "localhost:7314"`.
 #[derive(Clone, Debug, PartialEq)]
@@ -40,7 +46,7 @@ pub struct Settings {
     pub backend: Option<String>,
     /// The user's keymap.toml, if there is one.
     pub keymap: Option<String>,
-    /// mimamori's own folder, where state.toml goes; `None` when the OS has
+    /// yagura's own folder, where state.toml goes; `None` when the OS has
     /// no config directory.
     pub dir: Option<PathBuf>,
     /// `[agent] allow`: what a fleet viewer may do here (nothing by default).
@@ -171,7 +177,10 @@ pub fn load(base: Option<&Path>) -> Settings {
             Ok(l) => common_lang = l,
             Err(e) => warn.push(e),
         }
-        let dir = base.join("mimamori");
+        if let Err(e) = move_old_dir(base) {
+            warn.push(e);
+        }
+        let dir = base.join(DIR);
         if let Some(t) = read_table(&dir.join("config.toml"), &mut warn) {
             for (k, v) in &t {
                 match k.as_str() {
@@ -201,6 +210,17 @@ pub fn load(base: Option<&Path>) -> Settings {
     s
 }
 
+/// Rename `mimamori/` to `yagura/` when only the old one is there, so the
+/// settings, keymap and column widths written before the rename carry over.
+/// With both there, the new one is used and the old one left alone.
+fn move_old_dir(base: &Path) -> Result<(), String> {
+    let (old, new) = (base.join(OLD_DIR), base.join(DIR));
+    if !old.is_dir() || new.exists() {
+        return Ok(());
+    }
+    std::fs::rename(&old, &new).map_err(|e| format!("moving {} to {}: {e}", old.display(), new.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,16 +232,33 @@ mod tests {
         let s = load(Some(&d));
         assert_eq!(s.interval, 1.0);
         assert!(s.backend.is_none() && s.keymap.is_none() && s.warnings.is_empty(), "{s:?}");
-        assert_eq!(s.dir, Some(d.join("mimamori")));
+        assert_eq!(s.dir, Some(d.join("yagura")));
+    }
+
+    #[test]
+    fn the_folder_from_before_the_rename_is_moved() {
+        let d = test_dir("settings-old-dir");
+        std::fs::create_dir_all(d.join("mimamori")).unwrap();
+        std::fs::write(d.join("mimamori/config.toml"), "interval = 2\n").unwrap();
+        let s = load(Some(&d));
+        assert_eq!(s.interval, 2.0, "{:?}", s.warnings);
+        assert!(!d.join("mimamori").exists() && d.join("yagura/config.toml").is_file());
+
+        // With both there, the new one wins and the old one stays as it is.
+        std::fs::create_dir_all(d.join("mimamori")).unwrap();
+        std::fs::write(d.join("mimamori/config.toml"), "interval = 3\n").unwrap();
+        let s = load(Some(&d));
+        assert_eq!(s.interval, 2.0);
+        assert!(d.join("mimamori/config.toml").is_file() && s.warnings.is_empty(), "{:?}", s.warnings);
     }
 
     #[test]
     fn reads_the_files_and_warns_about_bad_values() {
         let d = test_dir("settings-read");
-        std::fs::create_dir_all(d.join("mimamori")).unwrap();
+        std::fs::create_dir_all(d.join("yagura")).unwrap();
         std::fs::write(d.join("common.toml"), "language = \"ja\"\n").unwrap();
-        std::fs::write(d.join("mimamori/config.toml"), "interval = 2\nbackend = \"gl\"\nlanguage = \"auto\"\ncolour = 1\n").unwrap();
-        std::fs::write(d.join("mimamori/keymap.toml"), "[main]\n").unwrap();
+        std::fs::write(d.join("yagura/config.toml"), "interval = 2\nbackend = \"gl\"\nlanguage = \"auto\"\ncolour = 1\n").unwrap();
+        std::fs::write(d.join("yagura/keymap.toml"), "[main]\n").unwrap();
         let s = load(Some(&d));
         assert_eq!(s.interval, 2.0);
         assert_eq!(s.backend.as_deref(), Some("gl"));
@@ -231,7 +268,7 @@ mod tests {
         assert_eq!(s.warnings.len(), 1, "{:?}", s.warnings);
         assert!(s.warnings[0].contains("colour"));
 
-        std::fs::write(d.join("mimamori/config.toml"), "interval = 60\nbackend = \"glide\"\n").unwrap();
+        std::fs::write(d.join("yagura/config.toml"), "interval = 60\nbackend = \"glide\"\n").unwrap();
         let s = load(Some(&d));
         assert_eq!(s.interval, 1.0);
         assert!(s.backend.is_none());
@@ -246,12 +283,12 @@ mod tests {
     #[test]
     fn reads_the_agent_and_the_hosts() {
         let d = test_dir("settings-fleet");
-        std::fs::create_dir_all(d.join("mimamori")).unwrap();
+        std::fs::create_dir_all(d.join("yagura")).unwrap();
         let text = "[agent]\nallow = [\"kill\", \"reboot\", \"kill\"]\nport = 7400\n\n\
                     [[host]]\nname = \"nas\"\naddr = \"localhost:7314\"\n\n\
                     [[host]]\naddr = \"pi.tail1234.ts.net\"\n\n\
                     [[host]]\nname = \"broken\"\ncolour = 1\n";
-        std::fs::write(d.join("mimamori/config.toml"), text).unwrap();
+        std::fs::write(d.join("yagura/config.toml"), text).unwrap();
         let s = load(Some(&d));
         assert_eq!(s.allow, ["kill"]);
         assert_eq!(s.port, 7400);
@@ -263,7 +300,7 @@ mod tests {
         assert_eq!(s.warnings.len(), 3, "{w}");
 
         // Nothing said is view only, on the default port, with no other hosts.
-        std::fs::write(d.join("mimamori/config.toml"), "").unwrap();
+        std::fs::write(d.join("yagura/config.toml"), "").unwrap();
         let s = load(Some(&d));
         assert!(s.allow.is_empty() && s.hosts.is_empty() && s.warnings.is_empty(), "{s:?}");
         assert_eq!(s.port, crate::remote::proto::PORT);

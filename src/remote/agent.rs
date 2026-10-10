@@ -1,4 +1,4 @@
-//! `mimamori --agent`: no window, the same sampler, and a summary for every
+//! `yagura --agent`: no window, the same sampler, and a summary for every
 //! viewer connected to 127.0.0.1.
 //!
 //! One hub thread folds the sampler's messages into a [`Model`] and hands
@@ -36,9 +36,9 @@ pub struct Config {
 pub fn run(port: u16, cfg: Config) -> io::Result<()> {
     let listener = TcpListener::bind(("127.0.0.1", port))?;
     let what = if cfg.allow.is_empty() { "view only".to_string() } else { format!("allows {}", cfg.allow.join(", ")) };
-    eprintln!("mimamori {} agent: listening on {} ({what})", env!("CARGO_PKG_VERSION"), listener.local_addr()?);
+    eprintln!("yagura {} agent: listening on {} ({what})", env!("CARGO_PKG_VERSION"), listener.local_addr()?);
     eprintln!(
-        "mimamori agent: reach it with `ssh -L {port}:localhost:{port} <this host>` or `tailscale serve --bg --tcp {port} tcp://localhost:{port}`"
+        "yagura agent: reach it with `ssh -L {port}:localhost:{port} <this host>` or `tailscale serve --bg --tcp {port} tcp://localhost:{port}`"
     );
     serve(listener, cfg)
 }
@@ -46,17 +46,17 @@ pub fn run(port: u16, cfg: Config) -> io::Result<()> {
 /// Serve viewers on `listener` (the tests pass one on port 0).
 pub fn serve(listener: TcpListener, cfg: Config) -> io::Result<()> {
     let (join_tx, join_rx) = unbounded();
-    std::thread::Builder::new().name("mimamori-agent".into()).spawn(move || hub(&cfg, &join_rx))?;
+    std::thread::Builder::new().name("yagura-agent".into()).spawn(move || hub(&cfg, &join_rx))?;
     for conn in listener.incoming() {
         match conn {
             Ok(s) => {
                 let join = join_tx.clone();
-                let spawned = std::thread::Builder::new().name("mimamori-viewer".into()).spawn(move || viewer(s, &join));
+                let spawned = std::thread::Builder::new().name("yagura-viewer".into()).spawn(move || viewer(s, &join));
                 if let Err(e) = spawned {
-                    eprintln!("mimamori agent: {e}");
+                    eprintln!("yagura agent: {e}");
                 }
             }
-            Err(e) => eprintln!("mimamori agent: {e}"),
+            Err(e) => eprintln!("yagura agent: {e}"),
         }
     }
     Ok(())
@@ -133,7 +133,7 @@ pub fn summary(m: &Model) -> Summary {
 fn viewer(s: TcpStream, join: &Sender<Sender<Frame>>) {
     let peer = s.peer_addr().map(|a| a.to_string()).unwrap_or_default();
     if let Err(e) = talk(&s, join) {
-        eprintln!("mimamori agent: {peer}: {e}");
+        eprintln!("yagura agent: {peer}: {e}");
     }
     let _ = s.shutdown(Shutdown::Both);
 }
@@ -144,13 +144,13 @@ fn talk(s: &TcpStream, join: &Sender<Sender<Frame>>) -> io::Result<()> {
     let mut r = s.try_clone()?;
     let first = proto::read_body(&mut r)?;
     match proto::head(&first) {
-        Some((0, p)) if p != PROTO => eprintln!("mimamori agent: a viewer speaks protocol {p}, this agent {PROTO}"),
+        Some((0, p)) if p != PROTO => eprintln!("yagura agent: a viewer speaks protocol {p}, this agent {PROTO}"),
         Some((0, _)) => {}
-        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "not a mimamori viewer")),
+        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "not a yagura viewer")),
     }
     let (tx, rx) = bounded::<Frame>(QUEUE);
     let mut w = s.try_clone()?;
-    std::thread::Builder::new().name("mimamori-viewer-out".into()).spawn(move || {
+    std::thread::Builder::new().name("yagura-viewer-out".into()).spawn(move || {
         for f in rx {
             if io::Write::write_all(&mut w, &f).is_err() {
                 break;

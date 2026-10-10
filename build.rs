@@ -1,4 +1,4 @@
-//! Give `mimamori.exe` its icon and version information.
+//! Give `yagura.exe` its icon and version information.
 //!
 //! This is the icon Explorer draws on the file and a pinned taskbar entry
 //! uses, and the name and version Task Manager and the file's Details show;
@@ -36,11 +36,11 @@ fn main() {
     let info = winres::Info {
         version: [num("CARGO_PKG_VERSION_MAJOR"), num("CARGO_PKG_VERSION_MINOR"), num("CARGO_PKG_VERSION_PATCH")],
         text: &text,
-        name: "mimamori",
+        name: "yagura",
         comments: &comments,
     };
-    let path = PathBuf::from(var("OUT_DIR")).join("mimamori.res");
-    std::fs::write(&path, winres::res(&icons, &info)).expect("writing mimamori.res");
+    let path = PathBuf::from(var("OUT_DIR")).join("yagura.res");
+    std::fs::write(&path, winres::res(&icons, &info)).expect("writing yagura.res");
     // Every linked target, the tests too: one of them reads it back.
     println!("cargo:rustc-link-arg={}", path.display());
 }

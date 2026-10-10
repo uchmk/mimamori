@@ -192,7 +192,7 @@ impl Hardware {
 
 /// Read it once on a thread of its own and send it as [`Msg::Hardware`].
 pub fn spawn(tx: Sender<Msg>, wake: Option<egui::Context>) {
-    let _ = std::thread::Builder::new().name("mimamori-hw".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("yagura-hw".into()).spawn(move || {
         let hw = read();
         if tx.send(Msg::Hardware(Box::new(hw))).is_ok()
             && let Some(w) = wake

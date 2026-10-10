@@ -1,5 +1,5 @@
 //! The `?` overlay: every binding of each layer, the keys that do the
-//! same thing on one line, the way filer's help reads.
+//! same thing on one line, the way kura's help reads.
 
 use egui::{Color32, Rect, Stroke, StrokeKind, pos2, vec2};
 

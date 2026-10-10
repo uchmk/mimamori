@@ -1,4 +1,4 @@
-# The words mimamori shows, in English: the built-in table every other
+# The words yagura shows, in English: the built-in table every other
 # language falls back to. A translation is a file beside this one with the
 # same keys (any it leaves out read in English), listed in `i18n::AVAILABLE`.
 # `{0}`, `{1}` … are filled in by the code.
@@ -59,7 +59,7 @@ paused = "Paused"
 resumed = "Resumed"
 interval = "Interval {0} s"
 kill_none = "No process selected"
-kill_self = "That is mimamori itself — q quits"
+kill_self = "That is yagura itself — q quits"
 ending = "Ending {0} ({1})…"
 ended = "{0} ({1}) ended"
 killed = "{0} ({1}) ignored SIGTERM; killed"
@@ -80,7 +80,7 @@ svc_restarting = "Restarting {0}…"
 svc_started = "{0} started"
 svc_stopped = "{0} stopped"
 svc_restarted = "{0} restarted"
-svc_denied_win = "{0}: needs administrator — run mimamori as administrator"
+svc_denied_win = "{0}: needs administrator — run yagura as administrator"
 svc_denied_linux = "{0}: needs root or polkit permission"
 svc_denied_mac = "{0}: system jobs need sudo"
 svc_start_failed = "Could not start {0}: {1}"
@@ -198,7 +198,7 @@ multi = "Multi-bit ECC"
 crc = "CRC"
 
 [sys.note]
-root = "Only root may read the SMBIOS table that lists the slots: run mimamori with sudo to see them."
+root = "Only root may read the SMBIOS table that lists the slots: run yagura with sudo to see them."
 no_table = "This machine has no SMBIOS table (a container, a virtual machine without one, or a board described by a device tree), so there are no slots to read."
 failed = "The firmware's tables could not be read."
 
@@ -615,8 +615,8 @@ refused = "nothing listens there — is the ssh -L or tailscale serve up?"
 unknown = "the name does not resolve"
 io = "{0}"
 quiet = "no answer for 15 s"
-closed = "closed — is mimamori --agent running there?"
-proto = "speaks protocol {0}, this mimamori {1} — update one side"
+closed = "closed — is yagura --agent running there?"
+proto = "speaks protocol {0}, this yagura {1} — update one side"
 not_agent = "something else answers on that port"
 
 [settings]
@@ -630,7 +630,7 @@ advanced = "Advanced"
 advanced_lead = "The graphics backend, where the files are, and what was wrong in them."
 display = "DISPLAY"
 language_note = "For every uchmk app (common.toml)"
-language_own = "mimamori's config.toml says `language = \"{0}\"`, which wins over this"
+language_own = "yagura's config.toml says `language = \"{0}\"`, which wins over this"
 interval = "Update interval"
 seconds = "{0} s"
 interval_note = "How often to sample; in force at once"
@@ -642,7 +642,7 @@ allow_kill_note = "[agent] allow = \"kill\": a fleet viewer may end a process he
 allow_service = "Let viewers control services"
 allow_service_note = "[agent] allow = \"service\": a fleet viewer may start, stop and restart a service here"
 port = "Port"
-port_note = "Where mimamori --agent listens, on 127.0.0.1 only"
+port_note = "Where yagura --agent listens, on 127.0.0.1 only"
 port_bad = "The port is a number from 1 to 65535"
 hosts = "HOSTS"
 host_n = "Host {0}"

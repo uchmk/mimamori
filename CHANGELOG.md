@@ -4,6 +4,19 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.33.0] - 2026-10-11
+
+### 変更
+
+- 名前を mimamori から yagura（櫓）に変えた。リポジトリは [uchmk/yagura](https://github.com/uchmk/yagura)。
+  バイナリ（`yagura`、`yagura --agent`）・窓のタイトル・アプリの ID・環境変数（`YAGURA_KEYS_DONE`、`YAGURA_BIN`）・
+  リリースの成果物（`yagura-vX.Y.Z-*`）・スレッドの名前が新しい名前になる。姉妹の filer は kura と呼ぶ。
+- 設定のフォルダーを `<config>/uchmk/mimamori/` から `<config>/uchmk/yagura/` に変えた。最初の起動で、古いフォルダーだけがあれば
+  新しい名前に移す（config.toml・keymap.toml・state.toml がそのまま残る）。両方あれば新しいほうを使い、古いほうには触らない。
+  移せなかったときは設定の画面の Advanced に警告を出す。
+- 【人】タスクバーのピン留め・ショートカット・スクリプトで `mimamori.exe` を指していたら `yagura.exe` に直す。
+  ほかの機械で `mimamori --agent` を動かしていたら、新しい版の `yagura --agent` に替える（つなぎ方は変わらない）。
+
 ## [0.32.1] - 2026-10-11
 
 ### 変更

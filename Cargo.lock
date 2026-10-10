@@ -1932,34 +1932,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mimamori"
-version = "0.32.1"
-dependencies = [
- "chrono",
- "crossbeam-channel",
- "dirs",
- "eframe",
- "egui",
- "ito-common",
- "ito-i18n",
- "ito-keys",
- "ito-layout",
- "ito-prefs",
- "ito-theme",
- "libc",
- "nvml-wrapper",
- "objc2-core-foundation",
- "objc2-io-kit",
- "plist",
- "png",
- "postcard",
- "serde",
- "sysinfo",
- "toml",
- "windows",
-]
-
-[[package]]
 name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4559,6 +4531,34 @@ name = "xml-rs"
 version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
+
+[[package]]
+name = "yagura"
+version = "0.33.0"
+dependencies = [
+ "chrono",
+ "crossbeam-channel",
+ "dirs",
+ "eframe",
+ "egui",
+ "ito-common",
+ "ito-i18n",
+ "ito-keys",
+ "ito-layout",
+ "ito-prefs",
+ "ito-theme",
+ "libc",
+ "nvml-wrapper",
+ "objc2-core-foundation",
+ "objc2-io-kit",
+ "plist",
+ "png",
+ "postcard",
+ "serde",
+ "sysinfo",
+ "toml",
+ "windows",
+]
 
 [[package]]
 name = "yoke"

@@ -1,4 +1,4 @@
-//! The service control manager's numbers in mimamori's words: pure, so the
+//! The service control manager's numbers in yagura's words: pure, so the
 //! tests run everywhere. The calls are in `scm.rs`.
 
 use super::{Start, State};

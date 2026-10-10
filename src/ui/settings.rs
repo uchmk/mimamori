@@ -1,6 +1,6 @@
 //! The settings screen (Ctrl+,), laid out as tsumugi's: `ito-prefs`
 //! draws the nav and the cards, and the rows common to every uchmk app (the
-//! language, the clock, the theme) write common.toml. mimamori's own rows
+//! language, the clock, the theme) write common.toml. yagura's own rows
 //! write config.toml; what a row asks for is gathered while the page is
 //! drawn and done once it is.
 
@@ -10,7 +10,7 @@ use ito_prefs::{Words, button, field, row, section, select, sep, status, switch}
 
 use crate::app::{App, INTERVALS, TOAST, fmt_interval};
 use crate::config::edit::Edit;
-use crate::config::settings::{ALLOW, BACKENDS, Host};
+use crate::config::settings::{ALLOW, BACKENDS, DIR, Host};
 use crate::config::theme::{self, ramp};
 use crate::i18n::{current_language, tr, trf};
 use crate::remote::{self, proto};
@@ -221,7 +221,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
             });
             section(ui, l, tr("settings.files"), |ui| match base {
                 Some(b) => {
-                    let folder = b.join("mimamori").display().to_string();
+                    let folder = b.join(DIR).display().to_string();
                     row(ui, l, tr("settings.folder"), &folder, |ui| {
                         if button(ui, l, tr("settings.open")) {
                             asked.open_folder = true;
@@ -300,7 +300,7 @@ fn draw_toast(ui: &Ui, app: &App) {
     ui.ctx().request_repaint_after(TOAST.saturating_sub(at.elapsed()));
 }
 
-/// mimamori in the theme in force: a row of core tiles, a few processes
+/// yagura in the theme in force: a row of core tiles, a few processes
 /// with one picked, and the status bar with its clock.
 fn preview(ui: &mut Ui) {
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width().min(420.0), 236.0), Sense::hover());
@@ -322,7 +322,7 @@ fn preview(ui: &mut Ui) {
     }
     // The processes, the second one picked.
     let rows = [
-        ("mimamori", "0.8", theme::fg()),
+        ("yagura", "0.8", theme::fg()),
         ("tsumugi", "3.1", theme::fg()),
         ("cargo", "54.0", theme::yellow()),
         ("rustc", "98.2", theme::red()),

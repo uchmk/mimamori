@@ -1,4 +1,4 @@
-//! The keymap, laid out like yazi's and filer's: a section per layer, each
+//! The keymap, laid out like yazi's and kura's: a section per layer, each
 //! with `keymap` (replaces the built-in list), `prepend_keymap` and
 //! `append_keymap`. The first binding that matches wins, so a prepended key
 //! shadows a built-in one.

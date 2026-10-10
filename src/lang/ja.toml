@@ -1,4 +1,4 @@
-# mimamori の画面の言葉（日本語）。キーは en.toml と同じ。ここに無いキーは
+# yagura の画面の言葉（日本語）。キーは en.toml と同じ。ここに無いキーは
 # 英語で出る。`{0}`、`{1}` … はコードが埋める。
 
 [tab]
@@ -57,7 +57,7 @@ paused = "一時停止しました"
 resumed = "再開しました"
 interval = "間隔 {0} 秒"
 kill_none = "プロセスが選ばれていません"
-kill_self = "それは mimamori 自身です — 終了は q"
+kill_self = "それは yagura 自身です — 終了は q"
 ending = "{0}（{1}）を終了しています…"
 ended = "{0}（{1}）が終了しました"
 killed = "{0}（{1}）は SIGTERM を無視したので強制終了しました"
@@ -78,7 +78,7 @@ svc_restarting = "{0} を再起動しています…"
 svc_started = "{0} を開始しました"
 svc_stopped = "{0} を停止しました"
 svc_restarted = "{0} を再起動しました"
-svc_denied_win = "{0}: 管理者の権限が要ります — mimamori を管理者として実行してください"
+svc_denied_win = "{0}: 管理者の権限が要ります — yagura を管理者として実行してください"
 svc_denied_linux = "{0}: root か polkit の許可が要ります"
 svc_denied_mac = "{0}: システムのジョブには sudo が要ります"
 svc_start_failed = "{0} を開始できません: {1}"
@@ -196,7 +196,7 @@ multi = "マルチビット ECC"
 crc = "CRC"
 
 [sys.note]
-root = "スロットの一覧が載る SMBIOS の表は root しか読めません。見るには mimamori を sudo で実行してください。"
+root = "スロットの一覧が載る SMBIOS の表は root しか読めません。見るには yagura を sudo で実行してください。"
 no_table = "この機械には SMBIOS の表がありません（コンテナ、表の無い仮想マシン、デバイスツリーで記述されたボード）。読めるスロットがありません。"
 failed = "ファームウェアの表を読めませんでした。"
 
@@ -670,8 +670,8 @@ refused = "そこで待っているものがありません — ssh -L か tails
 unknown = "名前を引けません"
 io = "{0}"
 quiet = "15 秒応答がありません"
-closed = "切れました — 相手で mimamori --agent は動いていますか？"
-proto = "プロトコル {0} です（この mimamori は {1}）— どちらかを更新してください"
+closed = "切れました — 相手で yagura --agent は動いていますか？"
+proto = "プロトコル {0} です（この yagura は {1}）— どちらかを更新してください"
 not_agent = "そのポートでは別のものが応答しています"
 
 [settings]
@@ -685,7 +685,7 @@ advanced = "詳細"
 advanced_lead = "描画のバックエンド、ファイルの場所、ファイルの中の誤り。"
 display = "表示"
 language_note = "uchmk のアプリすべてに効きます（common.toml）"
-language_own = "mimamori の config.toml の `language = \"{0}\"` がこちらより勝ちます"
+language_own = "yagura の config.toml の `language = \"{0}\"` がこちらより勝ちます"
 interval = "更新の間隔"
 seconds = "{0} 秒"
 interval_note = "収集の間隔。すぐ効きます"
@@ -697,7 +697,7 @@ allow_kill_note = "[agent] allow = \"kill\": fleet で見る側がこの機械�
 allow_service = "サービスの操作を許す"
 allow_service_note = "[agent] allow = \"service\": fleet で見る側がこの機械のサービスを開始・停止・再起動できます"
 port = "ポート"
-port_note = "mimamori --agent が待ち受ける番号（127.0.0.1 だけ）"
+port_note = "yagura --agent が待ち受ける番号（127.0.0.1 だけ）"
 port_bad = "ポートは 1 から 65535 の数です"
 hosts = "ホスト"
 host_n = "ホスト {0}"

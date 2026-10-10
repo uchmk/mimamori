@@ -40,7 +40,7 @@ pub enum Outcome {
 /// End `t` on a thread of its own; the outcome comes back on `tx`.
 pub fn spawn(t: Target, tx: Sender<(Target, Outcome)>, wake: Option<egui::Context>) {
     let (t2, tx2) = (t.clone(), tx.clone());
-    let started = std::thread::Builder::new().name("mimamori-kill".into()).spawn(move || {
+    let started = std::thread::Builder::new().name("yagura-kill".into()).spawn(move || {
         let o = end(&t, GRACE);
         let _ = tx.send((t, o));
         if let Some(w) = wake {

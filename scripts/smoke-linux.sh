@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Start mimamori on a virtual X display, visit every screen, and check that
-# each one drew: CI's Linux smoke, the way filer's scripts/smoke-linux.sh is.
+# Start yagura on a virtual X display, visit every screen, and check that
+# each one drew: CI's Linux smoke, the way kura's scripts/smoke-linux.sh is.
 #
 #   scripts/smoke-linux.sh [OUTDIR]     (default target/smoke)
 #
 # Runs scripts/xrun.sh with a `--keys` script that presses 1..0, and after
 # each a `<Shot:>` and a `<State:>`, then opens the settings screen (`<C-,>`)
 # and does the same. Fails when the script did not finish,
-# when mimamori panicked, when a screen's state names another screen (or the
+# when yagura panicked, when a screen's state names another screen (or the
 # settings are not open), or when
 # a screenshot is one flat colour (nothing was drawn). OUTDIR keeps the
 # pictures, the states and the log whether it passed or not. Needs what
@@ -27,7 +27,7 @@ XRUN_KEYS_TIMEOUT="${XRUN_KEYS_TIMEOUT:-240}" scripts/xrun.sh "$out" --keys "$ke
 fail=0
 no() { echo "smoke: $*" >&2; fail=1; }
 [ -e "$out/keys.done" ] || no "the key script did not finish"
-grep -q "panicked" "$out/mimamori.log" && no "mimamori panicked: $(grep -m1 panicked "$out/mimamori.log")"
+grep -q "panicked" "$out/yagura.log" && no "yagura panicked: $(grep -m1 panicked "$out/yagura.log")"
 for s in $screens S:settings; do
     name=${s#*:}
     if [ ! -s "$out/$name.png" ]; then

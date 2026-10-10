@@ -1,4 +1,4 @@
-# The hand-formatted style of filer and tsumugi (`Self { a, b, c }` on one
+# The hand-formatted style of kura and tsumugi (`Self { a, b, c }` on one
 # line), written down so `cargo fmt` keeps it instead of fighting it. Unlike
 # those two, this repository was formatted by rustfmt from its first commit,
 # so CI checks it (`cargo fmt --check`).

@@ -39,7 +39,7 @@ pub enum FromAgent {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Hello {
     pub proto: u16,
-    /// mimamori's version on that machine.
+    /// yagura's version on that machine.
     pub version: String,
     pub host: String,
     pub os: String,
@@ -94,7 +94,7 @@ pub fn read_body(r: &mut impl Read) -> io::Result<Vec<u8>> {
     r.read_exact(&mut len)?;
     let len = u32::from_le_bytes(len) as usize;
     if len > MAX_FRAME {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("a {len} byte frame: not a mimamori agent")));
+        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("a {len} byte frame: not a yagura agent")));
     }
     let mut body = vec![0; len];
     r.read_exact(&mut body)?;

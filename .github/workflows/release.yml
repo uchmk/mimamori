@@ -1,7 +1,7 @@
 name: Release
 
 # A build that keeps its name, does not expire, and downloads without an
-# account. Taken from tsumugi's and filer's release.yml; the reasons written
+# account. Taken from tsumugi's and kura's release.yml; the reasons written
 # there hold here too.
 #
 # Started by hand from the Actions tab with the tag (`v0.28.0`), which is
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
-      # A download whose name and `mimamori --version` disagree leaves nobody
+      # A download whose name and `yagura --version` disagree leaves nobody
       # able to say which they have.
       - name: Check the tag matches Cargo.toml
         shell: bash
@@ -70,7 +70,7 @@ jobs:
       - name: Build ARM64
         run: cargo build --release --locked --target aarch64-pc-windows-msvc
 
-      # A zip of one folder: mimamori.exe and the two licence files.
+      # A zip of one folder: yagura.exe and the two licence files.
       - name: Package the binaries
         shell: pwsh
         run: |
@@ -78,10 +78,10 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           foreach ($pair in @(@('x64', 'x86_64-pc-windows-msvc'), @('arm64', 'aarch64-pc-windows-msvc'))) {
             $arch, $target = $pair
-            $name = "mimamori-$tag-windows-$arch"
+            $name = "yagura-$tag-windows-$arch"
             $stage = "stage/$name"
             New-Item -ItemType Directory -Force $stage | Out-Null
-            Copy-Item "target/$target/release/mimamori.exe", "LICENSE-MIT", "LICENSE-APACHE" $stage
+            Copy-Item "target/$target/release/yagura.exe", "LICENSE-MIT", "LICENSE-APACHE" $stage
             Compress-Archive -Path $stage -DestinationPath "dist/$name.zip" -Force
           }
           Get-ChildItem dist
@@ -134,10 +134,10 @@ jobs:
           SHA-256 is in the table at the end of this page:
 
           ```powershell
-          Get-FileHash .\mimamori-...-windows-x64.zip -Algorithm SHA256 | Format-List Hash
+          Get-FileHash .\yagura-...-windows-x64.zip -Algorithm SHA256 | Format-List Hash
           ```
 
-          The Windows downloads are `.zip` holding `mimamori.exe` and the licence files.
+          The Windows downloads are `.zip` holding `yagura.exe` and the licence files.
           The macOS and Linux downloads are `.tar.gz`, which keeps the executable bit.
           Some readings need more rights than a normal user has (other users' processes,
           SMART, starting and stopping services); the screens say which and why.
@@ -202,8 +202,8 @@ jobs:
         run: |
           tag="${{ steps.tag.outputs.name }}"
           mkdir -p dist
-          cp "target/${{ matrix.target }}/release/mimamori" .
-          tar -czf "dist/mimamori-$tag-${{ matrix.name }}.tar.gz" mimamori LICENSE-MIT LICENSE-APACHE
+          cp "target/${{ matrix.target }}/release/yagura" .
+          tar -czf "dist/yagura-$tag-${{ matrix.name }}.tar.gz" yagura LICENSE-MIT LICENSE-APACHE
           ls -l dist
 
       - name: Attach to the release

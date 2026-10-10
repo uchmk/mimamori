@@ -1,4 +1,4 @@
-//! mimamori: a keyboard-driven system monitor, the sibling of filer and
+//! yagura: a keyboard-driven system monitor, the sibling of kura and
 //! tsumugi. The window and the input; the state is in `app.rs`, the
 //! drawing in `ui/`, the sampling in `collect/`.
 
@@ -38,14 +38,14 @@ use keyscript::{Do, Runner};
 const ICON_PX: u32 = 128;
 
 const USAGE: &str = "\
-mimamori — a keyboard-driven system monitor
+yagura — a keyboard-driven system monitor
 
-usage: mimamori [--keys SCRIPT]
-       mimamori --agent
+usage: yagura [--keys SCRIPT]
+       yagura --agent
 
-  --keys SCRIPT  press these keys once the window is up, as filer's --keys
+  --keys SCRIPT  press these keys once the window is up, as kura's --keys
                  (`<Wait:ms>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`,
-                 `<Drag:x,y-x,y>`, `<Quit>`); MIMAMORI_KEYS_DONE names the
+                 `<Drag:x,y-x,y>`, `<Quit>`); YAGURA_KEYS_DONE names the
                  file the final state is written to
   --agent        no window: serve this machine's summary to the fleet screen
                  of other machines, on 127.0.0.1:7313 only (`[agent] port`);
@@ -56,22 +56,22 @@ usage: mimamori [--keys SCRIPT]
   --help         print this
 
 Settings: Ctrl+, (Cmd+, on macOS) opens the settings screen. The files are
-<config dir>/uchmk/mimamori/config.toml ([[host]] lists the fleet) and keymap.toml;
+<config dir>/uchmk/yagura/config.toml ([[host]] lists the fleet) and keymap.toml;
 the language, the theme and the clock are shared by every uchmk app in
 <config dir>/uchmk/common.toml, and themes of your own go in <config dir>/uchmk/themes/.";
 
-struct Mimamori {
+struct Yagura {
     app: App,
     script: Option<Runner>,
     /// What the script asked for in `raw_input_hook`, done in the frame.
     todo: Vec<Do>,
 }
 
-impl Mimamori {
+impl Yagura {
     fn write_state(&self, path: PathBuf, tail: &str) {
         let text = format!("{}{tail}", self.app.report());
         if let Err(e) = std::fs::write(&path, text) {
-            eprintln!("mimamori --keys: {}: {e}", path.display());
+            eprintln!("yagura --keys: {}: {e}", path.display());
         }
     }
 
@@ -150,7 +150,7 @@ impl Mimamori {
     }
 }
 
-impl eframe::App for Mimamori {
+impl eframe::App for Yagura {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if let Some(script) = &mut self.script
             && let Some(d) = script.input(ctx, raw)
@@ -215,7 +215,7 @@ fn main() -> eframe::Result {
     while let Some(a) = args.next() {
         match a.as_str() {
             "--version" | "-V" => {
-                println!("mimamori {}", env!("CARGO_PKG_VERSION"));
+                println!("yagura {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             "--help" | "-h" => {
@@ -225,19 +225,19 @@ fn main() -> eframe::Result {
             "--agent" => agent = true,
             "--keys" => {
                 let Some(s) = args.next() else {
-                    eprintln!("mimamori: --keys needs a script");
+                    eprintln!("yagura: --keys needs a script");
                     std::process::exit(2);
                 };
                 match keyscript::parse(&s) {
                     Ok(steps) => script = Some(steps),
                     Err(e) => {
-                        eprintln!("mimamori --keys: {e}");
+                        eprintln!("yagura --keys: {e}");
                         std::process::exit(2);
                     }
                 }
             }
             other => {
-                eprintln!("mimamori: unknown argument `{other}`\n\n{USAGE}");
+                eprintln!("yagura: unknown argument `{other}`\n\n{USAGE}");
                 std::process::exit(2);
             }
         }
@@ -246,11 +246,11 @@ fn main() -> eframe::Result {
     let s = settings::load(None);
     if agent {
         for w in &s.warnings {
-            eprintln!("mimamori: {w}");
+            eprintln!("yagura: {w}");
         }
         let cfg = remote::agent::Config { allow: s.allow.clone(), interval: s.interval };
         if let Err(e) = remote::agent::run(s.port, cfg) {
-            eprintln!("mimamori --agent: 127.0.0.1:{}: {e}", s.port);
+            eprintln!("yagura --agent: 127.0.0.1:{}: {e}", s.port);
             std::process::exit(1);
         }
         return Ok(());
@@ -261,26 +261,26 @@ fn main() -> eframe::Result {
     let (wgpu_options, gpu_warn) = gpu_backend::options(s.backend.as_deref());
     let warnings: Vec<String> = s.warnings.iter().chain(&km_warn).chain(&layout_warn).cloned().chain(gpu_warn).collect();
     for w in &warnings {
-        eprintln!("mimamori: {w}");
+        eprintln!("yagura: {w}");
     }
     let saver = persist::Saver::new(s.dir.clone());
     let interval = s.interval;
     let hosts = s.hosts.clone();
-    let done = std::env::var_os("MIMAMORI_KEYS_DONE").filter(|v| !v.is_empty()).map(PathBuf::from);
+    let done = std::env::var_os("YAGURA_KEYS_DONE").filter(|v| !v.is_empty()).map(PathBuf::from);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("mimamori")
+            .with_title("yagura")
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([480.0, 320.0])
             // The title bar, Alt+Tab, the taskbar and the Dock; build.rs bakes
-            // the same drawing into mimamori.exe for Explorer.
+            // the same drawing into yagura.exe for Explorer.
             .with_icon(std::sync::Arc::new(egui::IconData { rgba: icon::rgba(ICON_PX), width: ICON_PX, height: ICON_PX })),
         wgpu_options,
         ..Default::default()
     };
     eframe::run_native(
-        "mimamori",
+        "yagura",
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_visuals(theme::visuals());
@@ -300,7 +300,7 @@ fn main() -> eframe::Result {
                 let more = if warnings.len() > 1 { format!(" (+{})", warnings.len() - 1) } else { String::new() };
                 app.toast(format!("{first}{more}"));
             }
-            Ok(Box::new(Mimamori { app, script: script.map(|steps| Runner::new(steps, done)), todo: Vec::new() }))
+            Ok(Box::new(Yagura { app, script: script.map(|steps| Runner::new(steps, done)), todo: Vec::new() }))
         }),
     )
 }

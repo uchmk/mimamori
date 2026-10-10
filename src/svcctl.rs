@@ -38,7 +38,7 @@ pub struct Target {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Outcome {
     Done,
-    /// The OS wants more rights than mimamori has.
+    /// The OS wants more rights than yagura has.
     Denied,
     /// The OS refused, in its own words.
     Failed(String),
@@ -57,7 +57,7 @@ pub fn fits(action: Action, state: State) -> bool {
 /// Run `t` on a thread of its own; the outcome comes back on `tx`.
 pub fn spawn(t: Target, tx: Sender<(Target, Outcome)>, wake: Option<egui::Context>) {
     let (t2, tx2) = (t.clone(), tx.clone());
-    let started = std::thread::Builder::new().name("mimamori-svc".into()).spawn(move || {
+    let started = std::thread::Builder::new().name("yagura-svc".into()).spawn(move || {
         let o = run(&t);
         let _ = tx.send((t, o));
         if let Some(w) = wake {
