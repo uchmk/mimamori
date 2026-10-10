@@ -39,6 +39,7 @@ impl Reader {
             if let Ok(pci) = dev.pci_info() {
                 let id = pci.pci_device_id;
                 d.pci = Some(format!("{:04x}:{:04x}", id & 0xffff, id >> 16));
+                d.bus = Some(super::bus_addr(&pci.bus_id));
             }
             match dev.utilization_rates() {
                 Ok(u) => {

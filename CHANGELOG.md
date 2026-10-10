@@ -4,6 +4,21 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.23.0] - 2026-10-10
+
+### 追加
+
+- gpu·npu の画面（Linux）: DRM の fdinfo（`/proc/<pid>/fdinfo`）から、GPU を使っているプロセスとその使用率・VRAM を出すようにした。
+  i915・xe・amdgpu・panfrost・msm などが書く形を読む。
+  - Intel の iGPU（i915 / xe）や Arm の GPU のように sysfs に使用率が無いものは、全体の使用率とエンジン（Render・Video・Copy…）も fdinfo の合計から出す。
+    読めるのは自分のプロセスだけなので、全部を見るには root で動かす。
+  - `/dev/dri` を開いている fd は 5 秒ごとに探し直し、その間は見つけた fd だけを読む。
+
+### 修正
+
+- sensors の画面（Linux）: AMD の GPU の温度が、`amdgpu` のチップと GPU の名前の行の 2 回出ていた。PCI のアドレスで重なりを見るところで、
+  GPU の側が PCI の ID（`1002:744c`）を渡していた。
+
 ## [0.22.0] - 2026-10-10
 
 ### 追加

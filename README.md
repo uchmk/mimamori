@@ -145,7 +145,7 @@ The gpu·npu screen reads, without linking anything at build time:
 | OS | GPUs | NPUs |
 | --- | --- | --- |
 | Windows | The `GPU Engine` and `GPU Adapter Memory` performance counters (PDH) for usage, engines, memory and per-process use, named through DXGI; temperature, fan and clock from D3DKMT (`D3DKMTQueryAdapterInfo`, what Task Manager shows) where the driver keeps them, and from NVML for NVIDIA | One with an MCDM driver, the kind Task Manager shows, from the same counters |
-| Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
+| Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter. Per-process use and memory come from the DRM fdinfo (`/proc/<pid>/fdinfo`, written by i915, xe, amdgpu, panfrost, msm…), and so does the usage of a GPU sysfs gives none for: only the processes mimamori may read count, so run it as root to see everyone's | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
 | macOS | IOKit's `IOAccelerator` services and their `PerformanceStatistics`: Apple silicon has usage, the renderer and tiler engines and the unified memory in use; Intel GPUs have usage; AMD cards also VRAM and, on some, temperature, fan, power and clock. No per-process use; the SMC's GPU temperatures are on the sensors screen | The Neural Engine reports no usage to other programs |
 
 The svc screen reads:

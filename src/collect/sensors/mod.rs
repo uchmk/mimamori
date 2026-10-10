@@ -159,7 +159,7 @@ fn add_gpus(list: &mut Vec<Sensor>, gpus: &[gpu::Device]) {
         if d.temp.is_none() && d.fan.is_none() {
             continue;
         }
-        let pci = d.pci.as_deref().map(str::to_ascii_lowercase);
+        let pci = d.bus.as_deref().map(str::to_ascii_lowercase);
         if pci.is_some() && list.iter().any(|s| s.pci == pci) {
             continue;
         }
@@ -327,10 +327,11 @@ mod tests {
 
     #[test]
     fn gpus_add_what_no_chip_lists() {
-        let gpu = |id: &str, pci: Option<&str>, fan| gpu::Device {
+        let gpu = |id: &str, bus: Option<&str>, fan| gpu::Device {
             id: id.into(),
             name: format!("GPU {id}"),
-            pci: pci.map(Into::into),
+            pci: Some("1002:744c".into()),
+            bus: bus.map(Into::into),
             temp: Some(60.0),
             fan,
             source: "nvml",

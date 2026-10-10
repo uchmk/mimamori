@@ -273,7 +273,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
             body,
             body.top(),
             tr(match d.source {
-                "sysfs" => "gpu.procs_none_sysfs",
+                "sysfs" | "sysfs+fdinfo" => "gpu.procs_none_sysfs",
                 "iokit" => "gpu.procs_none_iokit",
                 _ => "gpu.procs_none",
             }),

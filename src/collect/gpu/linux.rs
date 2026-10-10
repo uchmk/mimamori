@@ -67,6 +67,7 @@ fn vendor_of_driver(driver: &str) -> Option<&'static str> {
 fn identify(dev: &Path, d: &mut Device) {
     let ev = uevent(dev);
     d.driver = ev.get("DRIVER").cloned();
+    d.bus = ev.get("PCI_SLOT_NAME").map(|s| s.to_ascii_lowercase());
     let pci = ev.get("PCI_ID").map(|s| s.to_lowercase());
     let vendor_id =
         read_u64(&dev.join("vendor")).or_else(|| pci.as_deref().and_then(|p| u64::from_str_radix(p.split(':').next()?, 16).ok()));
@@ -196,7 +197,7 @@ mod tests {
     fn amdgpu_reads_busy_memory_and_sensors() {
         let root = test_dir("gpu-amd");
         let dev = "class/drm/card1/device";
-        put(&root, &format!("{dev}/uevent"), "DRIVER=amdgpu\nPCI_CLASS=30000\nPCI_ID=1002:744C\n");
+        put(&root, &format!("{dev}/uevent"), "DRIVER=amdgpu\nPCI_CLASS=30000\nPCI_ID=1002:744C\nPCI_SLOT_NAME=0000:03:00.0\n");
         put(&root, &format!("{dev}/vendor"), "0x1002\n");
         put(&root, &format!("{dev}/device"), "0x744c\n");
         put(&root, &format!("{dev}/gpu_busy_percent"), "34\n");
@@ -214,6 +215,7 @@ mod tests {
         let d = &devs[0];
         assert_eq!(d.id, "drm:card1");
         assert_eq!((d.vendor, d.pci.as_deref(), d.driver.as_deref()), (Some("AMD"), Some("1002:744c"), Some("amdgpu")));
+        assert_eq!(d.bus.as_deref(), Some("0000:03:00.0"));
         assert_eq!(d.usage, Some(34.0));
         assert_eq!(d.vram_pct(), Some(6.25));
         assert_eq!((d.temp, d.power, d.clock, d.fan), (Some(51.0), Some(23.0), Some(2100), Some(Fan::Rpm(1200))));

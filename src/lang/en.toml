@@ -257,7 +257,7 @@ clock = "Clock"
 unavailable = "Not available"
 procs = "Processes on it"
 procs_none = "None reported"
-procs_none_sysfs = "sysfs gives no per-process use for this driver"
+procs_none_sysfs = "None seen in /proc/*/fdinfo (other users' processes need root)"
 procs_none_iokit = "IOKit gives no per-process GPU use"
 
 [gpu.why]

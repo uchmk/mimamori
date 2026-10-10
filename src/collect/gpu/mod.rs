@@ -11,6 +11,8 @@
 // Other OSes read nothing; the types are there for the screen.
 #![cfg_attr(not(any(target_os = "linux", windows, target_os = "macos")), allow(dead_code))]
 
+#[cfg(any(target_os = "linux", test))]
+pub mod fdinfo;
 #[cfg(target_os = "macos")]
 mod ioaccel;
 #[cfg(windows)]
@@ -155,9 +157,11 @@ pub struct Device {
     pub vendor: Option<&'static str>,
     /// `1002:744c` where the PCI ids are known.
     pub pci: Option<String>,
+    /// The PCI address, `0000:03:00.0`, where it is known (Linux, NVML).
+    pub bus: Option<String>,
     pub driver: Option<String>,
-    /// Where the readings came from: `sysfs`, `pdh`, `nvml`, `pdh+nvml`,
-    /// `iokit`.
+    /// Where the readings came from: `sysfs`, `sysfs+fdinfo`, `pdh`,
+    /// `pdh+d3dkmt`, `nvml`, `pdh+nvml`, `iokit`.
     pub source: &'static str,
     /// Percent, the busiest engine's.
     pub usage: Option<f32>,
@@ -211,6 +215,17 @@ pub fn vendor_name(id: u32) -> Option<&'static str> {
         0x80ee => "VirtualBox",
         _ => return None,
     })
+}
+
+/// A PCI address as sysfs writes it: NVML's eight-digit domain
+/// (`00000000:01:00.0`) cut to four, in lower case.
+#[cfg(any(windows, target_os = "linux", test))]
+pub fn bus_addr(s: &str) -> String {
+    let s = s.trim().to_ascii_lowercase();
+    match s.split_once(':') {
+        Some((dom, rest)) if dom.len() > 4 => format!("{}:{rest}", &dom[dom.len() - 4..]),
+        _ => s,
+    }
 }
 
 /// What is said where no GPU is listed: why, on this OS.
@@ -274,6 +289,8 @@ pub struct Sampler {
     nv: Option<nvidia::Reader>,
     #[cfg(target_os = "linux")]
     busy: linux::Busy,
+    #[cfg(target_os = "linux")]
+    fd: fdinfo::Reader,
     #[cfg(windows)]
     pdh: Option<pdh::Reader>,
     #[cfg(windows)]
@@ -287,6 +304,8 @@ impl Sampler {
             nv: nvidia::Reader::open(),
             #[cfg(target_os = "linux")]
             busy: linux::Busy::default(),
+            #[cfg(target_os = "linux")]
+            fd: fdinfo::Reader::default(),
             #[cfg(windows)]
             pdh: pdh::Reader::open(),
             #[cfg(windows)]
@@ -298,9 +317,11 @@ impl Sampler {
     pub fn sample(&mut self) -> Vec<Device> {
         let root = std::path::Path::new("/sys");
         let nv = self.nv.as_ref().map(|n| n.read()).unwrap_or_default();
+        let now = std::time::Instant::now();
         let mut devs = linux::drm(root, !nv.is_empty());
+        self.fd.fill(std::path::Path::new("/proc"), &mut devs, now);
         devs.extend(nv);
-        devs.extend(linux::accel(root, &mut self.busy, std::time::Instant::now()));
+        devs.extend(linux::accel(root, &mut self.busy, now));
         order(devs)
     }
 
@@ -338,6 +359,13 @@ mod tests {
         for f in [Field::Usage, Field::Vram, Field::Temp, Field::Power, Field::Clock] {
             assert_ne!(tr(f.key()), f.key(), "{f:?}");
         }
+    }
+
+    #[test]
+    fn bus_addresses_are_written_as_sysfs_does() {
+        assert_eq!(bus_addr("00000000:01:00.0"), "0000:01:00.0");
+        assert_eq!(bus_addr("0000:0C:00.0"), "0000:0c:00.0");
+        assert_eq!(bus_addr("weird"), "weird");
     }
 
     fn dev(name: &str, vendor: Option<&'static str>) -> Device {
