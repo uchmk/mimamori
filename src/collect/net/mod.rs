@@ -26,6 +26,9 @@ use std::time::Instant;
 pub enum Kind {
     Wired,
     Wireless,
+    /// Bluetooth PAN (tethering through a phone); the radio itself is not
+    /// a network interface.
+    Bluetooth,
     Vpn,
     Virtual,
     #[default]
@@ -35,12 +38,13 @@ pub enum Kind {
 
 impl Kind {
     #[cfg(test)]
-    pub const ALL: [Kind; 6] = [Self::Wired, Self::Wireless, Self::Vpn, Self::Virtual, Self::Other, Self::Loopback];
+    pub const ALL: [Kind; 7] = [Self::Wired, Self::Wireless, Self::Bluetooth, Self::Vpn, Self::Virtual, Self::Other, Self::Loopback];
 
     pub fn key(self) -> &'static str {
         match self {
             Self::Wired => "net.kind.wired",
             Self::Wireless => "net.kind.wireless",
+            Self::Bluetooth => "net.kind.bluetooth",
             Self::Vpn => "net.kind.vpn",
             Self::Virtual => "net.kind.virtual",
             Self::Other => "net.kind.other",

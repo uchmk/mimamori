@@ -4,6 +4,15 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.6.1] - 2026-10-10
+
+### 修正
+
+- net の画面で、Bluetooth PAN（スマートフォンのテザリング）のインターフェースの種類が「wired」と出ていたのを「Bluetooth」にした。
+  Windows は `MIB_IF_ROW2` の `PhysicalMediumType`（Bluetooth は ifType が Ethernet なので、こちらでしか分からない）、
+  Linux は `/sys/class/net/*/uevent` の `DEVTYPE=bluetooth`（無い古いカーネルでは `bnep` で始まる名前）で見分ける。
+  Bluetooth のアダプターそのものはネットワークのインターフェースではないので、一覧には出ない。macOS は種類を名前から推すまま。
+
 ## [0.6.0] - 2026-10-10
 
 ### 追加

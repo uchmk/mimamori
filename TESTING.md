@@ -61,11 +61,11 @@ back to `[ ]`.
 
 ## 3c. Network (`7`)
 
-- [ ] 3c.1 Windows: the interfaces are the adapters in Settings → Network (an unplugged Ethernet shows `down`, a VPN shows while connected), without the `-WFP` / `-QoS` filter rows; `Adapter` is the adapter's name, `Link` its speed, and IPv4 / IPv6 / MAC match `ipconfig /all`.
+- [ ] 3c.1 Windows: the interfaces are the adapters in Settings → Network (an unplugged Ethernet shows `down`, a VPN shows while connected, `Bluetooth Network Connection` shows with the kind `Bluetooth`), without the `-WFP` / `-QoS` filter rows; `Adapter` is the adapter's name, `Link` its speed, and IPv4 / IPv6 / MAC match `ipconfig /all`.
 - [ ] 3c.2 Windows: download a large file; the interface's `Received` graph and the rate in the left column follow Task Manager's Ethernet / Wi-Fi graph within a second or two.
 - [ ] 3c.3 Windows: the sockets match `netstat -ano` (protocol, addresses, state, PID); `Process` names the owner, `Source` says `iphlpapi`, and run as a normal user the system's sockets still show their PIDs.
 - [ ] 3c.4 Linux: the sockets match `ss -tuanp`; run without root, the left column says some sockets are another user's and those rows have no PID; run with `sudo` every row has one.
-- [ ] 3c.5 Linux: a Wi-Fi interface reads `wireless`, a WireGuard or tun one `VPN / tunnel`, `docker0` `virtual`; `Link` is the speed `ethtool` reports, or `up` when it reports none.
+- [ ] 3c.5 Linux: a Wi-Fi interface reads `wireless`, a WireGuard or tun one `VPN / tunnel`, `docker0` `virtual`, a Bluetooth PAN (`bnep0`, while a phone tethers) `Bluetooth`; `Link` is the speed `ethtool` reports, or `up` when it reports none.
 - [ ] 3c.6 macOS: the interfaces are listed with traffic (`en0`, `utun*` as VPN / tunnel, `lo0` as loopback); the socket list says it is not read on macOS yet.
 - [ ] 3c.7 `u` keeps only the listening sockets and back; `/` filters by address, port, state or process name, and the selection stays on the same socket while the list refreshes; `Enter` on a socket with a PID opens procs with that process selected, on one without a toast says so.
 - [ ] 3c.8 Leaving net stops reading the sockets (mimamori's own CPU in procs drops back a few seconds after going to another screen); coming back shows the last list at once and refreshes it.

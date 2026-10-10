@@ -18,6 +18,9 @@ pub struct Row {
     pub mtu: u32,
     /// IANA ifType.
     pub ty: u32,
+    /// NDIS_PHYSICAL_MEDIUM: Bluetooth PAN says Ethernet in `ty` and only
+    /// tells here.
+    pub medium: u32,
     pub hardware: bool,
     /// A filter driver's view of another interface: the same traffic again.
     pub filter: bool,
@@ -35,9 +38,12 @@ const WIFI: u32 = 71;
 const PPP: u32 = 23;
 const PROP_VIRTUAL: u32 = 53;
 const TUNNEL: u32 = 131;
+/// NdisPhysicalMediumBluetooth.
+const MEDIUM_BLUETOOTH: u32 = 10;
 
 fn kind(r: &Row) -> Kind {
     match r.ty {
+        _ if r.medium == MEDIUM_BLUETOOTH => Kind::Bluetooth,
         WIFI => Kind::Wireless,
         ETHERNET if r.hardware => Kind::Wired,
         ETHERNET => Kind::Virtual,
@@ -155,15 +161,17 @@ mod tests {
         // Up but with no address: a WAN miniport.
         let wan = Row { oper_up: true, ..row(13, 5, "WAN Miniport", 23) };
         let vswitch = Row { oper_up: true, ..row(14, 6, "vEthernet (WSL)", 6) };
+        // Bluetooth PAN: ifType Ethernet on hardware, listed even when no phone is paired in.
+        let bt = Row { hardware: true, connector: true, medium: 10, ..row(15, 7, "Bluetooth Network Connection", 6) };
         let ips = HashMap::from([
             (4, (vec!["192.168.1.2/24".to_string()], vec![])),
             (1, (vec!["127.0.0.1/8".to_string()], vec![])),
             (12, (vec!["10.6.0.2/32".to_string()], vec![])),
             (14, (vec![], vec!["fe80::1/64".to_string()])),
         ]);
-        let got = pick(&[eth, wifi, filter, dup, lo, vpn, wan, vswitch], &ips);
+        let got = pick(&[eth, wifi, filter, dup, lo, vpn, wan, vswitch, bt], &ips);
         let names: Vec<_> = got.iter().map(|n| n.name.as_str()).collect();
-        assert_eq!(names, ["Ethernet", "Wi-Fi", "WireGuard", "vEthernet (WSL)"]);
+        assert_eq!(names, ["Ethernet", "Wi-Fi", "WireGuard", "vEthernet (WSL)", "Bluetooth Network Connection"]);
         assert_eq!(
             (got[0].kind, got[0].speed_mbps, got[0].mac.as_deref(), got[0].mtu),
             (Kind::Wired, Some(1000), Some("01:02:03:04:05:06"), Some(1500))
@@ -172,6 +180,7 @@ mod tests {
         assert_eq!((got[1].kind, got[1].up, got[1].speed_mbps), (Kind::Wireless, false, None));
         assert_eq!((got[2].kind, got[2].speed_mbps, got[2].mtu), (Kind::Vpn, None, None));
         assert_eq!(got[3].kind, Kind::Virtual);
+        assert_eq!((got[4].kind, got[4].up), (Kind::Bluetooth, false));
     }
 
     #[test]

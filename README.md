@@ -154,8 +154,8 @@ The net screen reads:
 
 | OS | Interfaces | Sockets |
 | --- | --- | --- |
-| Windows | The IP helper (`GetIfTable2`, `GetUnicastIpAddressTable`): the physical adapters, even unplugged, and any other that is up with an address (VPNs, Hyper-V switches), without the filter layers | `GetExtendedTcpTable` / `GetExtendedUdpTable` with the owning PID |
-| Linux | sysinfo for the counters and addresses; `/sys/class/net` for the kind, link speed and driver | `/proc/net/{tcp,tcp6,udp,udp6}`, the owner from the `socket:[inode]` links in `/proc/*/fd`. Another user's sockets show no process without root |
+| Windows | The IP helper (`GetIfTable2`, `GetUnicastIpAddressTable`): the physical adapters, even unplugged, and any other that is up with an address (VPNs, Hyper-V switches), without the filter layers; Bluetooth PAN told apart by `PhysicalMediumType` | `GetExtendedTcpTable` / `GetExtendedUdpTable` with the owning PID |
+| Linux | sysinfo for the counters and addresses; `/sys/class/net` for the kind (Bluetooth PAN from `DEVTYPE` in `uevent`), link speed and driver | `/proc/net/{tcp,tcp6,udp,udp6}`, the owner from the `socket:[inode]` links in `/proc/*/fd`. Another user's sockets show no process without root |
 | macOS | sysinfo; the kind is guessed from the name | Not yet |
 
 On Windows and Linux, NVIDIA cards are read through NVML, loaded from the

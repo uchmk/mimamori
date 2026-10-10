@@ -83,6 +83,7 @@ fn interfaces() -> Option<Vec<Row>> {
                 mac: r.PhysicalAddress[..n].to_vec(),
                 mtu: r.Mtu,
                 ty: r.Type,
+                medium: r.PhysicalMediumType.0 as u32,
                 hardware: flags & 1 != 0,
                 filter: flags & 2 != 0,
                 connector: flags & 4 != 0,

@@ -12,11 +12,18 @@ use super::{Conn, Kind, Proto, State, peer};
 #[cfg(target_os = "linux")]
 use super::{Conns, Nic, Note};
 
-/// The kind from sysfs: `type` (ARPHRD_*), whether it is wireless, whether
-/// a device stands behind it.
-pub fn kind(name: &str, ty: u32, wireless: bool, has_device: bool) -> Kind {
+/// `DEVTYPE=` from a sysfs `uevent` file (`bluetooth`, `wlan`, `bridge`).
+pub fn devtype(uevent: &str) -> Option<&str> {
+    uevent.lines().find_map(|l| l.strip_prefix("DEVTYPE=")).map(str::trim)
+}
+
+/// The kind from sysfs: `type` (ARPHRD_*), the `DEVTYPE` from `uevent`,
+/// whether it is wireless, whether a device stands behind it.
+pub fn kind(name: &str, ty: u32, devtype: Option<&str>, wireless: bool, has_device: bool) -> Kind {
     match ty {
         772 => Kind::Loopback,
+        // bnep: the Bluetooth network encapsulation (PAN) driver.
+        _ if devtype == Some("bluetooth") || name.starts_with("bnep") => Kind::Bluetooth,
         _ if wireless => Kind::Wireless,
         // none (tun), PPP, and the IP-in-IP tunnels.
         65534 | 512 | 768 | 769 | 776 | 778 | 823 => Kind::Vpn,
@@ -35,7 +42,8 @@ pub fn fill(n: &mut Nic, root: &Path) {
     let ty = read("type").and_then(|s| s.parse().ok()).unwrap_or(0);
     let wireless = dir.join("wireless").exists() || dir.join("phy80211").exists();
     let has_device = dir.join("device").exists();
-    n.kind = kind(&n.name, ty, wireless, has_device);
+    let uevent = read("uevent").unwrap_or_default();
+    n.kind = kind(&n.name, ty, devtype(&uevent), wireless, has_device);
     // Reading it fails while the link is down; -1 when the driver does not know.
     n.speed_mbps = read("speed").and_then(|s| s.parse::<i64>().ok()).filter(|&s| s > 0 && n.up).map(|s| s as u64);
     if let Some(d) =
@@ -160,14 +168,24 @@ mod tests {
 
     #[test]
     fn sysfs_types_fold_into_kinds() {
-        assert_eq!(kind("lo", 772, false, false), Kind::Loopback);
-        assert_eq!(kind("wlp2s0", 1, true, true), Kind::Wireless);
-        assert_eq!(kind("enp3s0", 1, false, true), Kind::Wired);
-        assert_eq!(kind("docker0", 1, false, false), Kind::Virtual);
-        assert_eq!(kind("tun0", 65534, false, false), Kind::Vpn);
-        assert_eq!(kind("wg0", 65534, false, false), Kind::Vpn);
-        assert_eq!(kind("tap0", 1, false, false), Kind::Vpn);
-        assert_eq!(kind("can0", 280, false, true), Kind::Other);
+        assert_eq!(kind("lo", 772, None, false, false), Kind::Loopback);
+        assert_eq!(kind("wlp2s0", 1, None, true, true), Kind::Wireless);
+        assert_eq!(kind("enp3s0", 1, None, false, true), Kind::Wired);
+        assert_eq!(kind("docker0", 1, None, false, false), Kind::Virtual);
+        assert_eq!(kind("tun0", 65534, None, false, false), Kind::Vpn);
+        assert_eq!(kind("wg0", 65534, None, false, false), Kind::Vpn);
+        assert_eq!(kind("tap0", 1, None, false, false), Kind::Vpn);
+        assert_eq!(kind("can0", 280, None, false, true), Kind::Other);
+        assert_eq!(kind("bnep0", 1, Some("bluetooth"), false, false), Kind::Bluetooth);
+        // An older kernel without DEVTYPE: the name still tells.
+        assert_eq!(kind("bnep1", 1, None, false, false), Kind::Bluetooth);
+        assert_eq!(kind("br0", 1, Some("bridge"), false, false), Kind::Virtual);
+    }
+
+    #[test]
+    fn uevent_gives_the_devtype() {
+        assert_eq!(devtype("INTERFACE=bnep0\nIFINDEX=7\nDEVTYPE=bluetooth\n"), Some("bluetooth"));
+        assert_eq!(devtype("INTERFACE=eth0\nIFINDEX=2\n"), None);
     }
 
     #[test]
@@ -222,5 +240,13 @@ mod tests {
         let mut n = Nic { name: "eth0".into(), up: false, ..Nic::default() };
         fill(&mut n, &root);
         assert_eq!(n.speed_mbps, None);
+        // Bluetooth PAN: Ethernet in `type`, told apart by uevent.
+        let bnep = root.join("pan0");
+        std::fs::create_dir_all(&bnep).unwrap();
+        std::fs::write(bnep.join("type"), "1\n").unwrap();
+        std::fs::write(bnep.join("uevent"), "INTERFACE=pan0\nIFINDEX=7\nDEVTYPE=bluetooth\n").unwrap();
+        let mut n = Nic { name: "pan0".into(), up: true, ..Nic::default() };
+        fill(&mut n, &root);
+        assert_eq!(n.kind, Kind::Bluetooth);
     }
 }

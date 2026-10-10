@@ -302,6 +302,7 @@ process = "PROCESS"
 [net.kind]
 wired = "wired"
 wireless = "wireless"
+bluetooth = "Bluetooth"
 vpn = "VPN / tunnel"
 virtual = "virtual"
 other = "other"
