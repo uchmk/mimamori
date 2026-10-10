@@ -88,20 +88,23 @@ jobs:
 
       # The notes in English, from the first paragraph of each `vX.Y.Z:`
       # commit since the previous tag (CHANGELOG.md is Japanese and is not
-      # used). The very first release has no previous tag and gets its own
-      # commit only.
+      # used). The very first release has no previous tag and gets the newest
+      # `vX.Y.Z:` commit only, which need not be HEAD itself.
       - name: Write the notes from the commits
         id: notes
         shell: bash
         run: |
           tag="${{ steps.tag.outputs.name }}"
           prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
-          range="${prev:+$prev..}HEAD"
-          [ -n "$prev" ] || range="HEAD~1..HEAD"
-          echo "notes from $range"
-          commits=$(git log --reverse --no-merges --format='%H %s' "$range" \
-                    | grep -E '^[0-9a-f]+ v[0-9]+\.[0-9]+\.[0-9]+' | cut -d' ' -f1)
-          [ -n "$commits" ] || commits=$(git log --reverse --no-merges --format=%H "$range")
+          if [ -n "$prev" ]; then
+            echo "notes from $prev..HEAD"
+            commits=$(git log --reverse --no-merges --format='%H %s' "$prev..HEAD" \
+                      | { grep -E '^[0-9a-f]+ v[0-9]+\.[0-9]+\.[0-9]+' || true; } | cut -d' ' -f1)
+          else
+            echo "no previous tag: notes from the newest version commit"
+            commits=$(git log -1 --no-merges -E --grep='^v[0-9]+\.[0-9]+\.[0-9]+' --format=%H HEAD)
+          fi
+          [ -n "$commits" ] || commits=$(git log -1 --format=%H HEAD)
 
           : > notes.md
           for sha in $commits; do
