@@ -452,6 +452,13 @@ drive = "Drive"
 health_key = "Health"
 temp = "Temperature"
 temp_mark = "{0} (warns at {1})"
+life_used = "Life used"
+power_on = "Powered on"
+hours = "{0} h ({1} days)"
+lifetime_writes = "Lifetime writes"
+remapped = "Remapped sectors"
+pending = "Pending sectors"
+media_errors = "Media errors"
 
 [disk.col]
 mount = "MOUNT"

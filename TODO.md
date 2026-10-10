@@ -35,8 +35,13 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   温度は Windows が `StorageDeviceTemperatureProperty`（SSD は 5 秒ごと、ほかは 1 分の確認で）、Linux が hwmon、無ければ smartctl の値。
   右の列に「Health」と「Temperature」の行、壊れかけのドライブは左の名前も赤。hwmon のチップに無いドライブの温度は sensors の画面にも出る（v0.12.0）。
 - [ ] disk: Windows で `IOCTL_STORAGE_PREDICT_FAILURE` に答えないドライブ（実機の 3d.8 で分かる）があれば、WMI の `MSFT_PhysicalDisk` の `HealthStatus` と `StorageReliabilityCounter`（管理者）を足す。
-- [ ] disk: macOS のドライブの温度（NVMe の SMART ログは IOKit の `IONVMeSMARTInterface`、SATA は `IOATASMARTInterface`。どちらもプラグインの COM 風の呼び出しになる）。
-- [ ] disk: SMART の中身（使った寿命の %・代替処理済みのセクタ・電源を入れた時間）を右の列に。smartctl は `-j`、Windows は `IOCTL_STORAGE_QUERY_PROPERTY` の `StorageDeviceProtocolSpecificProperty`（NVMe の SMART ログ）。
+- [ ] disk: macOS のドライブの温度と SMART の中身（NVMe の SMART ログは IOKit の `IONVMeSMARTInterface`、SATA は `IOATASMARTInterface`。どちらもプラグインの COM 風の呼び出しになる）。
+  NVMe のログの 512 バイトは `disk::nvme_log` がそのまま読める（v0.13.0 で Windows のために作った）。
+- [x] disk: SMART の中身（使った寿命の %・代替処理済みのセクタ・電源を入れた時間）を右の列に。smartctl は `-j`、Windows は `IOCTL_STORAGE_QUERY_PROPERTY` の `StorageDeviceProtocolSpecificProperty`（NVMe の SMART ログ）。
+  → 右の列の温度の下に「Life used」（80% から黄、100% で赤）・「Powered on」・「Lifetime writes」・「Remapped / Pending sectors」・「Media errors」（1 から黄）を、ドライブが答えた分だけ出す。
+  Linux は `-j` ではなく今の `smartctl -H -A` の文字を読む（JSON を読むために serde_json を足さないため）。止まったドライブは前の値を残す。
+  Windows は NVMe の SMART / health ログ（ページ 2）を読み、critical warning も故障の印にする。512 バイトのパースは OS に依らない `disk::nvme_log`（v0.13.0）。
+- [ ] disk: Windows の SATA の SMART の中身（`SMART_RCV_DRIVE_DATA` の属性。管理者が要る）。管理者でないときに何を出すかと合わせて決める。
 - [ ] disk の実機の確認 `【実機】`（TESTING.md 3d）。
 - [x] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
   → 左がチップ（チップごとの一番熱い温度の 1 分のグラフ）、真ん中が温度とファンの一覧（今・1 分の最低と最高・高温の目安・限界）、右が選んだセンサーのグラフと目安の線。

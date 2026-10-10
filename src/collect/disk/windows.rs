@@ -112,6 +112,41 @@ pub fn why_of(code: u32) -> Why {
     }
 }
 
+/// The length of the NVMe SMART / health log page.
+pub const NVME_LOG_LEN: usize = 512;
+
+/// An `IOCTL_STORAGE_QUERY_PROPERTY` input asking an NVMe drive for its
+/// SMART / health log, with room for the answer: the query's property id
+/// (`StorageDeviceProtocolSpecificProperty`, 50) and type (standard, 0), then
+/// a `STORAGE_PROTOCOL_SPECIFIC_DATA` at 8 (ten u32s: NVMe, a log page, page
+/// 2, sub-value 0, the data's offset from this struct and its length), then
+/// the log. The same buffer takes the answer.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn nvme_query() -> Vec<u8> {
+    let mut b = vec![0u8; 8 + 40 + NVME_LOG_LEN];
+    let words: [u32; 8] = [50, 0, 3, 2, 2, 0, 40, NVME_LOG_LEN as u32];
+    for (i, w) in words.iter().enumerate() {
+        b[i * 4..i * 4 + 4].copy_from_slice(&w.to_le_bytes());
+    }
+    b
+}
+
+/// The log out of the answer, a `STORAGE_PROTOCOL_DATA_DESCRIPTOR`: its
+/// version and size (both 48), then the protocol data at 8, whose offset
+/// (at 8 + 16) and length (at 8 + 20) place the log from the protocol data.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn nvme_reply(buf: &[u8]) -> Option<&[u8]> {
+    let u32_at = |i: usize| Some(u32::from_le_bytes(buf.get(i..i + 4)?.try_into().ok()?) as usize);
+    if u32_at(0)? != 48 || u32_at(4)? != 48 {
+        return None;
+    }
+    let (off, len) = (u32_at(24)?, u32_at(28)?);
+    if off < 40 || len < NVME_LOG_LEN {
+        return None;
+    }
+    buf.get(8 + off..8 + off + NVME_LOG_LEN)
+}
+
 /// The drives from the three counters (by instance), with what each said
 /// about itself. `volumes` holds the drive letters until they are linked to
 /// the volumes.
@@ -228,6 +263,46 @@ mod tests {
         assert_eq!(predict(&[0u8; 2]), None);
         assert_eq!(why_of(5), Why::NeedsAdmin);
         assert_eq!((why_of(1), why_of(50)), (Why::Unsupported, Why::Unsupported));
+    }
+
+    #[test]
+    fn the_nvme_query_asks_for_the_health_log_and_the_reply_gives_it() {
+        let q = nvme_query();
+        let word = |b: &[u8], i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap());
+        assert_eq!(q.len(), 8 + 40 + 512);
+        assert_eq!((word(&q, 0), word(&q, 4)), (50, 0));
+        assert_eq!((word(&q, 8), word(&q, 12), word(&q, 16)), (3, 2, 2));
+        assert_eq!((word(&q, 24), word(&q, 28)), (40, 512));
+        // What the driver writes back over it.
+        let mut r = q.clone();
+        r[0..4].copy_from_slice(&48u32.to_le_bytes());
+        r[4..8].copy_from_slice(&48u32.to_le_bytes());
+        r[48] = 7;
+        r[48 + 511] = 9;
+        let log = nvme_reply(&r).unwrap();
+        assert_eq!((log.len(), log[0], log[511]), (512, 7, 9));
+        // Another version, an offset into the header or a short log: nothing.
+        let mut bad = r.clone();
+        bad[0] = 40;
+        assert_eq!(nvme_reply(&bad), None);
+        let mut bad = r.clone();
+        bad[24..28].copy_from_slice(&8u32.to_le_bytes());
+        assert_eq!(nvme_reply(&bad), None);
+        let mut bad = r.clone();
+        bad[28..32].copy_from_slice(&100u32.to_le_bytes());
+        assert_eq!(nvme_reply(&bad), None);
+        assert_eq!(nvme_reply(&r[..100]), None);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn the_protocol_structs_have_the_sizes_the_bytes_assume() {
+        use ::windows::Win32::System::Ioctl::{
+            STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA, StorageDeviceProtocolSpecificProperty,
+        };
+        assert_eq!(size_of::<STORAGE_PROTOCOL_SPECIFIC_DATA>(), 40);
+        assert_eq!(size_of::<STORAGE_PROTOCOL_DATA_DESCRIPTOR>(), 48);
+        assert_eq!(StorageDeviceProtocolSpecificProperty.0, 50);
     }
 
     #[test]

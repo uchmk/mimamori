@@ -2,7 +2,8 @@
 //! `/sys/block` (which entries are whole drives, their size, model, bus and
 //! kind, and the temperature of a drive whose driver registers a hwmon chip:
 //! `nvme`, or `drivetemp` for SATA). SMART health is asked of `smartctl`,
-//! which also gives the temperature of a SATA drive without `drivetemp`.
+//! which also gives the wear and error counts, and the temperature of a SATA
+//! drive without `drivetemp`.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -199,10 +200,29 @@ fn lead_num(s: &str) -> Option<f32> {
     s[..end].parse().ok()
 }
 
+/// The first count in a field, with its thousands commas: `9876543` from
+/// `9,876,543 [5.05 TB]`.
+fn lead_count(s: &str) -> Option<u64> {
+    let digits: String = s.trim().chars().take_while(|c| c.is_ascii_digit() || *c == ',').filter(char::is_ascii_digit).collect();
+    digits.parse().ok()
+}
+
+/// ATA attributes whose normalized value is the life left, in percent.
+const LIFE_LEFT: [&str; 6] = [
+    "Wear_Leveling_Count",
+    "SSD_Life_Left",
+    "Media_Wearout_Indicator",
+    "Percent_Lifetime_Remain",
+    "Remaining_Lifetime_Perc",
+    "Percent_Life_Remaining",
+];
+
 /// What `smartctl -H -A` printed (in the C locale): the health from the
 /// overall assessment (ATA and NVMe) or the health status (SCSI), the
 /// temperature from NVMe's `Temperature:`, SCSI's `Current Drive
-/// Temperature:` or ATA's attribute 194 (190 where there is no 194).
+/// Temperature:` or ATA's attribute 194 (190 where there is no 194), and the
+/// wear and error counts from NVMe's health log, SCSI's pages or the ATA
+/// attributes (5 remapped, 9 hours, 197 pending, the life left of an SSD).
 pub fn parse_smart(text: &str) -> Check {
     if text.contains("STANDBY mode") || text.contains("SLEEP mode") {
         return Check::why(Why::Asleep);
@@ -212,6 +232,7 @@ pub fn parse_smart(text: &str) -> Check {
     }
     let mut c = Check::default();
     let (mut temp, mut trip, mut airflow) = (None, None, None);
+    let sm = &mut c.smart;
     for line in text.lines() {
         let line = line.trim();
         if let Some(v) = line.strip_prefix("SMART overall-health self-assessment test result:") {
@@ -222,13 +243,36 @@ pub fn parse_smart(text: &str) -> Check {
             temp = temp.or(lead_num(v.trim()));
         } else if let Some(v) = line.strip_prefix("Drive Trip Temperature:") {
             trip = lead_num(v.trim());
+        } else if let Some(v) = line.strip_prefix("Percentage Used:").or_else(|| line.strip_prefix("Percentage used endurance indicator:"))
+        {
+            sm.life_used = lead_count(v).and_then(|n| u32::try_from(n).ok());
+        } else if let Some(v) = line.strip_prefix("Data Units Written:") {
+            // Thousands of 512-byte blocks.
+            sm.written = lead_count(v).map(|n| n.saturating_mul(512_000));
+        } else if let Some(v) =
+            line.strip_prefix("Power On Hours:").or_else(|| line.strip_prefix("Accumulated power on time, hours:minutes"))
+        {
+            sm.power_on_hours = lead_count(v);
+        } else if let Some(v) = line.strip_prefix("Media and Data Integrity Errors:") {
+            sm.media_errors = lead_count(v);
+        } else if let Some(v) = line.strip_prefix("Elements in grown defect list:") {
+            sm.remapped = lead_count(v);
         } else {
             // ID# ATTRIBUTE_NAME FLAG VALUE WORST THRESH TYPE UPDATED WHEN_FAILED RAW_VALUE
             let f: Vec<&str> = line.split_whitespace().collect();
             let raw = || f.get(9).and_then(|v| lead_num(v));
+            let count = || f.get(9).and_then(|v| lead_count(v));
             match f.first() {
                 Some(&"194") => temp = temp.or(raw()),
                 Some(&"190") => airflow = raw(),
+                Some(&"5") if f.get(1) == Some(&"Reallocated_Sector_Ct") => sm.remapped = count(),
+                Some(&"9") if f.get(1) == Some(&"Power_On_Hours") => sm.power_on_hours = count(),
+                Some(&"197") if f.get(1) == Some(&"Current_Pending_Sector") => sm.pending = count(),
+                _ if f.len() >= 10 && LIFE_LEFT.contains(&f[1]) => {
+                    if let Some(left) = f[3].parse::<u32>().ok().filter(|&v| v <= 100) {
+                        sm.life_used = Some(100 - left);
+                    }
+                }
                 _ => {}
             }
         }
@@ -299,6 +343,7 @@ impl Reader {
 
 #[cfg(test)]
 mod tests {
+    use super::super::Smart;
     use super::*;
 
     const STATS: &str = "\
@@ -457,6 +502,35 @@ Temperature Sensor 1:               52 Celsius\n";
         assert_eq!((c.health, t.value, t.crit), (Some(Health::Good), 30.0, Some(65.0)));
         let c = parse_smart("SMART Health Status: FIRMWARE IMPENDING FAILURE TOO MANY BLOCK REASSIGNS [asc=5d, ascq=64]\n");
         assert_eq!(c.health, Some(Health::Failing));
+    }
+
+    #[test]
+    fn smartctl_gives_the_wear_and_error_counts() {
+        let ata = ATA.to_string()
+            + "  9 Power_On_Hours          0x0032   095   095   000    Old_age   Always       -       21345\n\
+177 Wear_Leveling_Count     0x0013   097   097   000    Pre-fail  Always       -       42\n\
+197 Current_Pending_Sector  0x0012   100   100   000    Old_age   Always       -       8\n";
+        let want = Smart { life_used: Some(3), power_on_hours: Some(21345), remapped: Some(0), pending: Some(8), ..Smart::default() };
+        assert_eq!(parse_smart(&ata).smart, want);
+        // Hours with minutes after them (some Seagate and WD drives).
+        let c = parse_smart(&ata.replace("21345", "1234h+05m+12.345s"));
+        assert_eq!(c.smart.power_on_hours, Some(1234));
+        let nvme = "SMART overall-health self-assessment test result: PASSED\n\
+Percentage Used:                    4%\nData Units Written:                 9,876,543 [5.05 TB]\n\
+Power On Hours:                     5,678\nMedia and Data Integrity Errors:    0\n";
+        let want = Smart {
+            life_used: Some(4),
+            power_on_hours: Some(5678),
+            written: Some(9_876_543 * 512_000),
+            media_errors: Some(0),
+            ..Smart::default()
+        };
+        assert_eq!(parse_smart(nvme).smart, want);
+        let scsi = "SMART Health Status: OK\nPercentage used endurance indicator: 2%\nElements in grown defect list: 7\n\
+Accumulated power on time, hours:minutes 31234:56\n";
+        let want = Smart { life_used: Some(2), power_on_hours: Some(31234), remapped: Some(7), ..Smart::default() };
+        assert_eq!(parse_smart(scsi).smart, want);
+        assert_eq!(parse_smart("SMART overall-health self-assessment test result: PASSED\n").smart, Smart::default());
     }
 
     #[test]

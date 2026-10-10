@@ -2,8 +2,9 @@
 //! how busy each drive is, and `IOCTL_STORAGE_QUERY_PROPERTY` for what each
 //! drive is, asked once per drive, and how hot a solid-state one is, asked every few
 //! seconds. The health check asks `IOCTL_STORAGE_PREDICT_FAILURE` once a
-//! minute, after making sure the drive is not spun down. The folding is in
-//! `windows.rs`.
+//! minute, after making sure the drive is not spun down, and an NVMe drive's
+//! SMART / health log too (the wear, the hours, the writes, the errors). The
+//! folding is in `windows.rs`.
 
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -25,8 +26,8 @@ use ::windows::Win32::System::Power::GetDevicePowerState;
 use ::windows::core::{BOOL, HRESULT, HSTRING, PCWSTR, w};
 
 use super::health::{Ask, Check};
-use super::windows::{Info, describe, fold, parse_instance, predict, temperature, why_of};
-use super::{Drive, Kind, Temp, Why};
+use super::windows::{Info, describe, fold, nvme_query, nvme_reply, parse_instance, predict, temperature, why_of};
+use super::{Drive, Health, Kind, Smart, Temp, Why, nvme_log};
 use crate::collect::pdh::array;
 
 /// How often a solid-state drive's temperature is asked.
@@ -201,10 +202,10 @@ fn win32(code: HRESULT) -> u32 {
 
 /// The health of each drive, for the health thread.
 pub fn check(asks: &[Ask]) -> HashMap<String, Check> {
-    asks.iter().map(|a| (a.id.clone(), check_one(&a.id))).collect()
+    asks.iter().map(|a| (a.id.clone(), check_one(&a.id, a.bus))).collect()
 }
 
-fn check_one(id: &str) -> Check {
+fn check_one(id: &str, bus: Option<&str>) -> Check {
     let Some(disk) = id.parse().ok().and_then(Disk::open) else { return Check::why(Why::Unsupported) };
     let mut on = BOOL(1);
     // SAFETY: an open handle and a BOOL to write; asking does not spin the drive up.
@@ -231,7 +232,44 @@ fn check_one(id: &str) -> Check {
         Err(e) => Check::why(why_of(win32(e.code()))),
     };
     c.temp = temp(&disk);
+    if bus == Some("NVMe")
+        && let Some((health, value, smart)) = nvme_health(&disk)
+    {
+        c.smart = smart;
+        // The log's critical warning (spare, temperature, reliability, read
+        // only) is a failing drive even where the predict call said nothing.
+        if health == Health::Failing || c.health.is_none() {
+            (c.health, c.why) = (Some(health), None);
+        }
+        if c.temp.is_none() {
+            c.temp = value.map(|value| Temp { value, high: None, crit: None, source: "NVMe health log".into(), chip: None });
+        }
+    }
     c
+}
+
+/// An NVMe drive's SMART / health log, through the protocol-specific
+/// property: the inbox driver answers without an administrator.
+fn nvme_health(disk: &Disk) -> Option<(Health, Option<f32>, Smart)> {
+    let mut buf = nvme_query();
+    let mut got = 0u32;
+    let len = buf.len() as u32;
+    // SAFETY: the one buffer is the query going in and the answer coming out,
+    // as the call allows; it outlives the call and its size is given.
+    unsafe {
+        DeviceIoControl(
+            disk.0,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            Some(buf.as_ptr().cast::<c_void>()),
+            len,
+            Some(buf.as_mut_ptr().cast::<c_void>()),
+            len,
+            Some(&mut got),
+            None,
+        )
+    }
+    .ok()?;
+    nvme_log(nvme_reply(buf.get(..got as usize)?)?)
 }
 
 /// One `IOCTL_STORAGE_QUERY_PROPERTY` into `out`; the bytes written.

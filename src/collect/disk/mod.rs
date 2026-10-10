@@ -168,6 +168,49 @@ pub struct Temp {
     pub chip: Option<String>,
 }
 
+/// What a drive's SMART data says beyond its health: how worn it is and the
+/// counts that go up before a drive fails. Each is `None` where the drive
+/// keeps no such count.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Smart {
+    /// Percent of the rated endurance used (NVMe can go past 100).
+    pub life_used: Option<u32>,
+    pub power_on_hours: Option<u64>,
+    /// Bytes the host wrote over the drive's life.
+    pub written: Option<u64>,
+    /// Sectors moved to spares (ATA attribute 5, SCSI's grown defects).
+    pub remapped: Option<u64>,
+    /// Sectors waiting to be remapped (ATA attribute 197).
+    pub pending: Option<u64>,
+    /// NVMe: unrecovered data integrity errors.
+    pub media_errors: Option<u64>,
+}
+
+/// The SMART / health information log of an NVMe drive (log page 2, 512
+/// bytes, the same on every OS): the critical warning at 0, the composite
+/// temperature in kelvin at 1, percentage used at 5, and 16-byte counters
+/// from 32: data units written (thousands of 512-byte blocks) at 48, power-on
+/// hours at 128 and media errors at 160.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn nvme_log(buf: &[u8]) -> Option<(Health, Option<f32>, Smart)> {
+    if buf.len() < 192 {
+        return None;
+    }
+    let n128 = |i: usize| u128::from_le_bytes(buf[i..i + 16].try_into().unwrap_or_default());
+    let n64 = |i: usize| u64::try_from(n128(i)).unwrap_or(u64::MAX);
+    let health = if buf[0] == 0 { Health::Good } else { Health::Failing };
+    let kelvin = u16::from_le_bytes([buf[1], buf[2]]);
+    let temp = (kelvin > 0).then(|| f32::from(kelvin) - 273.0).filter(|t| (-60.0..250.0).contains(t));
+    let smart = Smart {
+        life_used: Some(u32::from(buf[5])),
+        power_on_hours: Some(n64(128)),
+        written: Some(u64::try_from(n128(48).saturating_mul(512_000)).unwrap_or(u64::MAX)),
+        media_errors: Some(n64(160)),
+        ..Smart::default()
+    };
+    Some((health, temp, smart))
+}
+
 /// A physical drive (or what the OS shows as one: a virtual disk, an LVM or
 /// RAID device).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -196,6 +239,7 @@ pub struct Drive {
     pub health: Option<Health>,
     /// Why there is no health.
     pub why: Option<Why>,
+    pub smart: Smart,
 }
 
 /// A mounted file system.
@@ -407,6 +451,33 @@ mod tests {
         for w in Why::ALL {
             assert_ne!(tr(w.key()), w.key());
         }
+    }
+
+    #[test]
+    fn an_nvme_health_log_gives_wear_hours_writes_and_errors() {
+        let mut log = vec![0u8; 512];
+        log[1..3].copy_from_slice(&314u16.to_le_bytes()); // 41 °C
+        log[5] = 3;
+        log[48..56].copy_from_slice(&10_000u64.to_le_bytes()); // 5.12 GB
+        log[128..136].copy_from_slice(&5678u64.to_le_bytes());
+        log[160] = 2;
+        let (health, temp, smart) = nvme_log(&log).unwrap();
+        assert_eq!((health, temp), (Health::Good, Some(41.0)));
+        assert_eq!(
+            smart,
+            Smart {
+                life_used: Some(3),
+                power_on_hours: Some(5678),
+                written: Some(5_120_000_000),
+                media_errors: Some(2),
+                ..Smart::default()
+            }
+        );
+        log[0] = 0x04; // reliability degraded
+        log[1..3].fill(0);
+        let (health, temp, _) = nvme_log(&log).unwrap();
+        assert_eq!((health, temp), (Health::Failing, None));
+        assert_eq!(nvme_log(&log[..100]), None);
     }
 
     #[test]

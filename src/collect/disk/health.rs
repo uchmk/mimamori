@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, TryRecvError};
 
-use super::{Drive, Health, Temp, Why};
+use super::{Drive, Health, Smart, Temp, Why};
 
 const EVERY: Duration = Duration::from_secs(60);
 
@@ -28,6 +28,7 @@ pub struct Check {
     /// The temperature the check read on the way (`smartctl`), for a drive
     /// that has none from the reading itself.
     pub temp: Option<Temp>,
+    pub smart: Smart,
 }
 
 impl Check {
@@ -52,7 +53,7 @@ impl Checker {
     pub fn apply(&mut self, drives: &mut [Drive]) {
         if let Some(rx) = &self.rx {
             match rx.try_recv() {
-                Ok(got) => (self.got, self.rx) = (got, None),
+                Ok(got) => (self.got, self.rx) = (keep_asleep(got, &self.got), None),
                 Err(TryRecvError::Disconnected) => self.rx = None,
                 Err(TryRecvError::Empty) => {}
             }
@@ -76,11 +77,24 @@ impl Checker {
     }
 }
 
+/// A drive left asleep says nothing new, so it keeps what it said when it
+/// was last awake (its wear and hours do not move while it sleeps).
+fn keep_asleep(mut got: HashMap<String, Check>, last: &HashMap<String, Check>) -> HashMap<String, Check> {
+    for (id, c) in &mut got {
+        if c.why == Some(Why::Asleep)
+            && let Some(l) = last.get(id)
+        {
+            c.smart = l.smart.clone();
+        }
+    }
+    got
+}
+
 fn fill(drives: &mut [Drive], got: &HashMap<String, Check>) {
     for d in drives {
         match got.get(&d.id) {
             Some(c) => {
-                (d.health, d.why) = (c.health, c.why);
+                (d.health, d.why, d.smart) = (c.health, c.why, c.smart.clone());
                 if d.temp.is_none() {
                     d.temp = c.temp.clone();
                 }
@@ -122,8 +136,8 @@ mod tests {
     fn answers_fill_the_drives_and_the_rest_are_pending() {
         let t = |v: f32| Temp { value: v, source: "smartctl".into(), ..Temp::default() };
         let got = HashMap::from([
-            ("sda".to_string(), Check { health: Some(Health::Good), why: None, temp: Some(t(35.0)) }),
-            ("sdb".to_string(), Check { health: Some(Health::Failing), why: None, temp: Some(t(50.0)) }),
+            ("sda".to_string(), Check { health: Some(Health::Good), temp: Some(t(35.0)), ..Check::default() }),
+            ("sdb".to_string(), Check { health: Some(Health::Failing), temp: Some(t(50.0)), ..Check::default() }),
             ("vda".to_string(), Check::why(Why::Unsupported)),
         ]);
         // sdb has a temperature of its own (hwmon), which stays.
@@ -133,6 +147,19 @@ mod tests {
         assert_eq!((drives[1].health, drives[1].temp.as_ref().map(|t| t.value)), (Some(Health::Failing), Some(41.0)));
         assert_eq!((drives[2].health, drives[2].why), (None, Some(Why::Unsupported)));
         assert_eq!((drives[3].health, drives[3].why), (None, Some(Why::Pending)));
+    }
+
+    #[test]
+    fn a_drive_left_asleep_keeps_its_last_smart_counts() {
+        let smart = Smart { power_on_hours: Some(100), ..Smart::default() };
+        let last = HashMap::from([
+            ("sda".to_string(), Check { health: Some(Health::Good), smart: smart.clone(), ..Check::default() }),
+            ("sdb".to_string(), Check { health: Some(Health::Good), smart: smart.clone(), ..Check::default() }),
+        ]);
+        let got = HashMap::from([("sda".to_string(), Check::why(Why::Asleep)), ("sdb".to_string(), Check::why(Why::NeedsRoot))]);
+        let got = keep_asleep(got, &last);
+        assert_eq!((got["sda"].why, &got["sda"].smart), (Some(Why::Asleep), &smart));
+        assert_eq!(got["sdb"].smart, Smart::default(), "only sleep keeps the old counts");
     }
 
     #[test]

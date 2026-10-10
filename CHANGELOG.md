@@ -4,6 +4,19 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.13.0] - 2026-10-10
+
+### 追加
+
+- disk の画面: 右の列の温度の下に、ドライブの SMART の中身を出す。ドライブが答えた分だけ並べる。
+  - 「Life used」（使った寿命の %。80% から黄、100% で赤）・「Powered on」（電源を入れた時間と日数）・「Lifetime writes」（これまでに書いた量）。
+  - 「Remapped sectors」（代替処理済み）・「Pending sectors」（代替待ち）・「Media errors」。1 以上で黄。
+  - Windows: NVMe のドライブは `IOCTL_STORAGE_QUERY_PROPERTY` の `StorageDeviceProtocolSpecificProperty` で SMART / health ログを読む。
+    ログの critical warning も故障の印にし、温度の読めないドライブはログの温度を使う。SATA の中身はまだ読まない（管理者が要る）。
+  - Linux: 健康状態と同じ `smartctl -H -A -n standby` の出力から読む（NVMe の Percentage Used など、ATA の属性 5・9・197 と寿命の属性、SCSI の値）。
+    TODO にあった `-j` の JSON ではなく文字を読む（JSON のために serde_json を足さないため）。
+  - 止まっていて起こさなかったドライブは、前の回の値を残す。
+
 ## [0.12.0] - 2026-10-10
 
 ### 追加

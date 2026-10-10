@@ -6,7 +6,7 @@
 use egui::{Color32, Rect, pos2, vec2};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
-use crate::collect::disk::{Drive, Health, Temp, Volume};
+use crate::collect::disk::{Drive, Health, Smart, Temp, Volume};
 use crate::config::theme::{CYAN, DIM, FG, GREEN, MAGENTA, RED, ROW, YELLOW};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
@@ -232,6 +232,48 @@ fn temp_row(t: &Temp) -> (String, Color32) {
     (text, color)
 }
 
+/// `1234567` → `1,234,567`.
+fn group(n: u64) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// What SMART counts, the rows the drive gave: the life used (yellow from
+/// 80%, red at 100%), the hours powered on, the lifetime writes, and the
+/// remapped, pending and media errors (yellow from the first).
+fn smart_rows(s: &Smart) -> Vec<(&'static str, String, Color32)> {
+    let mut rows = Vec::new();
+    if let Some(p) = s.life_used {
+        let color = if p >= 100 {
+            RED
+        } else if p >= 80 {
+            YELLOW
+        } else {
+            FG
+        };
+        rows.push((tr("disk.life_used"), format!("{p}%"), color));
+    }
+    if let Some(h) = s.power_on_hours {
+        rows.push((tr("disk.power_on"), trf("disk.hours", &[&group(h), &group(h / 24)]), FG));
+    }
+    if let Some(b) = s.written {
+        rows.push((tr("disk.lifetime_writes"), fmt_bytes(b), FG));
+    }
+    for (key, n) in [("disk.remapped", s.remapped), ("disk.pending", s.pending), ("disk.media_errors", s.media_errors)] {
+        if let Some(n) = n {
+            rows.push((tr(key), group(n), if n > 0 { YELLOW } else { FG }));
+        }
+    }
+    rows
+}
+
 fn drive_rows(d: &Drive) -> Vec<(&'static str, String)> {
     let dash = || "—".to_string();
     let yes_no = |b: bool| tr(if b { "disk.yes" } else { "disk.no" }).to_string();
@@ -321,6 +363,13 @@ fn draw_right(cx: &mut Cx, r: Rect) {
             cx.pen.pair(row_at(body, y), tr("disk.temp"), DIM, &text, color);
             y += ROW;
         }
+        for (label, text, color) in smart_rows(&d.smart) {
+            if y + ROW > body.bottom() {
+                break;
+            }
+            cx.pen.pair(row_at(body, y), label, DIM, &text, color);
+            y += ROW;
+        }
         y = kv_rows(&cx.pen, body, y, &drive_rows(d)) + GAP;
     } else if let Some(v) = vol {
         // No drives (macOS, or the counters are off): the volume's own traffic.
@@ -386,6 +435,23 @@ mod tests {
         assert_eq!(temp_row(&t(38.0, Some(70.0), Some(80.0))), (trf("disk.temp_mark", &["38°C", "70°C"]), FG));
         assert_eq!(temp_row(&t(72.0, Some(70.0), Some(80.0))).1, YELLOW);
         assert_eq!(temp_row(&t(85.0, None, Some(80.0))), (trf("disk.temp_mark", &["85°C", "80°C"]), RED));
+    }
+
+    #[test]
+    fn smart_rows_show_what_the_drive_counts_and_warn_on_wear_and_errors() {
+        assert_eq!(smart_rows(&Smart::default()), []);
+        assert_eq!((group(0), group(999), group(1000), group(1_234_567)), ("0".into(), "999".into(), "1,000".into(), "1,234,567".into()));
+        let s = Smart { life_used: Some(3), power_on_hours: Some(5678), written: Some(1 << 40), media_errors: Some(0), ..Smart::default() };
+        let rows = smart_rows(&s);
+        assert_eq!(rows.len(), 4);
+        assert_eq!(rows[0], (tr("disk.life_used"), "3%".to_string(), FG));
+        assert_eq!(rows[1], (tr("disk.power_on"), trf("disk.hours", &["5,678", "236"]), FG));
+        assert_eq!(rows[2], (tr("disk.lifetime_writes"), fmt_bytes(1 << 40), FG));
+        assert_eq!(rows[3], (tr("disk.media_errors"), "0".to_string(), FG));
+        let worn = |p| smart_rows(&Smart { life_used: Some(p), ..Smart::default() })[0].2;
+        assert_eq!((worn(79), worn(80), worn(100), worn(255)), (FG, YELLOW, RED, RED));
+        let s = Smart { remapped: Some(8), pending: Some(1), ..Smart::default() };
+        assert_eq!(smart_rows(&s), [(tr("disk.remapped"), "8".to_string(), YELLOW), (tr("disk.pending"), "1".to_string(), YELLOW)]);
     }
 
     #[test]
