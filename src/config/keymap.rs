@@ -17,12 +17,14 @@ pub struct Binding {
     pub desc: String,
 }
 
-/// The layers: the screens, the filter's line, the help.
+/// The layers: the screens, the filter's line, the help, the question
+/// before a process is ended.
 #[derive(Default, Debug)]
 pub struct Keymap {
     pub main: Vec<Binding>,
     pub input: Vec<Binding>,
     pub help: Vec<Binding>,
+    pub confirm: Vec<Binding>,
 }
 
 pub enum Match<'a> {
@@ -54,6 +56,8 @@ struct File {
     input: Section,
     #[serde(default)]
     help: Section,
+    #[serde(default)]
+    confirm: Section,
 }
 
 #[derive(Deserialize, Default)]
@@ -165,6 +169,7 @@ impl Keymap {
             main: layer(&d.main, &u.main, &mut warn),
             input: layer(&d.input, &u.input, &mut warn),
             help: layer(&d.help, &u.help, &mut warn),
+            confirm: layer(&d.confirm, &u.confirm, &mut warn),
         };
         (km, warn)
     }
@@ -184,7 +189,7 @@ mod tests {
     fn the_defaults_parse_without_a_warning() {
         let (km, warn) = Keymap::load(None);
         assert!(warn.is_empty(), "{warn:?}");
-        assert!(!km.main.is_empty() && !km.input.is_empty() && !km.help.is_empty());
+        assert!(!km.main.is_empty() && !km.input.is_empty() && !km.help.is_empty() && !km.confirm.is_empty());
     }
 
     #[test]

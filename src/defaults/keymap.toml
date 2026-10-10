@@ -48,6 +48,7 @@ keymap = [
     { on = "<Enter>", run = "enter", desc = "Open the selection" },
     { on = "/", run = "filter", desc = "Filter processes" },
     { on = "s", run = "sort", desc = "Next sort column" },
+    { on = "x", run = "kill", desc = "End the selected process" },
     { on = "P", run = "pause", desc = "Pause / resume sampling" },
     { on = "+", run = "interval +", desc = "Sample less often" },
     { on = "=", run = "interval +", desc = "Sample less often" },
@@ -74,4 +75,14 @@ keymap = [
     { on = "<Down>", run = "arrow 1", desc = "Down" },
     { on = "k", run = "arrow -1", desc = "Up" },
     { on = "<Up>", run = "arrow -1", desc = "Up" },
+]
+
+# The question before a process is ended (`x`).
+[confirm]
+keymap = [
+    { on = "y", run = "confirm", desc = "End it" },
+    { on = "<Enter>", run = "confirm", desc = "End it" },
+    { on = "n", run = "escape", desc = "Keep it running" },
+    { on = "<Esc>", run = "escape", desc = "Keep it running" },
+    { on = "q", run = "escape", desc = "Keep it running" },
 ]

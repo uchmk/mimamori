@@ -10,6 +10,7 @@ mod config;
 mod gpu_backend;
 mod i18n;
 mod keyscript;
+mod kill;
 mod model;
 mod persist;
 mod screen;
@@ -188,6 +189,7 @@ fn main() -> eframe::Result {
             cc.egui_ctx.set_visuals(theme::visuals());
             let (rx, ctl) = collect::spawn(cc.egui_ctx.clone(), Duration::from_secs_f32(interval));
             let mut app = App::new(km, rx, ctl, layouts, saver, interval);
+            app.wake = Some(cc.egui_ctx.clone());
             // One line in the status bar; the whole list went to stderr.
             if let Some(first) = warnings.first() {
                 let more = if warnings.len() > 1 { format!(" (+{})", warnings.len() - 1) } else { String::new() };

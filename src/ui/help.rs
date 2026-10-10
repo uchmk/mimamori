@@ -1,4 +1,4 @@
-//! The `?` overlay: every binding of the three layers, the keys that do the
+//! The `?` overlay: every binding of each layer, the keys that do the
 //! same thing on one line, the way filer's help reads.
 
 use egui::{Color32, Rect, Stroke, StrokeKind, pos2, vec2};
@@ -36,7 +36,9 @@ fn group(layer: &[Binding]) -> Vec<(String, String)> {
 fn lines(app: &App) -> Vec<Line> {
     let km = app.keymap();
     let mut out = Vec::new();
-    for (title, layer) in [(tr("help.main"), &km.main), (tr("help.input"), &km.input), (tr("help.in_help"), &km.help)] {
+    for (title, layer) in
+        [(tr("help.main"), &km.main), (tr("help.input"), &km.input), (tr("help.in_help"), &km.help), (tr("help.confirm"), &km.confirm)]
+    {
         if !out.is_empty() {
             out.push(Line::Blank);
         }

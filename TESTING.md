@@ -29,6 +29,10 @@ back to `[ ]`.
 - [ ] 3.2 `/` then typing filters the list as you type; `Enter` keeps the filter, `Esc` drops it.
 - [ ] 3.3 `s` cycles the sort column and the header shows which one; the toast says `Sort: …`.
 - [ ] 3.4 The selected process's CPU and memory graphs keep moving while it is selected, and the selection stays on the same process as the list re-sorts.
+- [ ] 3.5 Windows: start Notepad, select it in procs, `x` then `y`: Notepad closes at once and the toast says `notepad.exe (…) ended`.
+- [ ] 3.6 Windows: `x` then `y` on a SYSTEM process (for example `services.exe`) without elevation: nothing ends and the toast says `Could not end … Access is denied.`
+- [ ] 3.7 macOS / Linux: `sh -c "trap '' TERM; while :; do sleep 1; done"` in a terminal, then `x` `y` on it: the toast says `Ending …`, then about 3 s later `… ignored SIGTERM; killed`. A plain `sleep 600` ends at once with `… ended`.
+- [ ] 3.8 `x` shows the question over a dimmed screen with the process's name, PID, user and command; `n`, `Esc` and `q` close it and the process keeps running; `x` on mimamori itself only says so.
 
 ## 4. Resizing the columns
 

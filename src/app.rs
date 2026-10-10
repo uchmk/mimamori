@@ -12,6 +12,7 @@ use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
 use crate::i18n::{tr, trf};
+use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
 use crate::persist::Saver;
 use crate::screen::{Pane, Screen};
@@ -32,6 +33,8 @@ pub enum Mode {
     Normal,
     Filter,
     Help,
+    /// The question before a process is ended.
+    Confirm,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,6 +117,12 @@ pub struct App {
     pub paused: bool,
     pub toast: Option<(String, Instant)>,
     pub help_scroll: usize,
+    /// The process the confirm question is about.
+    pub confirm: Option<Target>,
+    kill_tx: Sender<(Target, Outcome)>,
+    kill_rx: Receiver<(Target, Outcome)>,
+    /// Repainted when a process has been ended, so the toast shows at once.
+    pub wake: Option<egui::Context>,
     saver: Saver,
     pub quit: bool,
     wheel_acc: f32,
@@ -121,6 +130,7 @@ pub struct App {
 
 impl App {
     pub fn new(km: Keymap, rx: Receiver<Msg>, ctl: Sender<Ctl>, layouts: HashMap<Screen, Node<Pane>>, saver: Saver, interval: f32) -> Self {
+        let (kill_tx, kill_rx) = crossbeam_channel::unbounded();
         Self {
             km,
             model: Model::default(),
@@ -145,6 +155,10 @@ impl App {
             paused: false,
             toast: None,
             help_scroll: 0,
+            confirm: None,
+            kill_tx,
+            kill_rx,
+            wake: None,
             saver,
             quit: false,
             wheel_acc: 0.0,
@@ -187,6 +201,16 @@ impl App {
             }
             self.model.apply(m);
         }
+        while let Ok((t, o)) = self.kill_rx.try_recv() {
+            let (name, pid) = (t.name.as_str(), t.pid.to_string());
+            let s = match o {
+                Outcome::Ended => trf("toast.ended", &[name, &pid]),
+                Outcome::Killed => trf("toast.killed", &[name, &pid]),
+                Outcome::Gone => trf("toast.gone", &[name, &pid]),
+                Outcome::Failed(e) => trf("toast.kill_failed", &[name, &pid, &e]),
+            };
+            self.toast(s);
+        }
         if self.dirty {
             self.dirty = false;
             self.refresh_rows();
@@ -212,6 +236,20 @@ impl App {
     pub fn selected_proc(&self) -> Option<&Proc> {
         let sel = self.view_of(Screen::Procs).sel[1];
         self.rows.get(sel).and_then(|&i| self.proc_at(i))
+    }
+
+    /// The process under the cursor: procs' selection, or the row of a
+    /// top list in the focused column.
+    pub fn focused_proc(&self) -> Option<&Proc> {
+        let sel = self.view().sel[self.focus().index()];
+        let i = match (self.screen, self.focus()) {
+            (Screen::Procs, _) => return self.selected_proc(),
+            (Screen::Ovw, Pane::Right) => self.ovw_top(sel),
+            (Screen::Cpu, Pane::Right) => self.top_cpu.get(sel).copied(),
+            (Screen::Mem, Pane::Right) => self.top_mem.get(sel).copied(),
+            _ => None,
+        };
+        i.and_then(|i| self.proc_at(i))
     }
 
     pub fn mine_only(&self) -> bool {
@@ -403,6 +441,13 @@ impl App {
                     }
                 }
             }
+            Mode::Confirm => {
+                if let Match::Exact(b) = resolve(&self.km.confirm, &[k]) {
+                    for a in b.run.clone() {
+                        self.run_confirm(a);
+                    }
+                }
+            }
             Mode::Filter => match resolve(&self.km.input, &[k]) {
                 Match::Exact(b) => {
                     for a in b.run.clone() {
@@ -446,6 +491,37 @@ impl App {
             Act::Arrow(Step::Top) => self.help_scroll = 0,
             _ => {}
         }
+    }
+
+    fn run_confirm(&mut self, a: Act) {
+        match a {
+            Act::Confirm | Act::Enter => {
+                self.mode = Mode::Normal;
+                if let Some(t) = self.confirm.take() {
+                    self.toast(trf("toast.ending", &[&t.name, &t.pid.to_string()]));
+                    kill::spawn(t, self.kill_tx.clone(), self.wake.clone());
+                }
+            }
+            Act::Escape | Act::Quit => {
+                self.mode = Mode::Normal;
+                self.confirm = None;
+            }
+            _ => {}
+        }
+    }
+
+    /// Ask before ending the process under the cursor.
+    fn ask_kill(&mut self) {
+        let Some(p) = self.focused_proc() else {
+            self.toast(tr("toast.kill_none"));
+            return;
+        };
+        if p.pid == std::process::id() {
+            self.toast(tr("toast.kill_self"));
+            return;
+        }
+        self.confirm = Some(Target { pid: p.pid, name: p.name.clone(), start: p.start });
+        self.mode = Mode::Confirm;
     }
 
     pub fn run(&mut self, a: Act) {
@@ -504,6 +580,7 @@ impl App {
                 self.view_mut().focus = Pane::Mid.index();
                 self.mode = Mode::Filter;
             }
+            Act::Kill => self.ask_kill(),
             Act::Sort => {
                 self.sort = self.sort.next();
                 self.refresh_rows();
@@ -630,6 +707,9 @@ impl App {
             .map(|(p, r)| format!("{}={:.0}", p.name(), r.w))
             .collect();
         s += &format!("widths: {}\n", widths.join(" "));
+        if let Some(t) = &self.confirm {
+            s += &format!("confirm: {} {}\n", t.pid, t.name);
+        }
         if let Some((t, _)) = &self.toast {
             s += &format!("toast: {t}\n");
         }
@@ -757,5 +837,42 @@ mod tests {
         keys(&mut a, "l l <Enter>");
         assert_eq!(a.screen, Screen::Procs);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
+    }
+
+    #[test]
+    fn x_asks_first_and_n_keeps_the_process() {
+        let (mut a, tx, _ctl) = app();
+        keys(&mut a, "x");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.as_str())), (Mode::Normal, Some(tr("toast.kill_none"))));
+        tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(std::process::id(), "mimamori", 1.0, 1)], total_threads: None })
+            .unwrap();
+        a.pump();
+        keys(&mut a, "5 l x");
+        assert_eq!(a.mode, Mode::Confirm);
+        assert_eq!(a.confirm.as_ref().map(|t| t.pid), Some(7));
+        // Keys of the main layer do nothing while the question is up.
+        keys(&mut a, "j 1");
+        assert_eq!((a.screen, a.mode), (Screen::Procs, Mode::Confirm));
+        keys(&mut a, "n");
+        assert_eq!((a.mode, a.confirm.clone()), (Mode::Normal, None));
+        keys(&mut a, "j x");
+        assert_eq!(a.mode, Mode::Normal);
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.kill_self")));
+    }
+
+    #[test]
+    fn y_ends_it_on_a_thread_and_the_outcome_comes_back_as_a_toast() {
+        let (mut a, tx, _ctl) = app();
+        // A PID nothing holds: the worker finds it gone and sends nothing.
+        tx.send(Msg::Procs { procs: vec![proc(9_999_999, "ghost", 1.0, 1)], total_threads: None }).unwrap();
+        a.pump();
+        keys(&mut a, "5 l x y");
+        assert_eq!((a.mode, a.confirm.clone()), (Mode::Normal, None));
+        let until = Instant::now() + Duration::from_secs(10);
+        while a.toast.as_ref().is_some_and(|t| t.0.starts_with("Ending")) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+            a.pump();
+        }
+        assert_eq!(a.toast.map(|t| t.0), Some(trf("toast.gone", &["ghost", "9999999"])));
     }
 }

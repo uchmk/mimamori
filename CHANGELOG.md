@@ -4,6 +4,16 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.2.0] - 2026-10-10
+
+### 追加
+
+- procs でプロセスを終了できるようにした（`x`）。終了の前に、名前・PID・ユーザー・コマンドと終わらせ方を出す確認のオーバーレイを挟み、`y` / `Enter` で終了、`n` / `Esc` / `q` でやめる。
+  Windows は `TerminateProcess`、macOS と Linux は SIGTERM を送り、3 秒たっても残っていれば SIGKILL。結果（終了した・SIGKILL した・もう無かった・OS に断られた理由）はトーストで出る。
+  overview・cpu・mem の上位のプロセスの一覧でも使える。
+- 終了は UI のスレッドの外で行い、送る直前に PID と起動時刻を照らし合わせる（確認の間にプロセスが終わり、同じ PID が別のプロセスに使われても巻き込まない）。自分自身（mimamori）は終了しない。
+- keymap に `[confirm]` の節と `kill` のコマンドを足した。
+
 ## [0.1.1] - 2026-10-10
 
 ### 修正

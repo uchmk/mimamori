@@ -5,7 +5,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 ## 1. 残りの画面（番号は v0.1 で固定済み）
 
-- [ ] procs: プロセスの終了（`x`、確認のオーバーレイを挟む。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL）。
+- [x] procs: プロセスの終了（`x`、確認のオーバーレイを挟む。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL）。
 - [ ] procs: 木の表示（親子）と、スコープ（All / Mine）の切り替えのキー。
 - [ ] gpu·npu（`4`）: 使用率・VRAM・温度。Windows は PDH の `GPU Engine` カウンタ、Linux は `/sys/class/drm` と amdgpu / i915 の sysfs、NVIDIA は NVML を動的に読む（無ければ出さない）。NPU は見本の「設計」タブの限界のとおり、取れる OS だけ。
 - [ ] svc（`6`）: Windows のサービス、Linux の systemd のユニット、macOS の launchd。読むだけから始める。

@@ -3,6 +3,7 @@
 //! positions and divider drags back through [`Out`]; the app applies them
 //! once the frame is drawn, so drawing only ever reads the state.
 
+mod confirm;
 mod cpu;
 mod graph;
 mod help;
@@ -17,7 +18,7 @@ use egui::{Align2, Color32, FontId, Id, Painter, Pos2, Rect, Sense, Stroke, Stro
 use tsumugi_layout::ui::{Look, dividers, from_egui, to_egui};
 
 use crate::app::{App, Mode, Out, TOAST, fmt_interval};
-use crate::config::theme::{BAR, BG, BG_ALT, BLUE, CYAN, DIM, FG, LINE, MAGENTA, ROW, SEL, SEL_UNFOCUSED, YELLOW};
+use crate::config::theme::{BAR, BG, BG_ALT, BLUE, CYAN, DIM, FG, LINE, MAGENTA, RED, ROW, SEL, SEL_UNFOCUSED, YELLOW};
 use crate::i18n::{tr, trf};
 use crate::screen::{Pane, Screen};
 use crate::util::{fmt_bytes, fmt_uptime};
@@ -252,7 +253,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                 out.pane_rects[i] = (r.width() > 0.0).then_some(r);
             }
             // After the rows, so a divider takes the pointer where both are.
-            if app.mode != Mode::Help {
+            if !matches!(app.mode, Mode::Help | Mode::Confirm) {
                 let look = Look { gap: GAP, grab: 10.0, line: CYAN };
                 out.moved = dividers(ui, Id::new(("div", app.screen)), app.layout(), from_egui(area), look);
             }
@@ -262,6 +263,11 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
     draw_status(ui, &pen, app, status);
     if app.mode == Mode::Help {
         help::draw(&pen, app, full, &mut out);
+        out.click = None;
+        out.tab = None;
+    }
+    if app.mode == Mode::Confirm {
+        confirm::draw(&pen, app, full);
         out.click = None;
         out.tab = None;
     }
@@ -326,6 +332,7 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         Mode::Normal => (tr("mode.normal"), BLUE),
         Mode::Filter => (tr("mode.filter"), YELLOW),
         Mode::Help => (tr("mode.help"), MAGENTA),
+        Mode::Confirm => (tr("mode.confirm"), RED),
     };
     let bw = pen.width(badge) + 16.0;
     let b = Rect::from_center_size(pos2(r.left() + 6.0 + bw / 2.0, y), vec2(bw, 18.0));

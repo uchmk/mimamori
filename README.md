@@ -23,7 +23,7 @@ inside each tile.
 | `2` | cpu      | Groups and counts; the core tiles, the total over the last minute and a thread heatmap; the selected core's threads and the top CPU users |
 | `3` | mem      | Used / available / swap; the usage bar and graph; the processes using the most memory |
 | `4` | gpu·npu  | Not yet |
-| `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`); the selected process's details and graphs |
+| `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, end one with `x`); the selected process's details and graphs |
 | `6`–`0` | svc, net, disk, sensors, sys | Not yet |
 
 Every screen is three columns. Their widths change with the mouse (drag a
@@ -43,6 +43,7 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `Enter` | Open the selection (a gauge's screen, a process in procs) |
 | `/` | Filter processes (`Enter` keeps it, `Esc` drops it) |
 | `s` | Next sort column |
+| `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
 | `?` | Help: every key of the keymap |
@@ -79,7 +80,7 @@ backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
 ```
 
 `keymap.toml` uses yazi's format, section by section (`[main]`, `[input]`,
-`[help]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
+`[help]`, `[confirm]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
 add before and after it. `on_mac` gives a binding its own keys on macOS, and
 `<P-…>` is the primary modifier (Cmd on macOS, Ctrl elsewhere). The built-in
 keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml).
@@ -104,8 +105,9 @@ What `run` can say in a keymap:
 | `equalize` | Columns back to equal widths |
 | `enter`, `filter`, `sort`, `pause` | As the keys above |
 | `interval +`, `interval -` | Sample less / more often |
+| `kill` | Ask, then end the selected process |
 | `help`, `escape`, `quit` | As the keys above |
-| `confirm`, `backspace` | The filter line's keys (`[input]`) |
+| `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended (`[confirm]`) |
 
 ## Languages
 

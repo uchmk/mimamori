@@ -30,6 +30,7 @@ not_yet = "Not yet — see TODO.md"
 normal = "NORMAL"
 filter = "FILTER"
 help = "HELP"
+confirm = "CONFIRM"
 
 [status]
 summary = "CPU {0}% · MEM {1}%"
@@ -43,6 +44,13 @@ sort = "Sort: {0}"
 paused = "Paused"
 resumed = "Resumed"
 interval = "Interval {0} s"
+kill_none = "No process selected"
+kill_self = "That is mimamori itself — q quits"
+ending = "Ending {0} ({1})…"
+ended = "{0} ({1}) ended"
+killed = "{0} ({1}) ignored SIGTERM; killed"
+gone = "{0} ({1}) had already gone"
+kill_failed = "Could not end {0} ({1}): {2}"
 
 [topo]
 cores = "Cores"
@@ -147,3 +155,11 @@ close_hint = "? or Esc to close"
 main = "Main"
 input = "Filter input"
 in_help = "In this help"
+confirm = "Before ending a process"
+
+[confirm]
+title = "End process?"
+name = "Name"
+how_win = "TerminateProcess: it gets no chance to save."
+how_unix = "SIGTERM, then SIGKILL if it is still there after {0} s."
+hint = "{0} end · {1} keep"

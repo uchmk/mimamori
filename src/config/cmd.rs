@@ -35,6 +35,8 @@ pub enum Act {
     Enter,
     Filter,
     Sort,
+    /// Ask, then end the selected process.
+    Kill,
     Pause,
     /// One step faster (-1) or slower (+1) sampling.
     Interval(i32),
@@ -91,6 +93,7 @@ pub fn parse(s: &str) -> Result<Act, String> {
         "enter" => none(Act::Enter),
         "filter" => none(Act::Filter),
         "sort" => none(Act::Sort),
+        "kill" => none(Act::Kill),
         "pause" => none(Act::Pause),
         "help" => none(Act::Help),
         "quit" => none(Act::Quit),
@@ -115,6 +118,7 @@ mod tests {
         assert_eq!(parse("resize up"), Ok(Act::Resize(Toward::Up)));
         assert_eq!(parse("interval +"), Ok(Act::Interval(1)));
         assert_eq!(parse("focus left"), Ok(Act::Focus(-1)));
+        assert_eq!(parse("kill"), Ok(Act::Kill));
         assert!(parse("screen nowhere").is_err());
         assert!(parse("quit now").is_err());
         assert!(parse("fly").is_err());
