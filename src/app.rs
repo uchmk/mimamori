@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use tsumugi_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc, gpu};
+use crate::collect::{Ctl, Msg, Proc, gpu, svc};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -115,6 +115,10 @@ pub struct App {
     pub tree_lines: Vec<String>,
     pub top_cpu: Vec<usize>,
     pub top_mem: Vec<usize>,
+    /// The service list as svc shows it: indices into `model.services.list`.
+    pub svc_rows: Vec<usize>,
+    /// The service selected, kept while the list is read again.
+    svc_name: Option<String>,
     me: Option<String>,
     dirty: bool,
     pub interval: f32,
@@ -155,6 +159,8 @@ impl App {
             tree_lines: Vec::new(),
             top_cpu: Vec::new(),
             top_mem: Vec::new(),
+            svc_rows: Vec::new(),
+            svc_name: None,
             me: None,
             dirty: true,
             interval,
@@ -201,11 +207,17 @@ impl App {
 
     /// Fold in what the sampler sent and bring the lists up to date.
     pub fn pump(&mut self) {
+        let mut svc_dirty = false;
         while let Ok(m) = self.rx.try_recv() {
-            if matches!(m, Msg::Procs { .. }) {
-                self.dirty = true;
+            match m {
+                Msg::Procs { .. } => self.dirty = true,
+                Msg::Svc(_) => svc_dirty = true,
+                _ => {}
             }
             self.model.apply(m);
+        }
+        if svc_dirty {
+            self.refresh_svc();
         }
         while let Ok((t, o)) = self.kill_rx.try_recv() {
             let (name, pid) = (t.name.as_str(), t.pid.to_string());
@@ -270,6 +282,44 @@ impl App {
     /// The processes on the selected device.
     pub fn gpu_procs(&self) -> &[gpu::GpuProc] {
         self.selected_gpu().map_or(&[], |d| &d.procs)
+    }
+
+    /// The service the svc screen has selected.
+    pub fn selected_svc(&self) -> Option<&svc::Service> {
+        let sel = self.view_of(Screen::Svc).sel[1];
+        self.svc_rows.get(sel).and_then(|&i| self.model.services.list.get(i))
+    }
+
+    /// The states svc's left column filters by, in its order.
+    pub const SVC_SHOW: [Option<svc::State>; 4] = [None, Some(svc::State::Running), Some(svc::State::Stopped), Some(svc::State::Failed)];
+
+    fn svc_matches(s: &svc::Service, state: Option<svc::State>, f: &str) -> bool {
+        state.is_none_or(|st| s.state == st) && (f.is_empty() || s.name.to_lowercase().contains(f) || s.display.to_lowercase().contains(f))
+    }
+
+    /// How many services a row of svc's left column would show.
+    pub fn count_svc(&self, state: Option<svc::State>) -> usize {
+        let f = self.filter.to_lowercase();
+        self.model.services.list.iter().filter(|s| Self::svc_matches(s, state, &f)).count()
+    }
+
+    fn refresh_svc(&mut self) {
+        let f = self.filter.to_lowercase();
+        let state = Self::SVC_SHOW[self.view_of(Screen::Svc).sel[0].min(3)];
+        let list = &self.model.services.list;
+        self.svc_rows = (0..list.len()).filter(|&i| Self::svc_matches(&list[i], state, &f)).collect();
+        let found = self.svc_name.as_ref().and_then(|n| self.svc_rows.iter().position(|&i| list[i].name == *n));
+        if let Some(pos) = found {
+            self.views.entry(Screen::Svc).or_default().sel[1] = pos;
+        }
+        self.clamp_all();
+        self.svc_name = self.selected_svc().map(|s| s.name.clone());
+    }
+
+    /// Both lists the filter narrows.
+    fn refilter(&mut self) {
+        self.refresh_rows();
+        self.refresh_svc();
     }
 
     pub fn mine_only(&self) -> bool {
@@ -359,6 +409,8 @@ impl App {
             (Screen::Gpu, Pane::Right) => self.gpu_procs().len(),
             (Screen::Procs, Pane::Left) => 2,
             (Screen::Procs, Pane::Mid) => self.rows.len(),
+            (Screen::Svc, Pane::Left) => Self::SVC_SHOW.len(),
+            (Screen::Svc, Pane::Mid) => self.svc_rows.len(),
             _ => 0,
         }
     }
@@ -452,11 +504,17 @@ impl App {
         match (self.screen, pane) {
             (Screen::Procs, Pane::Mid) => self.proc_pid = self.selected_proc().map(|p| p.pid),
             (Screen::Procs, Pane::Left) => self.refresh_rows(),
+            (Screen::Svc, Pane::Mid) => self.svc_name = self.selected_svc().map(|s| s.name.clone()),
+            (Screen::Svc, Pane::Left) => self.refresh_svc(),
             _ => {}
         }
     }
 
     pub fn goto(&mut self, s: Screen) {
+        // Services are read only while their screen shows.
+        if (s == Screen::Svc) != (self.screen == Screen::Svc) {
+            let _ = self.ctl.send(Ctl::Services(s == Screen::Svc));
+        }
         self.screen = s;
         self.drag = None;
         self.pending.clear();
@@ -488,7 +546,7 @@ impl App {
                 _ => {
                     if let (Code::Char(c), false) = (k.code, k.ctrl || k.alt || k.sup) {
                         self.filter.push(c);
-                        self.refresh_rows();
+                        self.refilter();
                     }
                 }
             },
@@ -607,7 +665,10 @@ impl App {
             }
             Act::Enter if built => self.enter(),
             Act::Filter => {
-                self.goto(Screen::Procs);
+                // svc filters its own list; anywhere else it is procs'.
+                if self.screen != Screen::Svc {
+                    self.goto(Screen::Procs);
+                }
                 self.view_mut().focus = Pane::Mid.index();
                 self.mode = Mode::Filter;
             }
@@ -648,12 +709,12 @@ impl App {
             Act::Escape => {
                 if self.mode == Mode::Filter || !self.filter.is_empty() {
                     self.filter.clear();
-                    self.refresh_rows();
+                    self.refilter();
                 }
                 self.mode = Mode::Normal;
             }
             Act::Confirm => self.mode = Mode::Normal,
-            Act::Backspace if self.filter.pop().is_some() => self.refresh_rows(),
+            Act::Backspace if self.filter.pop().is_some() => self.refilter(),
             // Arrow, Focus, Resize, Equalize and Enter on a screen not built yet.
             _ => {}
         }
@@ -695,6 +756,12 @@ impl App {
                 }
             }
             (Screen::Procs, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
+            (Screen::Svc, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
+            (Screen::Svc, Pane::Mid | Pane::Right) => match self.selected_svc().map(|s| (s.pid, s.name.clone())) {
+                Some((Some(pid), _)) => self.open_proc(pid),
+                Some((None, name)) => self.toast(trf("toast.svc_no_pid", &[&name])),
+                None => {}
+            },
             _ => {}
         }
     }
@@ -750,6 +817,10 @@ impl App {
         s += &format!("procs: {}\n", self.rows.len());
         let gpus: Vec<&str> = self.model.gpus.iter().map(|d| d.id.as_str()).collect();
         s += &format!("gpus: {} ({})\n", gpus.len(), gpus.join(" "));
+        if self.model.svc_read {
+            let sv = &self.model.services;
+            s += &format!("svcs: {} of {} ({})\n", self.svc_rows.len(), sv.list.len(), sv.source);
+        }
         if let Some(st) = &self.model.st {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
         }
@@ -885,6 +956,8 @@ mod tests {
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Procs);
         keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Svc);
+        keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Ovw);
         tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
         a.pump();
@@ -962,6 +1035,37 @@ mod tests {
         tx.send(Msg::Gpu(vec![dev("a", Vec::new())])).unwrap();
         a.pump();
         assert_eq!(a.view_of(Screen::Gpu).sel, [0, 0, 0]);
+    }
+
+    #[test]
+    fn svc_reads_only_while_shown_and_enter_opens_its_process() {
+        let (mut a, tx, ctl) = app();
+        keys(&mut a, "6 6 5");
+        let got: Vec<Ctl> = ctl.try_iter().collect();
+        assert!(matches!(got[..], [Ctl::Services(true), Ctl::Services(false)]), "{got:?}");
+        tx.send(Msg::Procs { procs: vec![proc(7, "sshd", 1.0, 1)], total_threads: None }).unwrap();
+        let svc = |name: &str, state, pid| svc::Service { name: name.into(), state, pid, ..svc::Service::default() };
+        let list =
+            vec![svc("cron", svc::State::Running, None), svc("dead", svc::State::Failed, None), svc("sshd", svc::State::Running, Some(7))];
+        tx.send(Msg::Svc(svc::Services { list, source: "systemd", note: None })).unwrap();
+        a.pump();
+        keys(&mut a, "6");
+        assert_eq!((a.svc_rows.len(), a.count_svc(Some(svc::State::Failed))), (3, 1));
+        // The left column's third row shows the stopped ones: none.
+        keys(&mut a, "j j");
+        assert!(a.svc_rows.is_empty());
+        keys(&mut a, "k <Enter>");
+        assert_eq!((a.focus(), a.svc_rows.len()), (Pane::Mid, 2));
+        keys(&mut a, "<Enter>");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.svc_no_pid", &["cron"])));
+        // The filter narrows the list and the selection stays on the name.
+        keys(&mut a, "j / s s <Enter>");
+        assert_eq!((a.screen, a.svc_rows.len()), (Screen::Svc, 1));
+        assert_eq!(a.selected_svc().map(|s| s.name.as_str()), Some("sshd"));
+        keys(&mut a, "<Enter>");
+        assert_eq!(a.screen, Screen::Procs);
+        assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
+        assert!(matches!(ctl.try_iter().last(), Some(Ctl::Services(false))));
     }
 
     #[test]

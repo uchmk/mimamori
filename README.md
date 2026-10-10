@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.4** has five screens: overview, cpu, mem, gpu·npu and procs. The other five tabs
+> **v0.5** has six screens: overview, cpu, mem, gpu·npu, procs and svc. The other four tabs
 > are there with their final numbers, so the keys will not move, and say
 > "Not yet". See [TODO.md](TODO.md).
 
@@ -24,7 +24,8 @@ inside each tile.
 | `3` | mem      | Used / available / swap; the usage bar and graph; the processes using the most memory |
 | `4` | gpu·npu  | The GPUs and NPUs found, each with its usage over the last minute (and why a missing one is missing); the selected device's usage, engines, dedicated and shared memory and VRAM graph; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
 | `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
-| `6`–`0` | svc, net, disk, sensors, sys | Not yet |
+| `6` | svc      | Services, read only: Windows' services, systemd's units, launchd's jobs. Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). Read every 5 s, and only while the screen shows |
+| `7`–`0` | net, disk, sensors, sys | Not yet |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`.
@@ -40,8 +41,8 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `h` `l` / `←` `→` | Column to the left, to the right |
 | `Alt+Shift+←→↑↓` (macOS `Cmd+Ctrl+arrow`) | Move the focused column's divider (tsumugi's keys) |
 | `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) | Columns back to equal widths |
-| `Enter` | Open the selection (a gauge's screen, a process in procs) |
-| `/` | Filter processes (`Enter` keeps it, `Esc` drops it) |
+| `Enter` | Open the selection (a gauge's screen, a process in procs, a service's process) |
+| `/` | Filter processes, or on svc services by name and description (`Enter` keeps it, `Esc` drops it). One filter serves both |
 | `s` | Next sort column |
 | `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |
 | `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column) |
@@ -139,6 +140,14 @@ The gpu·npu screen reads, without linking anything at build time:
 | Windows | The `GPU Engine` and `GPU Adapter Memory` performance counters (PDH) for usage, engines, memory and per-process use, named through DXGI | One with an MCDM driver, the kind Task Manager shows, from the same counters |
 | Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
 | macOS | Not yet (IOKit) | The Neural Engine reports no usage to other programs |
+
+The svc screen reads:
+
+| OS | From | Notes |
+| --- | --- | --- |
+| Windows | The service control manager (`EnumServicesStatusExW`, and `QueryServiceConfigW` for the start type, account and command, kept a minute) | Drivers are left out; a failed service shows its exit code |
+| Linux | `systemctl list-unit-files` and `systemctl show '*.service'` | Without systemd running (a container, WSL without systemd) only the unit files are listed, their state unknown |
+| macOS | `launchctl list` | As a user, that user's jobs; the system's need `sudo` |
 
 On Windows and Linux, NVIDIA cards are read through NVML, loaded from the
 driver at run time (`nvml.dll` / `libnvidia-ml.so.1`); without it they are

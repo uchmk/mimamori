@@ -11,6 +11,7 @@ mod help;
 mod mem;
 mod overview;
 mod procs;
+mod svc;
 mod tiles;
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -248,6 +249,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Mem => mem::draw(&mut cx, rects),
                     Screen::Gpu => gpu::draw(&mut cx, rects),
                     Screen::Procs => procs::draw(&mut cx, rects),
+                    Screen::Svc => svc::draw(&mut cx, rects),
                     _ => {}
                 }
             }
@@ -325,6 +327,13 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
         Screen::Procs => {
             let threads = m.total_threads.map_or_else(|| "—".to_string(), |t| t.to_string());
             trf("crumb.procs", &[&m.procs.len().to_string(), &threads])
+        }
+        Screen::Svc if !m.svc_read => tr("misc.reading").to_string(),
+        Screen::Svc => {
+            let sv = &m.services;
+            let n = |s| sv.count(s).to_string();
+            use crate::collect::svc::State;
+            trf("crumb.svc", &[&sv.list.len().to_string(), &n(State::Running), &n(State::Failed), sv.source])
         }
         _ => tr("misc.not_yet").to_string(),
     };

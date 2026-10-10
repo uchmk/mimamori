@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, gpu};
+use crate::collect::{Mem, Msg, Proc, Static, gpu, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -65,6 +65,10 @@ pub struct Model {
     pub gpu_hist: HashMap<String, (Ring, Ring)>,
     /// Whether the GPUs have been read once (an empty list then means none).
     pub gpu_read: bool,
+    /// The last reading of services, kept when the svc screen is left.
+    pub services: svc::Services,
+    /// Whether services have been read once.
+    pub svc_read: bool,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -117,6 +121,10 @@ impl Model {
                 self.gpu_hist = hist;
                 self.gpus = devs;
                 self.gpu_read = true;
+            }
+            Msg::Svc(s) => {
+                self.services = s;
+                self.svc_read = true;
             }
         }
     }

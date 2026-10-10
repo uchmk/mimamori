@@ -21,6 +21,7 @@ up = "up {0}"
 [crumb]
 mem = "{0} RAM · {1} swap"
 procs = "{0} processes · {1} threads"
+svc = "{0} services · {1} running · {2} failed · {3}"
 
 [misc]
 reading = "Reading the system…"
@@ -54,6 +55,7 @@ ended = "{0} ({1}) ended"
 killed = "{0} ({1}) ignored SIGTERM; killed"
 gone = "{0} ({1}) had already gone"
 kill_failed = "Could not end {0} ({1}): {2}"
+svc_no_pid = "{0} has no process"
 
 [topo]
 cores = "Cores"
@@ -200,6 +202,54 @@ cpu = "CPU%"
 mem = "MEM"
 thr = "THR"
 user = "USER"
+
+[svc]
+show = "Show"
+all = "All"
+filter = "Filter"
+title = "Services"
+count = "{0} shown"
+empty = "No service matches"
+detail = "Detail"
+none = "No service selected"
+display = "Description"
+state_row = "State"
+start_row = "Starts"
+pid = "PID"
+exit = "Last exit"
+user = "Runs as"
+cmd = "Command"
+file = "File"
+source = "Source"
+hint = "Enter opens its process in procs"
+
+[svc.col]
+state = "STATE"
+name = "NAME"
+start = "START"
+pid = "PID"
+
+[svc.state]
+running = "running"
+starting = "starting"
+stopping = "stopping"
+paused = "paused"
+stopped = "stopped"
+failed = "failed"
+unknown = "unknown"
+
+[svc.start]
+auto = "auto"
+manual = "manual"
+disabled = "disabled"
+unknown = "—"
+
+[svc.note]
+not_running = "systemd is not running here (a container, or WSL without systemd): the unit files are listed, their state unknown"
+no_systemctl = "No systemctl: this Linux does not use systemd"
+mac_user = "launchctl as a user lists that user's jobs; the system's need sudo"
+no_scm = "The service control manager could not be opened"
+other_os = "Not read on this OS"
 
 [help]
 title = "Keys"

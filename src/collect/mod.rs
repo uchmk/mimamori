@@ -1,9 +1,11 @@
 //! The sampler: one thread that reads the machine through sysinfo on its own
 //! schedule (CPU, memory and GPUs every interval, processes every other) and sends
 //! each reading to the UI, waking it. The UI steers it with [`Ctl`]: the
-//! interval, pause. Dropping the receiver ends the thread.
+//! interval, pause, whether services are wanted. Dropping the receiver ends
+//! the thread.
 
 pub mod gpu;
+pub mod svc;
 pub mod topo;
 
 use std::collections::HashMap;
@@ -75,13 +77,21 @@ pub enum Msg {
     },
     /// GPUs first, then NPUs.
     Gpu(Vec<gpu::Device>),
+    /// Only while the svc screen wants them.
+    Svc(svc::Services),
 }
 
 #[derive(Debug)]
 pub enum Ctl {
     Interval(Duration),
     Pause(bool),
+    /// Read services (at once, then every [`SVC_EVERY`]) or stop reading them.
+    Services(bool),
 }
+
+/// How often services are read while wanted: listing them spawns `systemctl`
+/// or opens every service, so not at the sampling interval.
+pub const SVC_EVERY: Duration = Duration::from_secs(5);
 
 /// Start the sampler; `wake` is repainted after every message.
 pub fn spawn(wake: egui::Context, interval: Duration) -> (Receiver<Msg>, Sender<Ctl>) {
@@ -120,13 +130,23 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
     let mut procs = ProcSampler::new();
     // Opened here: the counter handles stay on this thread.
     let mut gpus = gpu::Sampler::new();
+    let mut services = svc::Reader::default();
+    // When services are next due; `None` while nobody wants them.
+    let mut svc_next: Option<Instant> = None;
     let mut paused = false;
     // The first CPU reading needs a gap after the first refresh.
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
     let mut tick: u64 = 0;
     loop {
-        let wait = next.saturating_duration_since(Instant::now());
-        let got = if paused { ctl.recv().map_err(|_| RecvTimeoutError::Disconnected) } else { ctl.recv_timeout(wait) };
+        let due = if paused { None } else { Some(next) };
+        let due = match (due, svc_next.filter(|_| !paused)) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        let got = match due {
+            Some(t) => ctl.recv_timeout(t.saturating_duration_since(Instant::now())),
+            None => ctl.recv().map_err(|_| RecvTimeoutError::Disconnected),
+        };
         match got {
             Ok(Ctl::Interval(d)) => {
                 interval = d;
@@ -138,8 +158,27 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
                 next = Instant::now() + interval;
                 continue;
             }
+            Ok(Ctl::Services(on)) => {
+                // Read at once, paused or not: the screen has nothing yet.
+                if on && !send(Msg::Svc(services.read())) {
+                    return;
+                }
+                svc_next = on.then(|| Instant::now() + SVC_EVERY);
+                continue;
+            }
             Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {}
+        }
+        if let Some(t) = svc_next
+            && Instant::now() >= t
+        {
+            if !send(Msg::Svc(services.read())) {
+                return;
+            }
+            svc_next = Some(Instant::now() + SVC_EVERY);
+        }
+        if Instant::now() < next {
+            continue;
         }
         sys.refresh_cpu_specifics(cpu_kind);
         sys.refresh_memory_specifics(mem_kind);

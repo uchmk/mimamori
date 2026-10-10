@@ -75,7 +75,7 @@ fn wrap(pen: &Pen, s: &str, w: f32) -> Vec<String> {
 }
 
 /// Wrapped text from `y` down, as much as fits; returns the `y` under it.
-fn para(pen: &Pen, body: Rect, mut y: f32, s: &str, color: egui::Color32) -> f32 {
+pub(super) fn para(pen: &Pen, body: Rect, mut y: f32, s: &str, color: egui::Color32) -> f32 {
     for l in wrap(pen, s, body.width() - 8.0) {
         if y + ROW > body.bottom() + 0.5 {
             break;

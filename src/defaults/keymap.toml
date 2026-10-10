@@ -46,7 +46,7 @@ keymap = [
     { on = "<P-S-e>", run = "equalize", desc = "Columns back to equal widths" },
 
     { on = "<Enter>", run = "enter", desc = "Open the selection" },
-    { on = "/", run = "filter", desc = "Filter processes" },
+    { on = "/", run = "filter", desc = "Filter processes or services" },
     { on = "s", run = "sort", desc = "Next sort column" },
     { on = "t", run = "tree", desc = "Tree of parents and children / list" },
     { on = "u", run = "scope", desc = "Scope: every process / mine" },

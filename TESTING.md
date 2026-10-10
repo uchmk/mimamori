@@ -49,6 +49,16 @@ back to `[ ]`.
 - [ ] 3a.9 macOS: the left column says `No GPU` / `No NPU` with the reasons (not built yet; the Neural Engine reports nothing).
 - [ ] 3a.10 A machine with two GPUs (an iGPU and a dGPU): both are listed, `j` / `k` switch between them, and the crumb names the selected one.
 
+## 3b. Services (`6`)
+
+- [ ] 3b.1 Windows: the list matches services.msc (names are the service names, `Description` the display name); running ones show their PID; `Starts` says `auto (delayed)` for a delayed one; `Source` says `scm`.
+- [ ] 3b.2 Windows: start and stop a service in services.msc; within 5 s the state follows (`starting` / `stopping` on the way), and a service that failed shows `failed` with its exit code.
+- [ ] 3b.3 Linux with systemd: the list matches `systemctl list-units --type=service --all` plus the unit files; `failed` ones are red with their exit status; `Starts` says `enabled` / `static` / `masked`; `File` is the unit file.
+- [ ] 3b.4 macOS: `launchctl list`'s jobs are listed with their PIDs and last exit; started without `sudo` the left column says only the user's jobs are shown.
+- [ ] 3b.5 The left column's rows (All / running / stopped / failed) narrow the list and their counts match it; `/` filters by name or description and the selection stays on the same service while the list refreshes.
+- [ ] 3b.6 `Enter` on a running service opens procs with its process selected; on one without a process the toast says so.
+- [ ] 3b.7 Leaving svc stops the reading (no `systemctl` / `launchctl` in procs a few seconds after going to another screen).
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.
