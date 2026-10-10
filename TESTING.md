@@ -27,7 +27,7 @@ back to `[ ]`.
 - [ ] 2.7 macOS, Intel Mac with Hyper-Threading: one group `CPU` with half as many tiles as logical CPUs, two thread bars each, the header shows the L3's size; `Topology from` says `sysctl`.
 - [ ] 2.5 A tile's bars follow load: run a single-threaded busy loop pinned to one CPU and see that one bar (and that core's tile) turn yellow / red while the others stay blue.
 - [ ] 2.6 `h` `j` `k` `l` in the middle column move the highlighted tile; the right column follows with the core's group, kind, thread ids and clock.
-- [ ] 2.8 The core tiles on the CPU screen fill their panel: on a wide window they sit in as few rows as fit, grown and centred, never more than twice as wide as tall; widen and narrow the middle column or drag the panel below them and they re-flow into more or fewer columns, keeping the groups on rows of their own; made too small, they turn into the compact tiles of the overview instead of being cut. Clicking a tile still selects it.
+- [x] 2.8 The core tiles on the CPU screen fill their panel: on a wide window they sit in as few rows as fit, grown and centred, never more than twice as wide as tall; widen and narrow the middle column or drag the panel below them and they re-flow into more or fewer columns, keeping the groups on rows of their own; made too small, they turn into the compact tiles of the overview instead of being cut. Clicking a tile still selects it.
 
 ## 3. Processes (`5`)
 
@@ -168,7 +168,7 @@ back to `[ ]`.
 - [ ] 4.3 `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) puts the columns back to equal widths.
 - [ ] 4.4 Quit and start again: each screen keeps the widths it was left with. `state.toml` is in the state folder (`%LOCALAPPDATA%\uchmk\yagura` on Windows, `~/Library/Application Support/uchmk/yagura/state` on macOS, `~/.local/state/uchmk/yagura` on Linux); one left in `<config dir>/uchmk/yagura/` by v0.38.0 is moved there on the first start, widths and heights and all.
 - [ ] 4.5 macOS: every `Ctrl+…` key of the other platforms works with `Cmd` and with `Ctrl` alike (`Cmd+,` and `Ctrl+,` both open the settings, `Cmd+q` and `Ctrl+q` both quit).
-- [ ] 4.6 Panels split their column evenly: the overview's graphs on a machine with CPU, memory, swap, two GPUs and a drive are two columns of three of the same size; cpu's cores, total and threads are thirds; gpu·npu's usage, engines and memory are thirds; disk's read, write and busy graphs are stacked, each the column's width and equally tall, over the volumes.
+- [x] 4.6 Panels split their column evenly: the overview's graphs on a machine with CPU, memory, swap, two GPUs and a drive are two columns of three of the same size; cpu's cores, total and threads are thirds; gpu·npu's usage, engines and memory are thirds; disk's read, write and busy graphs are stacked, each the column's width and equally tall, over the volumes.
 - [ ] 4.7 Mouse: hovering the gap between two stacked panels shows the up-down cursor and a line; dragging it moves the panels while dragging; double-clicking it puts it halfway along the room it splits.
 - [ ] 4.8 Quit and start again: each screen keeps the panel heights it was left with; `Ctrl+Shift+e` puts them back to equal along with the columns; on a screen whose panels change (another GPU picked, swap turned on), a kept height for the old set of panels is not applied to the new one.
 
