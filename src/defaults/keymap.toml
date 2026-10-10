@@ -59,7 +59,7 @@ keymap = [
     { on = "-", run = "interval -", desc = "Sample more often" },
     { on = "?", run = "help", desc = "Help" },
     { on = "q", run = "quit", desc = "Quit" },
-    { on = "<Esc>", run = "escape", desc = "Clear the filter" },
+    { on = "<Esc>", run = "escape", desc = "Clear the filter (and on net the interface)" },
 ]
 
 # The filter's line: other printable keys are typed into it.

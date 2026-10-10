@@ -135,6 +135,9 @@ pub struct App {
     net_key: Option<ConnKey>,
     /// net lists only the sockets waiting for others (`u`).
     pub net_listen: bool,
+    /// net lists only the sockets on this interface (`Enter` on it, `Esc`
+    /// drops it); it follows the selection while set.
+    pub net_nic: Option<String>,
     me: Option<String>,
     dirty: bool,
     pub interval: f32,
@@ -185,6 +188,7 @@ impl App {
             net_rows: Vec::new(),
             net_key: None,
             net_listen: false,
+            net_nic: None,
             me: None,
             dirty: true,
             interval,
@@ -240,6 +244,8 @@ impl App {
                 Msg::Procs { .. } => (self.dirty, net_dirty) = (true, true),
                 Msg::Svc(_) => svc_dirty = true,
                 Msg::Conns(_) => net_dirty = true,
+                // An interface's addresses may change under its narrowing.
+                Msg::Nics(_) if self.net_nic.is_some() => net_dirty = true,
                 _ => {}
             }
             self.model.apply(m);
@@ -392,6 +398,11 @@ impl App {
 
     fn conn_matches(&self, c: &net::Conn, f: &str) -> bool {
         if self.net_listen && !c.listening() {
+            return false;
+        }
+        if let Some(name) = &self.net_nic
+            && !net::on_nic(c, self.model.nics.iter().find(|n| &n.name == name))
+        {
             return false;
         }
         if f.is_empty() {
@@ -612,6 +623,10 @@ impl App {
             (Screen::Svc, Pane::Mid) => self.svc_name = self.selected_svc().map(|s| s.name.clone()),
             (Screen::Svc, Pane::Left) => self.refresh_svc(),
             (Screen::Net, Pane::Mid) => self.net_key = self.selected_conn().map(conn_key),
+            (Screen::Net, Pane::Left) if self.net_nic.is_some() => {
+                self.net_nic = self.selected_nic().map(|n| n.name.clone());
+                self.refresh_net();
+            }
             _ => {}
         }
     }
@@ -876,7 +891,8 @@ impl App {
             }
             Act::Quit => self.quit = true,
             Act::Escape => {
-                if self.mode == Mode::Filter || !self.filter.is_empty() {
+                let nic = self.screen == Screen::Net && self.net_nic.take().is_some();
+                if self.mode == Mode::Filter || !self.filter.is_empty() || nic {
                     self.filter.clear();
                     self.refilter();
                 }
@@ -931,7 +947,14 @@ impl App {
                 Some((None, name)) => self.toast(trf("toast.svc_no_pid", &[&name])),
                 None => {}
             },
-            (Screen::Net, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
+            (Screen::Net, Pane::Left) => {
+                if let Some(name) = self.selected_nic().map(|n| n.name.clone()) {
+                    self.toast(trf("toast.net_nic", &[&name]));
+                    self.net_nic = Some(name);
+                    self.refresh_net();
+                }
+                self.view_mut().focus = Pane::Mid.index();
+            }
             (Screen::Net, Pane::Mid | Pane::Right) => match self.selected_conn().map(|c| (c.pid, c.local)) {
                 Some((Some(pid), _)) => self.open_proc(pid),
                 Some((None, local)) => self.toast(trf("toast.net_no_pid", &[&local.to_string()])),
@@ -1004,7 +1027,8 @@ impl App {
         if self.model.conn_read {
             let c = &self.model.conns;
             let scope = if self.net_listen { "listening" } else { "all" };
-            s += &format!("conns: {} of {} ({}, {scope})\n", self.net_rows.len(), c.list.len(), c.source);
+            let on = self.net_nic.as_deref().map(|n| format!(", on {n}")).unwrap_or_default();
+            s += &format!("conns: {} of {} ({}, {scope}{on})\n", self.net_rows.len(), c.list.len(), c.source);
         }
         if let Some(st) = &self.model.st {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
@@ -1379,26 +1403,42 @@ mod tests {
             conn(net::Proto::Tcp, "0.0.0.0:22", None, net::State::Listen, Some(7)),
             conn(net::Proto::Tcp, "10.0.0.2:50000", Some("8.8.8.8:443"), net::State::Established, None),
             conn(net::Proto::Udp, "0.0.0.0:5353", None, net::State::None, None),
+            conn(net::Proto::Tcp, "127.0.0.1:40000", Some("127.0.0.1:631"), net::State::Established, Some(7)),
         ];
         tx.send(Msg::Conns(net::Conns { list, source: "/proc/net", note: None })).unwrap();
-        tx.send(Msg::Nics(vec![net::Nic { name: "eth0".into(), up: true, ..net::Nic::default() }])).unwrap();
+        let nic = |name: &str, kind, ip: &str| net::Nic { name: name.into(), kind, up: true, ipv4: vec![ip.into()], ..net::Nic::default() };
+        tx.send(Msg::Nics(vec![nic("eth0", net::Kind::Wired, "10.0.0.2/24"), nic("lo", net::Kind::Loopback, "127.0.0.1/8")])).unwrap();
         a.pump();
         keys(&mut a, "7");
-        assert_eq!((a.net_rows.len(), a.selected_nic().map(|n| n.name.as_str())), (3, Some("eth0")));
+        assert_eq!((a.net_rows.len(), a.selected_nic().map(|n| n.name.as_str())), (4, Some("eth0")));
         // u keeps the sockets that wait for others: TCP listening and unconnected UDP.
         keys(&mut a, "u");
         assert!(a.net_listen);
         assert_eq!(a.net_rows.len(), 2);
         assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.scope", &[tr("net.listening")])));
         keys(&mut a, "u");
-        assert_eq!(a.net_rows.len(), 3);
-        // Enter on an interface moves to the sockets; one with no owner toasts.
-        keys(&mut a, "<Enter> j <Enter>");
-        assert_eq!(a.focus(), Pane::Mid);
+        assert_eq!(a.net_rows.len(), 4);
+        // Enter on an interface keeps its sockets (and those on any address)
+        // and moves to them; one with no owner toasts.
+        keys(&mut a, "<Enter>");
+        assert_eq!((a.focus(), a.net_nic.as_deref(), a.net_rows.len()), (Pane::Mid, Some("eth0"), 3));
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.net_nic", &["eth0"])));
+        keys(&mut a, "j <Enter>");
         assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.net_no_pid", &["10.0.0.2:50000"])));
+        // The narrowing follows the selected interface, and Esc drops it.
+        keys(&mut a, "h j");
+        assert_eq!(a.net_nic.as_deref(), Some("lo"));
+        assert!(a.net_rows.iter().all(|&i| a.model.conns.list[i].local.port() != 50000));
+        assert_eq!(a.net_rows.len(), 3);
+        keys(&mut a, "<Esc>");
+        assert_eq!((a.net_nic.as_deref(), a.net_rows.len()), (None, 4));
+        // Moving between interfaces no longer narrows.
+        keys(&mut a, "k");
+        assert_eq!((a.net_nic.as_deref(), a.net_rows.len()), (None, 4));
         // The filter matches the process name, and the selection follows the socket.
-        keys(&mut a, "/ s s h <Enter>");
-        assert_eq!((a.screen, a.net_rows.len()), (Screen::Net, 1));
+        keys(&mut a, "l / s s h <Enter>");
+        assert_eq!((a.screen, a.net_rows.len()), (Screen::Net, 2));
+        keys(&mut a, "g g");
         assert_eq!(a.selected_conn().map(|c| c.local.port()), Some(22));
         keys(&mut a, "<Enter>");
         assert_eq!(a.screen, Screen::Procs);

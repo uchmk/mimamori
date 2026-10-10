@@ -19,7 +19,7 @@ pub mod mac;
 pub mod windows;
 
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
 /// What an interface is, as far as the OS lets on.
@@ -331,6 +331,15 @@ pub fn peer(a: SocketAddr) -> Option<SocketAddr> {
     (!(a.ip().is_unspecified() && a.port() == 0)).then_some(a)
 }
 
+/// Whether `c` is on the interface `n`: bound to one of its addresses, or
+/// to any address (a listener on `0.0.0.0` takes that interface's traffic
+/// too). With no interface, only the latter.
+pub fn on_nic(c: &Conn, n: Option<&Nic>) -> bool {
+    let ip = c.local.ip().to_canonical();
+    let addr = |a: &String| a.split(['/', '%']).next().and_then(|s| s.parse::<IpAddr>().ok());
+    ip.is_unspecified() || n.is_some_and(|n| n.ipv4.iter().chain(&n.ipv6).any(|a| addr(a) == Some(ip)))
+}
+
 /// Why the list of sockets is short or empty.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -411,6 +420,21 @@ mod tests {
         for n in Note::ALL {
             assert_ne!(tr(n.key()), n.key(), "{n:?}");
         }
+    }
+
+    #[test]
+    fn a_socket_is_on_an_interface_by_its_local_address() {
+        let n = Nic { ipv4: vec!["192.168.1.10/24".into()], ipv6: vec!["fe80::1/64".into()], ..Nic::default() };
+        let c = |local: &str| Conn { proto: Proto::Tcp, local: local.parse().unwrap(), remote: None, state: State::Listen, pid: None };
+        assert!(on_nic(&c("192.168.1.10:22"), Some(&n)));
+        assert!(on_nic(&c("[fe80::1]:123"), Some(&n)));
+        // An IPv4 address seen through an IPv6 socket is still the interface's.
+        assert!(on_nic(&c("[::ffff:192.168.1.10]:80"), Some(&n)));
+        assert!(!on_nic(&c("10.0.0.2:22"), Some(&n)));
+        // Bound to any address: on every interface, even one gone from the list.
+        assert!(on_nic(&c("0.0.0.0:22"), Some(&n)));
+        assert!(on_nic(&c("[::]:22"), None));
+        assert!(!on_nic(&c("192.168.1.10:22"), None));
     }
 
     fn nic(name: &str, kind: Kind, up: bool, rx: u64, tx: u64) -> Nic {

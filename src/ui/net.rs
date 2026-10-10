@@ -163,7 +163,11 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
     let info = if m.conn_read { trf("net.count", &[&app.net_rows.len().to_string()]) } else { String::new() };
-    let title = if app.net_listen { format!("{} · {}", tr("net.conns"), tr("net.listening")) } else { tr("net.conns").to_string() };
+    let mut title = tr("net.conns").to_string();
+    for part in [app.net_nic.as_deref(), app.net_listen.then(|| tr("net.listening"))].into_iter().flatten() {
+        title += " · ";
+        title += part;
+    }
     let body = panel(&cx.pen, r, &title, &info, cx.focused(Pane::Mid));
     if !m.conn_read {
         cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("net.reading"), DIM);

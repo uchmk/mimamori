@@ -21,7 +21,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → ソケットは `netstat -anvW` のパース（PID の列は見出しから数える。古い `pid` と Sonoma 以降の `process:pid` の両方）。`proc_pidinfo` は他の利用者のプロセスを root なしで覗けず、
   `lsof` は 2 秒ごとには重いので使わない。種類は `networksetup -listallhardwareports` のハードウェアポート名（Wi-Fi・Ethernet・Bluetooth PAN・Thunderbolt Bridge）で、
   1 分ごとに読み直す。SCNetworkInterface のバインディングを抱えずに済む。ポートの無いもの（utun・awdl など）は名前から推す（v0.7.4）。
-- [ ] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
+- [x] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
+  → 選ぶだけでは絞らない（左の選択はいつもあるので、ほとんどが隠れる）。インターフェースで `Enter` を押すと絞り、どのアドレスにも付いたもの（`0.0.0.0`・`::`）は残す。選択を動かせば追い、`Esc` で外す（v0.7.5）。
 - [ ] net の実機の確認 `【実機】`（TESTING.md 3c）。
 - [ ] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
 - [ ] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
