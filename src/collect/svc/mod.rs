@@ -97,6 +97,9 @@ pub struct Service {
     /// A launchd job known only from its plist: starting it loads the plist
     /// first (`launchctl bootstrap`).
     pub unloaded: bool,
+    /// A Windows kernel or file-system driver rather than a service; svc
+    /// shows one kind at a time (`u`).
+    pub driver: bool,
 }
 
 /// Why the list is short or empty.

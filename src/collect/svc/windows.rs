@@ -34,6 +34,12 @@ pub fn exit(current: u32, exit: u32, specific: u32) -> Option<i64> {
 }
 
 /// `dwStartType` and the delayed flag, folded and in words.
+/// Whether a service type is a driver (kernel, file system, adapter or
+/// recognizer) rather than a Win32 service.
+pub fn driver(kind: u32) -> bool {
+    kind & 0x0F != 0 && kind & 0x30 == 0
+}
+
 pub fn start(kind: u32, delayed: bool) -> (Start, String) {
     let (s, raw) = match kind {
         0 => (Start::Auto, "boot"),
@@ -69,5 +75,14 @@ mod tests {
         assert_eq!(start(3, false).0, Start::Manual);
         assert_eq!(start(4, false).0, Start::Disabled);
         assert_eq!(start(0, false), (Start::Auto, "boot".to_string()));
+    }
+
+    #[test]
+    fn drivers_are_told_from_services_by_their_type() {
+        // Kernel, file system; an own-process and a shared-process service,
+        // and one that may talk to the desktop.
+        assert!(driver(0x01) && driver(0x02));
+        assert!(!driver(0x10) && !driver(0x20) && !driver(0x110));
+        assert!(!driver(0x50) && !driver(0xE0), "user services are services");
     }
 }

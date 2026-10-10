@@ -30,6 +30,9 @@ pub struct Target {
     /// The plist of a launchd job that is not loaded, loaded before it is
     /// started.
     pub plist: Option<String>,
+    /// A Windows driver: shown as `sc.exe`, which reaches drivers, where
+    /// PowerShell's `*-Service` does not.
+    pub driver: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -73,7 +76,7 @@ pub fn how(t: &Target) -> String {
     #[cfg(target_os = "macos")]
     return mac::how(&mac::steps(t, mac::root(), mac::uid()));
     #[cfg(windows)]
-    return win::how(t.action, &t.name);
+    return win::how(t.action, &t.name, t.driver);
     #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     return t.name.clone();
 }
@@ -233,8 +236,16 @@ mod win {
         }
     }
 
-    /// The PowerShell line that does the same.
-    pub fn how(action: Action, name: &str) -> String {
+    /// The PowerShell line that does the same: `sc.exe` for a driver.
+    pub fn how(action: Action, name: &str, driver: bool) -> String {
+        if driver {
+            let name = if name.contains(' ') { format!("\"{name}\"") } else { name.to_string() };
+            return match action {
+                Action::Start => format!("sc.exe start {name}"),
+                Action::Stop => format!("sc.exe stop {name}"),
+                Action::Restart => format!("sc.exe stop {name}; sc.exe start {name}"),
+            };
+        }
         let verb = match action {
             Action::Start => "Start",
             Action::Stop => "Stop",
@@ -369,7 +380,8 @@ mod tests {
 
     #[test]
     fn a_job_that_is_not_loaded_is_bootstrapped_from_its_plist_then_kicked() {
-        let t = |action, plist: Option<&str>| Target { action, name: "com.example.sync".into(), plist: plist.map(String::from) };
+        let t =
+            |action, plist: Option<&str>| Target { action, name: "com.example.sync".into(), plist: plist.map(String::from), driver: false };
         let plist = "/Users/me/Library/LaunchAgents/My Sync.plist";
         let steps = mac::steps(&t(Action::Restart, Some(plist)), false, 501);
         assert_eq!(steps, [vec!["bootstrap", "gui/501", plist], vec!["kickstart", "gui/501/com.example.sync"]]);
@@ -393,7 +405,9 @@ mod tests {
         assert_eq!(win::fold(false, 1062, "not active".into()), Outcome::Done);
         assert_eq!(win::fold(false, 1056, "running".into()), Outcome::Failed("running".into()));
         assert_eq!(win::fold(false, 1051, "dependents".into()), Outcome::Failed("dependents".into()));
-        assert_eq!(win::how(Action::Restart, "Spooler"), "Restart-Service Spooler");
-        assert_eq!(win::how(Action::Stop, "My Svc"), "Stop-Service 'My Svc'");
+        assert_eq!(win::how(Action::Restart, "Spooler", false), "Restart-Service Spooler");
+        assert_eq!(win::how(Action::Stop, "My Svc", false), "Stop-Service 'My Svc'");
+        assert_eq!(win::how(Action::Stop, "Beep", true), "sc.exe stop Beep");
+        assert_eq!(win::how(Action::Restart, "My Drv", true), "sc.exe stop \"My Drv\"; sc.exe start \"My Drv\"");
     }
 }

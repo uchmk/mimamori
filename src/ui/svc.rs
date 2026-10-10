@@ -1,7 +1,8 @@
 //! Services (6): which states to show on the left, the list in the middle,
 //! the selected service on the right. Enter on one that runs opens its
 //! process in procs; S, x and R start, stop and restart it after asking
-//! (`svcctl`).
+//! (`svcctl`). On Windows, u switches the list between services and
+//! drivers.
 
 use egui::{Color32, Rect, pos2};
 
@@ -51,10 +52,11 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         return;
     }
     y += GAP;
-    let list = &m.services.list;
-    let starts = |s: Start| list.iter().filter(|v| v.start == s).count().to_string();
+    let starts = |s: Start| app.svc_kind().filter(|v| v.start == s).count().to_string();
     let filter = if app.filter.is_empty() { "—".to_string() } else { format!("/{}", app.filter) };
+    let kind = tr(if app.svc_drivers { "svc.drivers" } else { "svc.services" });
     let rows = [
+        (tr("svc.kind"), kind.to_string()),
         (tr("svc.start.auto"), starts(Start::Auto)),
         (tr("svc.start.manual"), starts(Start::Manual)),
         (tr("svc.start.disabled"), starts(Start::Disabled)),

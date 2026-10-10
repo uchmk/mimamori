@@ -127,6 +127,8 @@ pub struct App {
     pub svc_rows: Vec<usize>,
     /// The service selected, kept while the list is read again.
     svc_name: Option<String>,
+    /// svc shows Windows' drivers instead of its services (`u`).
+    pub svc_drivers: bool,
     /// The socket list as net shows it: indices into `model.conns.list`.
     pub net_rows: Vec<usize>,
     /// The socket selected, kept while the list is read again.
@@ -179,6 +181,7 @@ impl App {
             top_mem: Vec::new(),
             svc_rows: Vec::new(),
             svc_name: None,
+            svc_drivers: false,
             net_rows: Vec::new(),
             net_key: None,
             net_listen: false,
@@ -340,21 +343,28 @@ impl App {
     /// The states svc's left column filters by, in its order.
     pub const SVC_SHOW: [Option<svc::State>; 4] = [None, Some(svc::State::Running), Some(svc::State::Stopped), Some(svc::State::Failed)];
 
-    fn svc_matches(s: &svc::Service, state: Option<svc::State>, f: &str) -> bool {
-        state.is_none_or(|st| s.state == st) && (f.is_empty() || s.name.to_lowercase().contains(f) || s.display.to_lowercase().contains(f))
+    fn svc_matches(&self, s: &svc::Service, state: Option<svc::State>, f: &str) -> bool {
+        s.driver == self.svc_drivers
+            && state.is_none_or(|st| s.state == st)
+            && (f.is_empty() || s.name.to_lowercase().contains(f) || s.display.to_lowercase().contains(f))
+    }
+
+    /// The services, or the drivers, svc shows: before the state and filter.
+    pub fn svc_kind(&self) -> impl Iterator<Item = &svc::Service> {
+        self.model.services.list.iter().filter(|s| s.driver == self.svc_drivers)
     }
 
     /// How many services a row of svc's left column would show.
     pub fn count_svc(&self, state: Option<svc::State>) -> usize {
         let f = self.filter.to_lowercase();
-        self.model.services.list.iter().filter(|s| Self::svc_matches(s, state, &f)).count()
+        self.model.services.list.iter().filter(|s| self.svc_matches(s, state, &f)).count()
     }
 
     fn refresh_svc(&mut self) {
         let f = self.filter.to_lowercase();
         let state = Self::SVC_SHOW[self.view_of(Screen::Svc).sel[0].min(3)];
         let list = &self.model.services.list;
-        self.svc_rows = (0..list.len()).filter(|&i| Self::svc_matches(&list[i], state, &f)).collect();
+        self.svc_rows = (0..list.len()).filter(|&i| self.svc_matches(&list[i], state, &f)).collect();
         let found = self.svc_name.as_ref().and_then(|n| self.svc_rows.iter().position(|&i| list[i].name == *n));
         if let Some(pos) = found {
             self.views.entry(Screen::Svc).or_default().sel[1] = pos;
@@ -748,7 +758,8 @@ impl App {
             }
             plist = s.file.clone();
         }
-        self.confirm = Some(Ask::Svc(svcctl::Target { action, name, plist }));
+        let driver = s.driver;
+        self.confirm = Some(Ask::Svc(svcctl::Target { action, name, plist, driver }));
         self.mode = Mode::Confirm;
     }
 
@@ -829,6 +840,17 @@ impl App {
                 self.net_listen = to.unwrap_or(!self.net_listen);
                 self.refresh_net();
                 self.toast(trf("toast.scope", &[tr(if self.net_listen { "net.listening" } else { "net.all_conns" })]));
+            }
+            Act::Scope(to) if self.screen == Screen::Svc => {
+                let drivers = to.unwrap_or(!self.svc_drivers);
+                if drivers && !self.model.services.list.iter().any(|s| s.driver) {
+                    self.toast(tr("toast.svc_no_drivers"));
+                    return;
+                }
+                self.svc_drivers = drivers;
+                self.views.entry(Screen::Svc).or_default().sel[1] = 0;
+                self.refresh_svc();
+                self.toast(trf("toast.scope", &[tr(if drivers { "svc.drivers" } else { "svc.services" })]));
             }
             Act::Scope(to) => {
                 let mine = to.unwrap_or(!self.mine_only());
@@ -972,7 +994,8 @@ impl App {
         s += &format!("gpus: {} ({})\n", gpus.len(), gpus.join(" "));
         if self.model.svc_read {
             let sv = &self.model.services;
-            s += &format!("svcs: {} of {} ({})\n", self.svc_rows.len(), sv.list.len(), sv.source);
+            let kind = if self.svc_drivers { "drivers" } else { "services" };
+            s += &format!("svcs: {} of {} ({}, {kind})\n", self.svc_rows.len(), sv.list.len(), sv.source);
         }
         if self.model.nic_read {
             let names: Vec<&str> = self.model.nics.iter().map(|n| n.name.as_str()).collect();
@@ -1255,15 +1278,15 @@ mod tests {
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.svc_already_running", &["cron"]))));
         keys(&mut a, "x");
         assert_eq!(a.mode, Mode::Confirm);
-        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Stop, name: "cron".into(), plist: None })));
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Stop, name: "cron".into(), plist: None, driver: false })));
         keys(&mut a, "<Esc>");
         assert_eq!((a.mode, a.confirm.clone()), (Mode::Normal, None));
         keys(&mut a, "l j x");
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.svc_not_running", &["dead"]))));
         keys(&mut a, "R");
-        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "dead".into(), plist: None })));
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "dead".into(), plist: None, driver: false })));
         keys(&mut a, "n S");
-        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Start, name: "dead".into(), plist: None })));
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Start, name: "dead".into(), plist: None, driver: false })));
         keys(&mut a, "q 5 S");
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.as_str())), (Mode::Normal, Some(tr("toast.svc_elsewhere"))));
     }
@@ -1288,7 +1311,30 @@ mod tests {
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(hint)));
         keys(&mut a, "j R");
         let plist = Some("/Library/LaunchAgents/on.plist".to_string());
-        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "on".into(), plist })));
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "on".into(), plist, driver: false })));
+    }
+
+    #[test]
+    fn u_on_svc_switches_between_services_and_drivers() {
+        let (mut a, tx, _ctl) = app();
+        let svc = |name: &str, driver| svc::Service { name: name.into(), state: svc::State::Running, driver, ..svc::Service::default() };
+        tx.send(Msg::Svc(svc::Services { list: vec![svc("cron", false)], source: "systemd", note: None })).unwrap();
+        keys(&mut a, "6");
+        a.pump();
+        // No driver in the list (not Windows): a toast, the kind stays.
+        keys(&mut a, "u");
+        assert_eq!((a.svc_drivers, a.toast.as_ref().map(|t| t.0.as_str())), (false, Some(tr("toast.svc_no_drivers"))));
+        let list = vec![svc("Spooler", false), svc("Tcpip", true), svc("disk", true)];
+        tx.send(Msg::Svc(svc::Services { list, source: "SCM", note: None })).unwrap();
+        a.pump();
+        assert_eq!((a.svc_rows.len(), a.count_svc(None)), (1, 1));
+        keys(&mut a, "u");
+        assert_eq!((a.svc_drivers, a.svc_rows.len(), a.count_svc(None)), (true, 2, 2));
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.scope", &[tr("svc.drivers")])));
+        keys(&mut a, "l x");
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Stop, name: "Tcpip".into(), plist: None, driver: true })));
+        keys(&mut a, "<Esc> u");
+        assert_eq!((a.svc_drivers, a.selected_svc().map(|s| s.name.as_str())), (false, Some("Spooler")));
     }
 
     #[test]

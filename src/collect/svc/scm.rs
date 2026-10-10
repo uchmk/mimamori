@@ -1,5 +1,5 @@
-//! The service control manager: every Win32 service with its state and PID
-//! in one enumeration, then each one's configuration (start type, account,
+//! The service control manager: every Win32 service and driver with its
+//! state and PID in one enumeration, then each one's configuration (start type, account,
 //! command line). The configuration seldom changes and costs a handle per
 //! service, so it is kept for a minute.
 
@@ -10,7 +10,8 @@ use windows::Win32::Foundation::ERROR_MORE_DATA;
 use windows::Win32::System::Services::{
     CloseServiceHandle, ENUM_SERVICE_STATUS_PROCESSW, EnumServicesStatusExW, OpenSCManagerW, OpenServiceW, QUERY_SERVICE_CONFIGW,
     QueryServiceConfig2W, QueryServiceConfigW, SC_ENUM_PROCESS_INFO, SC_HANDLE, SC_MANAGER_CONNECT, SC_MANAGER_ENUMERATE_SERVICE,
-    SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_DELAYED_AUTO_START_INFO, SERVICE_QUERY_CONFIG, SERVICE_STATE_ALL, SERVICE_WIN32,
+    SERVICE_CONFIG_DELAYED_AUTO_START_INFO, SERVICE_DELAYED_AUTO_START_INFO, SERVICE_DRIVER, SERVICE_QUERY_CONFIG, SERVICE_STATE_ALL,
+    SERVICE_WIN32,
 };
 use windows::core::{PCWSTR, PWSTR};
 
@@ -86,7 +87,7 @@ pub fn read(cache: &mut Cache) -> Services {
             EnumServicesStatusExW(
                 scm.0,
                 SC_ENUM_PROCESS_INFO,
-                SERVICE_WIN32,
+                SERVICE_WIN32 | SERVICE_DRIVER,
                 SERVICE_STATE_ALL,
                 Some(bytes(&mut buf)),
                 &mut needed,
@@ -112,6 +113,7 @@ pub fn read(cache: &mut Cache) -> Services {
                 start_raw: cfg.start_raw,
                 user: cfg.user,
                 cmd: cfg.cmd,
+                driver: fold::driver(st.dwServiceType.0),
                 name,
                 ..Service::default()
             });

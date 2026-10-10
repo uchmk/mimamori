@@ -49,7 +49,7 @@ keymap = [
     { on = "/", run = "filter", desc = "Filter processes, services or connections" },
     { on = "s", run = "sort", desc = "Next sort column" },
     { on = "t", run = "tree", desc = "Tree of parents and children / list" },
-    { on = "u", run = "scope", desc = "Scope: every process / mine; connections: all / listening" },
+    { on = "u", run = "scope", desc = "Scope: every process / mine; connections: all / listening; svc: services / drivers" },
     { on = "x", run = "kill", desc = "End the process; on svc, stop the service" },
     { on = "S", run = "service start", desc = "Start the selected service" },
     { on = "R", run = "service restart", desc = "Restart the selected service" },

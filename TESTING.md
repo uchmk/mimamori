@@ -64,6 +64,7 @@ back to `[ ]`.
 - [ ] 3b.11 macOS: without `sudo`, `R` on one of the user's own jobs (gui domain) restarts it (the PID changes); with `sudo`, `x` on a system job stops it, and the question says a KeepAlive job starts again by itself.
 - [ ] 3b.12 Every OS: `S` on a running service and `x` on a stopped one only show a toast (no question); `n` / `Esc` / `q` at the question leave the service as it was; `x` on procs still ends a process.
 - [ ] 3b.13 macOS: a job listed as `stopped (not loaded)` (for example after `launchctl bootout gui/$UID/<label>`): `S` asks with `launchctl bootstrap gui/<uid> <plist> && launchctl kickstart gui/<uid>/<label>` on the question, and `y` loads and starts it (it gets a PID; `launchctl list` shows it again). On one that is also `disabled` (`launchctl disable gui/$UID/<label>`), `S` only shows a toast with the `launchctl enable …` line, and `launchctl print-disabled gui/$UID` still says it is disabled.
+- [ ] 3b.14 Windows: `u` on svc switches the list to drivers (for example `Tcpip`, `disk`, `Ntfs`; the left column says Kind: drivers, with their start counts) and back to services, with a toast each time; the selection goes to the top. As administrator, `x` on a driver that can stop asks with `sc.exe stop <name>` on the question. On macOS and Linux `u` on svc only shows the "Only Windows lists drivers here" toast.
 
 ## 3c. Network (`7`)
 
