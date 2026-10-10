@@ -1,0 +1,77 @@
+# mimamori's built-in keymap. A keymap.toml beside config.toml is laid over
+# it, section by section, the way yazi's and filer's are: `keymap` replaces a
+# section's list, `prepend_keymap` and `append_keymap` go before and after it.
+#
+# `on` is one key token or several separated by spaces ("g g"), or an array
+# of tokens; `on_mac` is used instead on macOS. `<P-…>` is the primary
+# modifier: Cmd on macOS, Ctrl elsewhere.
+
+[main]
+keymap = [
+    { on = "1", run = "screen overview", desc = "Overview" },
+    { on = "2", run = "screen cpu", desc = "CPU" },
+    { on = "3", run = "screen mem", desc = "Memory" },
+    { on = "4", run = "screen gpu", desc = "GPU / NPU" },
+    { on = "5", run = "screen procs", desc = "Processes" },
+    { on = "6", run = "screen svc", desc = "Services" },
+    { on = "7", run = "screen net", desc = "Network" },
+    { on = "8", run = "screen disk", desc = "Disks" },
+    { on = "9", run = "screen sensors", desc = "Sensors" },
+    { on = "0", run = "screen sys", desc = "System" },
+    { on = "<Tab>", run = "screen next", desc = "Next screen" },
+    { on = "<BackTab>", run = "screen prev", desc = "Previous screen" },
+
+    { on = "j", run = "arrow 1", desc = "Down" },
+    { on = "<Down>", run = "arrow 1", desc = "Down" },
+    { on = "k", run = "arrow -1", desc = "Up" },
+    { on = "<Up>", run = "arrow -1", desc = "Up" },
+    { on = "g g", run = "arrow top", desc = "First row" },
+    { on = "<Home>", run = "arrow top", desc = "First row" },
+    { on = "G", run = "arrow bot", desc = "Last row" },
+    { on = "<End>", run = "arrow bot", desc = "Last row" },
+    { on = "<C-d>", run = "arrow 50%", desc = "Half a page down" },
+    { on = "<C-u>", run = "arrow -50%", desc = "Half a page up" },
+    { on = "<PageDown>", run = "arrow 100%", desc = "A page down" },
+    { on = "<PageUp>", run = "arrow -100%", desc = "A page up" },
+    { on = "h", run = "focus left", desc = "Column to the left" },
+    { on = "<Left>", run = "focus left", desc = "Column to the left" },
+    { on = "l", run = "focus right", desc = "Column to the right" },
+    { on = "<Right>", run = "focus right", desc = "Column to the right" },
+
+    # tsumugi's pane keys: Alt+Shift+arrow, Cmd+Ctrl+arrow on a Mac.
+    { on = "<A-S-Left>", on_mac = "<D-C-Left>", run = "resize left", desc = "Move the divider left" },
+    { on = "<A-S-Right>", on_mac = "<D-C-Right>", run = "resize right", desc = "Move the divider right" },
+    { on = "<A-S-Up>", on_mac = "<D-C-Up>", run = "resize up", desc = "Move the divider up" },
+    { on = "<A-S-Down>", on_mac = "<D-C-Down>", run = "resize down", desc = "Move the divider down" },
+    { on = "<P-S-e>", run = "equalize", desc = "Columns back to equal widths" },
+
+    { on = "<Enter>", run = "enter", desc = "Open the selection" },
+    { on = "/", run = "filter", desc = "Filter processes" },
+    { on = "s", run = "sort", desc = "Next sort column" },
+    { on = "P", run = "pause", desc = "Pause / resume sampling" },
+    { on = "+", run = "interval +", desc = "Sample less often" },
+    { on = "=", run = "interval +", desc = "Sample less often" },
+    { on = "-", run = "interval -", desc = "Sample more often" },
+    { on = "?", run = "help", desc = "Help" },
+    { on = "q", run = "quit", desc = "Quit" },
+    { on = "<Esc>", run = "escape", desc = "Clear the filter" },
+]
+
+# The filter's line: other printable keys are typed into it.
+[input]
+keymap = [
+    { on = "<Enter>", run = "confirm", desc = "Keep the filter" },
+    { on = "<Esc>", run = "escape", desc = "Drop the filter" },
+    { on = "<Backspace>", run = "backspace", desc = "Delete a character" },
+]
+
+[help]
+keymap = [
+    { on = "?", run = "escape", desc = "Close" },
+    { on = "q", run = "escape", desc = "Close" },
+    { on = "<Esc>", run = "escape", desc = "Close" },
+    { on = "j", run = "arrow 1", desc = "Down" },
+    { on = "<Down>", run = "arrow 1", desc = "Down" },
+    { on = "k", run = "arrow -1", desc = "Up" },
+    { on = "<Up>", run = "arrow -1", desc = "Up" },
+]

@@ -1,0 +1,149 @@
+# The words mimamori shows, in English: the built-in table every other
+# language falls back to. A translation is a file beside this one with the
+# same keys (any it leaves out read in English), listed in `i18n::AVAILABLE`.
+# `{0}`, `{1}` … are filled in by the code.
+
+[tab]
+overview = "overview"
+cpu = "cpu"
+mem = "mem"
+gpu = "gpu·npu"
+procs = "procs"
+svc = "svc"
+net = "net"
+disk = "disk"
+sensors = "sensors"
+sys = "sys"
+
+[header]
+up = "up {0}"
+
+[crumb]
+mem = "{0} RAM · {1} swap"
+procs = "{0} processes · {1} threads"
+
+[misc]
+reading = "Reading the system…"
+not_yet = "Not yet — see TODO.md"
+
+[mode]
+normal = "NORMAL"
+filter = "FILTER"
+help = "HELP"
+
+[status]
+summary = "CPU {0}% · MEM {1}%"
+interval = "every {0} s"
+paused = "paused"
+sampling = "sampling"
+
+[toast]
+no_divider = "No divider on that side"
+sort = "Sort: {0}"
+paused = "Paused"
+resumed = "Resumed"
+interval = "Interval {0} s"
+
+[topo]
+cores = "Cores"
+cpu = "CPU"
+e_cores = "E-cores"
+p_cores = "P-cores"
+groups = "groups"
+
+[ovw]
+cpu = "CPU"
+mem = "Memory"
+swap = "Swap"
+usage = "Usage"
+system = "System"
+history = "{0} · last minute"
+cores = "Cores"
+top = "Top processes"
+by_cpu = "By CPU"
+by_mem = "By memory"
+
+[sys]
+host = "Host"
+os = "OS"
+kernel = "Kernel"
+arch = "Arch"
+cpu = "CPU"
+uptime = "Uptime"
+
+[tiles]
+group = "{0} · {1} cores"
+l3 = "L3 {0}"
+
+[cpu]
+kind_p = "Performance"
+kind_e = "Efficiency"
+groups = "Groups"
+all = "All ({0} threads)"
+counts = "Counts"
+processes = "Processes"
+threads = "Threads"
+load = "Load"
+topology = "Topology from"
+cores = "Cores"
+hint = "hjkl to pick a core"
+total = "Total · last minute"
+heatmap = "Threads · last minute"
+threads_n = "{0} threads"
+core = "Core {0}"
+group = "Group"
+kind = "Kind"
+thread_ids = "Threads"
+clock = "Clock"
+top = "Top CPU"
+
+[mem]
+title = "Memory"
+used = "Used"
+available = "Available"
+swap = "Swap"
+details = "Details"
+total = "Total"
+swap_total = "Swap total"
+swap_used = "Swap used"
+usage = "Usage"
+top = "Top memory"
+no_swap = "no swap"
+
+[procs]
+scope = "Scope"
+all = "All"
+mine = "Mine"
+sort = "Sort"
+filter = "Filter"
+user = "User"
+count = "{0} shown"
+title = "Processes"
+empty = "No process matches"
+detail = "Detail"
+none = "No process selected"
+pid = "PID"
+parent = "Parent"
+start = "Started"
+threads = "Threads"
+status = "Status"
+memory = "Memory"
+exe = "Executable"
+cmd = "Command"
+cpu_minute = "CPU · last minute"
+mem_minute = "Memory · last minute"
+
+[procs.col]
+pid = "PID"
+name = "NAME"
+cpu = "CPU%"
+mem = "MEM"
+thr = "THR"
+user = "USER"
+
+[help]
+title = "Keys"
+close_hint = "? or Esc to close"
+main = "Main"
+input = "Filter input"
+in_help = "In this help"

@@ -1,0 +1,6 @@
+# Normalize every text file to LF in the repository, whatever the local
+# core.autocrlf says, so line endings never show up as a diff.
+* text=auto eol=lf
+
+# Cargo.lock is generated; keep it out of diffs and merge conflicts.
+Cargo.lock linguist-generated=true

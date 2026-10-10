@@ -1,0 +1,760 @@
+//! The app's state and what each [`Act`] does. Drawing is in `ui/`; this
+//! side owns the selection, the layouts and the sampler's channels.
+
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+use crossbeam_channel::{Receiver, Sender};
+use tsumugi_layout::Node;
+
+use crate::collect::{Ctl, Msg, Proc};
+use crate::config::cmd::{Act, Goto, Step};
+use crate::config::keymap::{Keymap, Match, resolve};
+use crate::config::keys::{Code, Key};
+use crate::i18n::{tr, trf};
+use crate::model::Model;
+use crate::persist::Saver;
+use crate::screen::{Pane, Screen};
+
+/// The sampling intervals `+` and `-` step through, in seconds.
+pub const INTERVALS: [f32; 6] = [0.5, 1.0, 2.0, 3.0, 5.0, 10.0];
+/// How long a toast stays in the status bar.
+pub const TOAST: Duration = Duration::from_secs(3);
+/// How far a resize key moves a divider, as a share of the room.
+const NUDGE: f32 = 0.03;
+/// Rows the overview lists in each of its two top lists.
+pub const OVW_TOP: usize = 5;
+const TOP_CPU: usize = 10;
+const TOP_MEM: usize = 15;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Normal,
+    Filter,
+    Help,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SortCol {
+    Pid,
+    Name,
+    Cpu,
+    Mem,
+    Thr,
+    User,
+}
+
+impl SortCol {
+    pub const ALL: [SortCol; 6] = [Self::Pid, Self::Name, Self::Cpu, Self::Mem, Self::Thr, Self::User];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pid => tr("procs.col.pid"),
+            Self::Name => tr("procs.col.name"),
+            Self::Cpu => tr("procs.col.cpu"),
+            Self::Mem => tr("procs.col.mem"),
+            Self::Thr => tr("procs.col.thr"),
+            Self::User => tr("procs.col.user"),
+        }
+    }
+
+    fn next(self) -> Self {
+        let i = Self::ALL.iter().position(|&c| c == self).unwrap_or(0);
+        Self::ALL[(i + 1) % Self::ALL.len()]
+    }
+}
+
+/// Where each screen's cursor is: the focused column and a row per column.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct View {
+    pub focus: usize,
+    pub sel: [usize; 3],
+    pub scroll: [usize; 3],
+}
+
+/// What a frame's drawing reports back, applied once drawing is done.
+#[derive(Default)]
+pub struct Out {
+    /// A row clicked: its column, its index, and whether it was the second
+    /// click of a double click.
+    pub click: Option<(Pane, usize, bool)>,
+    pub scroll: [Option<usize>; 3],
+    pub visible: [usize; 3],
+    pub pane_rects: [Option<egui::Rect>; 3],
+    pub tab: Option<Screen>,
+    /// A divider dragged, released or double-clicked.
+    pub moved: Option<tsumugi_layout::ui::Moved<Pane>>,
+    /// How far the help can scroll, so a key past the end stays there.
+    pub help_max: Option<usize>,
+}
+
+pub struct App {
+    km: Keymap,
+    pub model: Model,
+    rx: Receiver<Msg>,
+    ctl: Sender<Ctl>,
+    pub screen: Screen,
+    pub layouts: HashMap<Screen, Node<Pane>>,
+    /// The layout while a divider is being dragged; kept on release.
+    pub drag: Option<Node<Pane>>,
+    views: HashMap<Screen, View>,
+    pub visible: [usize; 3],
+    pub mode: Mode,
+    pending: Vec<Key>,
+    pub filter: String,
+    pub sort: SortCol,
+    proc_pid: Option<u32>,
+    /// The process list as procs shows it: indices into `model.procs`.
+    pub rows: Vec<usize>,
+    pub top_cpu: Vec<usize>,
+    pub top_mem: Vec<usize>,
+    me: Option<String>,
+    dirty: bool,
+    pub interval: f32,
+    pub paused: bool,
+    pub toast: Option<(String, Instant)>,
+    pub help_scroll: usize,
+    saver: Saver,
+    pub quit: bool,
+    wheel_acc: f32,
+}
+
+impl App {
+    pub fn new(km: Keymap, rx: Receiver<Msg>, ctl: Sender<Ctl>, layouts: HashMap<Screen, Node<Pane>>, saver: Saver, interval: f32) -> Self {
+        Self {
+            km,
+            model: Model::default(),
+            rx,
+            ctl,
+            screen: Screen::Ovw,
+            layouts,
+            drag: None,
+            views: HashMap::new(),
+            visible: [1; 3],
+            mode: Mode::Normal,
+            pending: Vec::new(),
+            filter: String::new(),
+            sort: SortCol::Cpu,
+            proc_pid: None,
+            rows: Vec::new(),
+            top_cpu: Vec::new(),
+            top_mem: Vec::new(),
+            me: None,
+            dirty: true,
+            interval,
+            paused: false,
+            toast: None,
+            help_scroll: 0,
+            saver,
+            quit: false,
+            wheel_acc: 0.0,
+        }
+    }
+
+    pub fn keymap(&self) -> &Keymap {
+        &self.km
+    }
+
+    pub fn view(&self) -> View {
+        self.views.get(&self.screen).copied().unwrap_or_default()
+    }
+
+    pub fn view_of(&self, s: Screen) -> View {
+        self.views.get(&s).copied().unwrap_or_default()
+    }
+
+    fn view_mut(&mut self) -> &mut View {
+        self.views.entry(self.screen).or_default()
+    }
+
+    pub fn focus(&self) -> Pane {
+        Pane::ALL[self.view().focus.min(2)]
+    }
+
+    pub fn layout(&self) -> &Node<Pane> {
+        self.drag.as_ref().unwrap_or(&self.layouts[&self.screen])
+    }
+
+    pub fn toast(&mut self, s: impl Into<String>) {
+        self.toast = Some((s.into(), Instant::now()));
+    }
+
+    /// Fold in what the sampler sent and bring the lists up to date.
+    pub fn pump(&mut self) {
+        while let Ok(m) = self.rx.try_recv() {
+            if matches!(m, Msg::Procs { .. }) {
+                self.dirty = true;
+            }
+            self.model.apply(m);
+        }
+        if self.dirty {
+            self.dirty = false;
+            self.refresh_rows();
+        }
+        self.clamp_all();
+        // Dropped once it has had its time, or the frame after it would ask
+        // for another frame forever.
+        if self.toast.as_ref().is_some_and(|(_, at)| at.elapsed() >= TOAST) {
+            self.toast = None;
+        }
+    }
+
+    /// How long the toast has left in the status bar.
+    pub fn toast_left(&self) -> Option<Duration> {
+        self.toast.as_ref().map(|(_, at)| TOAST.saturating_sub(at.elapsed()))
+    }
+
+    pub fn proc_at(&self, i: usize) -> Option<&Proc> {
+        self.model.procs.get(i)
+    }
+
+    /// The process the procs screen has selected.
+    pub fn selected_proc(&self) -> Option<&Proc> {
+        let sel = self.view_of(Screen::Procs).sel[1];
+        self.rows.get(sel).and_then(|&i| self.proc_at(i))
+    }
+
+    pub fn mine_only(&self) -> bool {
+        self.view_of(Screen::Procs).sel[0] == 1
+    }
+
+    pub fn my_user(&self) -> Option<&str> {
+        self.me.as_deref()
+    }
+
+    fn matches(&self, p: &Proc, mine: bool, f: &str) -> bool {
+        if mine && (self.me.is_none() || p.user != self.me) {
+            return false;
+        }
+        f.is_empty() || p.name.to_lowercase().contains(f) || p.pid.to_string().contains(f) || p.cmd.to_lowercase().contains(f)
+    }
+
+    /// The count of processes the procs list would show for a scope.
+    pub fn count_scope(&self, mine: bool) -> usize {
+        let f = self.filter.to_lowercase();
+        self.model.procs.iter().filter(|p| self.matches(p, mine, &f)).count()
+    }
+
+    fn refresh_rows(&mut self) {
+        if self.me.is_none() {
+            let me = std::process::id();
+            self.me = self.model.procs.iter().find(|p| p.pid == me).and_then(|p| p.user.clone());
+        }
+        let f = self.filter.to_lowercase();
+        let mine = self.mine_only();
+        let procs = &self.model.procs;
+        let mut rows: Vec<usize> = (0..procs.len()).filter(|&i| self.matches(&procs[i], mine, &f)).collect();
+        let key = |a: &Proc, b: &Proc| -> std::cmp::Ordering {
+            let o = match self.sort {
+                SortCol::Pid => a.pid.cmp(&b.pid),
+                SortCol::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                SortCol::Cpu => b.cpu.total_cmp(&a.cpu),
+                SortCol::Mem => b.mem.cmp(&a.mem),
+                SortCol::Thr => b.threads.cmp(&a.threads),
+                SortCol::User => a.user.cmp(&b.user),
+            };
+            o.then(a.pid.cmp(&b.pid))
+        };
+        rows.sort_by(|&a, &b| key(&procs[a], &procs[b]));
+        let mut by_cpu: Vec<usize> = (0..procs.len()).collect();
+        by_cpu.sort_by(|&a, &b| procs[b].cpu.total_cmp(&procs[a].cpu).then(procs[a].pid.cmp(&procs[b].pid)));
+        by_cpu.truncate(TOP_CPU);
+        let mut by_mem: Vec<usize> = (0..procs.len()).collect();
+        by_mem.sort_by(|&a, &b| procs[b].mem.cmp(&procs[a].mem).then(procs[a].pid.cmp(&procs[b].pid)));
+        by_mem.truncate(TOP_MEM);
+        self.rows = rows;
+        self.top_cpu = by_cpu;
+        self.top_mem = by_mem;
+
+        // Keep the same process selected while the list reorders.
+        let found = self.proc_pid.and_then(|pid| self.rows.iter().position(|&i| self.model.procs[i].pid == pid));
+        let v = self.views.entry(Screen::Procs).or_default();
+        if let Some(pos) = found {
+            v.sel[1] = pos;
+        }
+        self.clamp_all();
+        self.proc_pid = self.selected_proc().map(|p| p.pid);
+    }
+
+    /// Rows a column has to select, on a screen.
+    pub fn count(&self, s: Screen, p: Pane) -> usize {
+        let groups = self.model.st.as_ref().map_or(0, |st| st.topo.groups.len());
+        let cores = self.model.st.as_ref().map_or(0, |st| st.topo.core_count());
+        match (s, p) {
+            (Screen::Ovw, Pane::Left) => 3,
+            (Screen::Ovw, Pane::Right) => self.top_cpu.len().min(OVW_TOP) + self.top_mem.len().min(OVW_TOP),
+            (Screen::Cpu, Pane::Left) => 1 + groups,
+            (Screen::Cpu, Pane::Mid) => cores,
+            (Screen::Cpu, Pane::Right) => self.top_cpu.len(),
+            (Screen::Mem, Pane::Left) => 3,
+            (Screen::Mem, Pane::Right) => self.top_mem.len(),
+            (Screen::Procs, Pane::Left) => 2,
+            (Screen::Procs, Pane::Mid) => self.rows.len(),
+            _ => 0,
+        }
+    }
+
+    /// The overview's right column: the top CPU users, then the top memory.
+    pub fn ovw_top(&self, i: usize) -> Option<usize> {
+        let n = self.top_cpu.len().min(OVW_TOP);
+        if i < n { self.top_cpu.get(i).copied() } else { self.top_mem.get(i - n).copied() }
+    }
+
+    fn clamp_all(&mut self) {
+        let counts: Vec<(Screen, [usize; 3])> = Screen::ALL.iter().map(|&s| (s, Pane::ALL.map(|p| self.count(s, p)))).collect();
+        for (s, c) in counts {
+            let v = self.views.entry(s).or_default();
+            for (sel, n) in v.sel.iter_mut().zip(c) {
+                *sel = (*sel).min(n.saturating_sub(1));
+            }
+        }
+    }
+
+    /// Apply what drawing reported.
+    pub fn apply_out(&mut self, mut out: Out, ctx: &egui::Context) {
+        for p in 0..3 {
+            if let Some(s) = out.scroll[p] {
+                self.view_mut().scroll[p] = s;
+            }
+        }
+        self.visible = out.visible.map(|v| v.max(1));
+        if let Some(m) = out.help_max {
+            self.help_scroll = self.help_scroll.min(m);
+        }
+        if let Some(s) = out.tab {
+            self.goto(s);
+        }
+        if let Some(m) = out.moved.take() {
+            self.moved(m);
+        }
+        if let Some((pane, i, double)) = out.click {
+            let v = self.view_mut();
+            v.focus = pane.index();
+            v.sel[pane.index()] = i;
+            self.selected_moved(pane);
+            if double {
+                self.run(Act::Enter);
+            }
+        }
+        self.wheel(ctx, &out);
+    }
+
+    fn wheel(&mut self, ctx: &egui::Context, out: &Out) {
+        let (delta, pos) = ctx.input(|i| {
+            let mut d = 0.0;
+            for e in &i.events {
+                if let egui::Event::MouseWheel { unit, delta, .. } = e {
+                    d += match unit {
+                        egui::MouseWheelUnit::Line => delta.y * 3.0,
+                        egui::MouseWheelUnit::Point => delta.y / crate::config::theme::ROW,
+                        egui::MouseWheelUnit::Page => delta.y * 10.0,
+                    };
+                }
+            }
+            (d, i.pointer.hover_pos())
+        });
+        if delta == 0.0 || self.mode != Mode::Normal {
+            return;
+        }
+        let Some(pos) = pos else { return };
+        let Some(p) = (0..3).find(|&p| out.pane_rects[p].is_some_and(|r| r.contains(pos))) else { return };
+        self.wheel_acc += delta;
+        let rows = self.wheel_acc.trunc();
+        if rows != 0.0 {
+            self.wheel_acc -= rows;
+            self.move_sel(Pane::ALL[p], -(rows as i64));
+        }
+    }
+
+    fn move_sel(&mut self, pane: Pane, by: i64) {
+        let n = self.count(self.screen, pane);
+        if n == 0 {
+            return;
+        }
+        let v = self.view_mut();
+        let cur = v.sel[pane.index()] as i64;
+        v.sel[pane.index()] = (cur + by).clamp(0, n as i64 - 1) as usize;
+        self.selected_moved(pane);
+    }
+
+    /// Follow-ups of a new selection: procs remembers the process, the
+    /// procs scope re-filters.
+    fn selected_moved(&mut self, pane: Pane) {
+        match (self.screen, pane) {
+            (Screen::Procs, Pane::Mid) => self.proc_pid = self.selected_proc().map(|p| p.pid),
+            (Screen::Procs, Pane::Left) => self.refresh_rows(),
+            _ => {}
+        }
+    }
+
+    pub fn goto(&mut self, s: Screen) {
+        self.screen = s;
+        self.drag = None;
+        self.pending.clear();
+    }
+
+    /// One key, through the layer of the current mode.
+    pub fn feed(&mut self, k: Key) {
+        match self.mode {
+            Mode::Help => {
+                if let Match::Exact(b) = resolve(&self.km.help, &[k]) {
+                    for a in b.run.clone() {
+                        self.run_help(a);
+                    }
+                }
+            }
+            Mode::Filter => match resolve(&self.km.input, &[k]) {
+                Match::Exact(b) => {
+                    for a in b.run.clone() {
+                        self.run(a);
+                    }
+                }
+                _ => {
+                    if let (Code::Char(c), false) = (k.code, k.ctrl || k.alt || k.sup) {
+                        self.filter.push(c);
+                        self.refresh_rows();
+                    }
+                }
+            },
+            Mode::Normal => {
+                self.pending.push(k);
+                match resolve(&self.km.main, &self.pending) {
+                    Match::Exact(b) => {
+                        let run = b.run.clone();
+                        self.pending.clear();
+                        for a in run {
+                            self.run(a);
+                        }
+                    }
+                    Match::Prefix => {}
+                    Match::None => {
+                        let again = self.pending.len() > 1;
+                        self.pending.clear();
+                        if again {
+                            self.feed(k);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn run_help(&mut self, a: Act) {
+        match a {
+            Act::Escape | Act::Help | Act::Quit => self.mode = Mode::Normal,
+            Act::Arrow(Step::By(n)) => self.help_scroll = (self.help_scroll as i64 + n).max(0) as usize,
+            Act::Arrow(Step::Top) => self.help_scroll = 0,
+            _ => {}
+        }
+    }
+
+    pub fn run(&mut self, a: Act) {
+        let built = self.screen.built();
+        match a {
+            Act::Screen(g) => {
+                let s = match g {
+                    Goto::To(s) => s,
+                    Goto::Next | Goto::Prev => {
+                        let step = if g == Goto::Next { 1 } else { Screen::ALL.len() - 1 };
+                        let mut i = self.screen.index();
+                        loop {
+                            i = (i + step) % Screen::ALL.len();
+                            if Screen::ALL[i].built() {
+                                break Screen::ALL[i];
+                            }
+                        }
+                    }
+                };
+                self.goto(s);
+            }
+            Act::Arrow(step) if built => {
+                let pane = self.focus();
+                let n = self.count(self.screen, pane) as i64;
+                let cur = self.view().sel[pane.index()] as i64;
+                let to = match step {
+                    Step::By(d) => cur + d,
+                    Step::Top => 0,
+                    Step::Bot => n - 1,
+                    Step::Page(f) => cur + (self.visible[pane.index()] as f32 * f).round() as i64,
+                };
+                self.move_sel(pane, to - cur);
+            }
+            Act::Focus(d) if built => {
+                let v = self.view_mut();
+                v.focus = (v.focus as i32 + d).clamp(0, 2) as usize;
+            }
+            Act::Resize(t) if built => {
+                let focus = self.focus();
+                let l = self.layouts.get_mut(&self.screen).expect("every screen has a layout");
+                if l.nudge(&focus, t, NUDGE) {
+                    self.saver.save(&self.layouts);
+                } else {
+                    self.toast(tr("toast.no_divider"));
+                }
+            }
+            Act::Equalize if built => {
+                if let Some(l) = self.layouts.get_mut(&self.screen) {
+                    l.equalize();
+                }
+                self.saver.save(&self.layouts);
+            }
+            Act::Enter if built => self.enter(),
+            Act::Filter => {
+                self.goto(Screen::Procs);
+                self.view_mut().focus = Pane::Mid.index();
+                self.mode = Mode::Filter;
+            }
+            Act::Sort => {
+                self.sort = self.sort.next();
+                self.refresh_rows();
+                self.toast(trf("toast.sort", &[self.sort.label()]));
+            }
+            Act::Pause => {
+                self.paused = !self.paused;
+                let _ = self.ctl.send(Ctl::Pause(self.paused));
+                self.toast(tr(if self.paused { "toast.paused" } else { "toast.resumed" }));
+            }
+            Act::Interval(d) => {
+                let cur = INTERVALS.iter().position(|&i| i >= self.interval).unwrap_or(INTERVALS.len() - 1) as i32;
+                let i = (cur + d).clamp(0, INTERVALS.len() as i32 - 1) as usize;
+                self.interval = INTERVALS[i];
+                let _ = self.ctl.send(Ctl::Interval(Duration::from_secs_f32(self.interval)));
+                self.toast(trf("toast.interval", &[&fmt_interval(self.interval)]));
+            }
+            Act::Help => {
+                self.mode = Mode::Help;
+                self.help_scroll = 0;
+            }
+            Act::Quit => self.quit = true,
+            Act::Escape => {
+                if self.mode == Mode::Filter || !self.filter.is_empty() {
+                    self.filter.clear();
+                    self.refresh_rows();
+                }
+                self.mode = Mode::Normal;
+            }
+            Act::Confirm => self.mode = Mode::Normal,
+            Act::Backspace if self.filter.pop().is_some() => self.refresh_rows(),
+            // Arrow, Focus, Resize, Equalize and Enter on a screen not built yet.
+            _ => {}
+        }
+    }
+
+    fn enter(&mut self) {
+        let v = self.view();
+        let sel = v.sel[v.focus.min(2)];
+        match (self.screen, self.focus()) {
+            (Screen::Ovw, Pane::Left) => self.goto(if sel == 0 { Screen::Cpu } else { Screen::Mem }),
+            (Screen::Ovw, Pane::Right) => {
+                if let Some(i) = self.ovw_top(sel) {
+                    self.open_proc(self.model.procs[i].pid);
+                }
+            }
+            (Screen::Cpu, Pane::Left) => {
+                let first = match (sel, &self.model.st) {
+                    (0, _) | (_, None) => 0,
+                    (g, Some(st)) => st.topo.groups.iter().take(g - 1).map(|g| g.cores.len()).sum(),
+                };
+                let v = self.view_mut();
+                v.focus = Pane::Mid.index();
+                v.sel[Pane::Mid.index()] = first;
+            }
+            (Screen::Cpu, Pane::Right) => {
+                if let Some(&i) = self.top_cpu.get(sel) {
+                    self.open_proc(self.model.procs[i].pid);
+                }
+            }
+            (Screen::Mem, Pane::Right) => {
+                if let Some(&i) = self.top_mem.get(sel) {
+                    self.open_proc(self.model.procs[i].pid);
+                }
+            }
+            (Screen::Procs, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
+            _ => {}
+        }
+    }
+
+    /// Procs with `pid` selected, the scope and filter widened if they hid it.
+    fn open_proc(&mut self, pid: u32) {
+        self.goto(Screen::Procs);
+        let v = self.view_mut();
+        v.focus = Pane::Mid.index();
+        v.sel[Pane::Left.index()] = 0;
+        let f = self.filter.to_lowercase();
+        if self.model.procs.iter().any(|p| p.pid == pid && !self.matches(p, false, &f)) {
+            self.filter.clear();
+        }
+        self.proc_pid = Some(pid);
+        self.refresh_rows();
+    }
+
+    /// A divider dragged or double-clicked with the mouse.
+    pub fn moved(&mut self, m: tsumugi_layout::ui::Moved<Pane>) {
+        use tsumugi_layout::ui::Moved;
+        match m {
+            Moved::Dragging(l) => self.drag = Some(l),
+            Moved::Released => {
+                if let Some(l) = self.drag.take() {
+                    self.layouts.insert(self.screen, l);
+                    self.saver.save(&self.layouts);
+                }
+            }
+            Moved::Halved(l) => {
+                self.drag = None;
+                self.layouts.insert(self.screen, l);
+                self.saver.save(&self.layouts);
+            }
+        }
+    }
+
+    /// The keys of the current state, for a scripted run's report.
+    pub fn report(&self) -> String {
+        let v = self.view();
+        let mut s = String::new();
+        s += &format!("screen: {}\n", self.screen.name());
+        s += &format!("mode: {:?}\n", self.mode);
+        s += &format!("focus: {}\n", self.focus().name());
+        s += &format!("sel: {:?}\n", v.sel);
+        s += &format!("filter: {}\n", self.filter);
+        s += &format!("sort: {:?}\n", self.sort);
+        s += &format!("interval: {}\n", self.interval);
+        s += &format!("paused: {}\n", self.paused);
+        s += &format!("samples: {}\n", self.model.samples);
+        s += &format!("procs: {}\n", self.rows.len());
+        if let Some(st) = &self.model.st {
+            s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
+        }
+        let widths: Vec<String> = self.layouts[&self.screen]
+            .layout(tsumugi_layout::Rect::new(0.0, 0.0, 1000.0, 100.0), 0.0)
+            .iter()
+            .map(|(p, r)| format!("{}={:.0}", p.name(), r.w))
+            .collect();
+        s += &format!("widths: {}\n", widths.join(" "));
+        if let Some((t, _)) = &self.toast {
+            s += &format!("toast: {t}\n");
+        }
+        s
+    }
+}
+
+pub fn fmt_interval(s: f32) -> String {
+    if s.fract() == 0.0 { format!("{s:.0}") } else { format!("{s}") }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collect::Mem;
+
+    fn proc(pid: u32, name: &str, cpu: f32, mem: u64) -> Proc {
+        Proc {
+            pid,
+            ppid: None,
+            name: name.into(),
+            cpu,
+            mem,
+            threads: Some(1),
+            user: Some("me".into()),
+            cmd: String::new(),
+            exe: None,
+            start: 0,
+            status: "Run".into(),
+        }
+    }
+
+    fn app() -> (App, Sender<Msg>, Receiver<Ctl>) {
+        let (km, _) = Keymap::load(None);
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let (ctl_tx, ctl_rx) = crossbeam_channel::unbounded();
+        let layouts = Screen::ALL.iter().map(|&s| (s, s.default_layout())).collect();
+        (App::new(km, rx, ctl_tx, layouts, Saver::new(None), 1.0), tx, ctl_rx)
+    }
+
+    fn keys(a: &mut App, s: &str) {
+        for k in s.split_whitespace() {
+            a.feed(Key::parse(k).unwrap());
+        }
+    }
+
+    #[test]
+    fn the_selection_follows_the_process_while_the_list_reorders() {
+        let (mut a, tx, _ctl) = app();
+        tx.send(Msg::Mem(Mem::default())).unwrap();
+        tx.send(Msg::Procs { procs: vec![proc(1, "a", 50.0, 1), proc(2, "b", 10.0, 2), proc(3, "c", 5.0, 3)], total_threads: None })
+            .unwrap();
+        a.pump();
+        keys(&mut a, "5 l j");
+        assert_eq!(a.selected_proc().map(|p| p.pid), Some(2));
+        tx.send(Msg::Procs { procs: vec![proc(1, "a", 1.0, 1), proc(2, "b", 90.0, 2), proc(3, "c", 5.0, 3)], total_threads: None })
+            .unwrap();
+        a.pump();
+        assert_eq!(a.view().sel[1], 0);
+        assert_eq!(a.selected_proc().map(|p| p.pid), Some(2));
+    }
+
+    #[test]
+    fn the_filter_types_and_escape_drops_it() {
+        let (mut a, tx, _ctl) = app();
+        tx.send(Msg::Procs { procs: vec![proc(1, "alpha", 0.0, 1), proc(2, "beta", 0.0, 2)], total_threads: None }).unwrap();
+        a.pump();
+        keys(&mut a, "/ b e");
+        assert_eq!(a.screen, Screen::Procs);
+        assert_eq!(a.mode, Mode::Filter);
+        assert_eq!(a.rows.len(), 1);
+        keys(&mut a, "<Backspace> <Backspace>");
+        assert_eq!(a.rows.len(), 2);
+        keys(&mut a, "x <Enter>");
+        assert_eq!((a.mode, a.filter.as_str()), (Mode::Normal, "x"));
+        keys(&mut a, "<Esc>");
+        assert!(a.filter.is_empty());
+    }
+
+    #[test]
+    fn keys_move_a_divider_and_say_when_there_is_none() {
+        let (mut a, _tx, _ctl) = app();
+        keys(&mut a, "2");
+        let before = a.layouts[&Screen::Cpu].clone();
+        keys(&mut a, "<A-S-Right>");
+        assert_ne!(a.layouts[&Screen::Cpu], before);
+        keys(&mut a, "<A-S-Up>");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.no_divider")));
+        let ctrl = if cfg!(target_os = "macos") { "<D-S-e>" } else { "<C-S-e>" };
+        keys(&mut a, ctrl);
+        let w: Vec<f32> =
+            a.layouts[&Screen::Cpu].layout(tsumugi_layout::Rect::new(0.0, 0.0, 300.0, 10.0), 0.0).iter().map(|(_, r)| r.w).collect();
+        assert!(w.iter().all(|x| (x - 100.0).abs() < 0.5), "{w:?}");
+    }
+
+    #[test]
+    fn interval_steps_and_pause_reach_the_sampler() {
+        let (mut a, _tx, ctl) = app();
+        keys(&mut a, "+ + -");
+        assert_eq!(a.interval, 2.0);
+        keys(&mut a, "P");
+        let got: Vec<Ctl> = ctl.try_iter().collect();
+        assert_eq!(got.len(), 4);
+        assert!(matches!(got[3], Ctl::Pause(true)));
+        for _ in 0..10 {
+            keys(&mut a, "-");
+        }
+        assert_eq!(a.interval, 0.5);
+    }
+
+    #[test]
+    fn tab_skips_screens_not_built_and_enter_opens_a_process() {
+        let (mut a, tx, _ctl) = app();
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Cpu);
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Mem);
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Procs);
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Ovw);
+        tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
+        a.pump();
+        keys(&mut a, "l l <Enter>");
+        assert_eq!(a.screen, Screen::Procs);
+        assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
+    }
+}

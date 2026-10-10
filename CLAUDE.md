@@ -1,0 +1,67 @@
+# mimamori — Claude 向けメモ
+
+キーボードで操作するシステムモニター。Rust + egui 0.36、Windows 優先で macOS / Linux（それぞれ x86_64 / ARM64）も動かす。
+姉妹プロジェクトは [filer](https://github.com/uchmk/filer)（yazi 風のファイルマネージャー）と [tsumugi](https://github.com/uchmk/tsumugi)（AI CLI のためのターミナル）。
+見た目・キー・設定の置き場所は filer と揃える。画面の設計の元は HTML の見本（https://claude.ai/artifact/QhsVSAEHsUZmxbZbqyuGjj の「設計」タブ）。
+
+## 作業ルール
+
+- 返答は日本語。コード・コメント・コミットメッセージは英語。
+- 頼まれるまでコミットしない。
+- 改行は LF（`.gitattributes` の `eol=lf`）。スクリプトで書き換えるときは改行を変えない（Python なら `newline=''`）。
+- タスクは [TODO.md](TODO.md)。実機でしか確かめられないことは [TESTING.md](TESTING.md) に積む（機能を足したら行を足してから完了にする）。
+  `[x]` を付けてよいのは実機のセッションと持ち主だけ。動きを変えた行は `[ ]` に戻す。
+
+## 版・変更ログ・push
+
+一人開発なので `main` への直接のコミット・push を許す。マージは merge コミット（rebase / squash を使わない）。`--force` は使わない。
+
+- semver。版は `Cargo.toml` の `version` が正。PATCH = 修正・ドキュメント・小さな整理、MINOR = 機能・大きめの変更。
+  既定キーや設定の互換性に関わる変更は CHANGELOG に**変更**として明記する。
+- **版の繰り上げと [CHANGELOG.md](CHANGELOG.md) への追記はセット。**`version` を書き換える → `cargo build` で `Cargo.lock` も更新
+  （忘れると CI の `--locked` が落ちる）→ CHANGELOG の先頭に節（Keep a Changelog、日本語、**日付は JST**: `TZ=Asia/Tokyo date +%F`）→ コードと一緒にコミット。
+- コミットの件名は `vX.Y.Z: …`、最初の段落は英語で単体で通じるように書く（後でリリースノートにする）。
+- **push の前は `scripts/verify.sh`**（build `--locked`・`fmt --check`・test・clippy を Linux と `x86_64-pc-windows-msvc` で。最後の行が `ALL OK: …` なら push してよい）。
+
+## ビルド・検証
+
+- **filer / tsumugi と違い、`cargo fmt` を使ってよい**（`rustfmt.toml` で `max_width = 140`）。CI は `cargo fmt --check` を見る。
+- clippy は `--all-targets -- -D warnings` で警告ゼロ。Linux では `#[cfg(windows)]` のコードがコンパイルされないので、Windows ターゲットの clippy も回す。
+- テストは機械の設定ファイルに左右されてはいけない。一時ディレクトリは `util::test_dir("ラベル")`、設定は `settings::load(Some(dir))` に渡す。
+- **画面は Xvfb で確かめる**: `scripts/xrun.sh OUTDIR --keys '<Wait:2000>2<Shot:cpu><State:a>'`。
+  - `<Shot:名前>` は PNG、`<State:名前>` は画面・フォーカス・選択・列の幅などの文字を OUTDIR に書く。
+  - `<Click:x,y>` と `<Drag:x1,y1-x2,y2>` の座標は窓に対する割合（0〜1）。境目を掴むときは `<State>` の `widths`（1000 分率）から位置を出す。
+  - 設定は OUTDIR/config から読む（`UCHMK_CONFIG_DIR`）。前の回の列の幅は持ち越さない。
+  - `XRUN_IDLE=10` で、最後の 10 秒の CPU 使用率を `cpu.txt` に書く。Xvfb は llvmpipe（ソフトウェア描画）なので、
+    再描画 1 回が重く、1 秒ごとのサンプリングで 1 コアの 10% 前後に見える。mimamori 自身（収集 0.1%・UI 0.7% ほど）とは分けて読む。
+
+## 設計の約束事
+
+- **ディスクやプロセスに触る処理は UI スレッドで実行しない。**収集は `collect/` の 1 本のスレッドで、Source ごとに間隔を持ち、
+  `Msg` を crossbeam で UI に送って `request_repaint` で起こす。間隔と一時停止は制御のチャネルで送る。
+- **何もしていないときは再描画しない。**`request_repaint_after` はフレームの中で呼ぶ（`raw_input_hook` の中で頼んだものはフレームの頭で消える）。
+  トーストのように時間で消えるものは、残り時間で起こす（`App::toast_left`）。
+- **キーは keymap 経由**（`src/defaults/keymap.toml`、利用者の `keymap.toml` が上に重なる）。ハードコードしない。
+  修飾キーは `<P-…>` が macOS で Cmd、ほかで Ctrl。`on_mac` で macOS だけ別のキーにできる。
+- **画面の文字はすべて `tr("key")` / `trf("key", &[..])` を通す。**英語の表は `src/lang/en.toml`。
+  言語は `config.toml` → `common.toml`（uchmk のアプリで共通）→ OS の順で決まる。表に無いキーはテストが落とす。
+- **列の大きさは `tsumugi-layout`**（tsumugi の workspace のクレート、`Cargo.toml` の `rev` で固定）。直すときは tsumugi 側で直して `rev` を上げる。
+- **マルチ OS**: OS ごとの処理は `#[cfg(...)]` のモジュールに閉じ込める（例: `collect/topo/linux.rs` と `windows.rs`、macOS は `fallback`）。
+  パースは純粋な関数にして、どの OS でもテストが回るようにする（`#[cfg(any(windows, test))]`）。
+- **マルチアーキテクチャ**: Pure Rust のクレートを優先し、C のライブラリを抱えるものは避ける。
+- 新しい画面を作るときは `Screen::built` に足し、`ui/` に描画を置き、keymap と README のキー表・画面の表・TESTING.md を更新する。
+
+## 構成
+
+| 場所 | 役割 |
+| --- | --- |
+| `src/main.rs` | eframe の起動、`--keys` の受け付け、フレームごとの `pump` と描画 |
+| `src/app.rs` | アプリの状態と `Act` の実行（画面・フォーカス・選択・絞り込み・並べ替え・列の幅・トースト） |
+| `src/collect/` | 収集のスレッド（cpu / mem / proc）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32） |
+| `src/model.rs` | 履歴のリングバッファ（60 秒）と最新の値 |
+| `src/config/` | `keys.rs`（キーの文字列）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`theme.rs`（filer の色） |
+| `src/i18n.rs`, `src/lang/` | `tr()` と言語の表 |
+| `src/persist.rs` | `state.toml`（列の幅）の読み書き |
+| `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
+| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs` |
+| `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る） |

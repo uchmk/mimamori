@@ -1,0 +1,35 @@
+[package]
+name = "mimamori"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A keyboard-driven system monitor: cores and threads at a glance"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/uchmk/mimamori"
+
+[dependencies]
+eframe = "0.36"
+egui = "0.36"
+sysinfo = { version = "0.39", default-features = false, features = ["system", "user"] }
+crossbeam-channel = "0.5"
+serde = { version = "1", features = ["derive"] }
+toml = "1.1"
+dirs = "7"
+sys-locale = "0.3"
+png = "0.18"
+# The split tree behind the resizable panels, shared with tsumugi and filer.
+# Pinned to the commit filer reads; to take a fix, move `rev` and run
+# `cargo build` so Cargo.lock follows. It depends on nothing but egui.
+tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "085c421f5c3c738f9d5782c39aae68d31ee7db37", features = ["egui", "serde"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_SystemInformation",
+] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

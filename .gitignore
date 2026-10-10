@@ -1,0 +1,4 @@
+/target
+
+# What a scripted run's screenshots land in (scripts/xrun.sh).
+/shots/

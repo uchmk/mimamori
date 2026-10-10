@@ -1,0 +1,361 @@
+//! Drawing. Every frame paints the whole window from the app's state with
+//! egui's painter, the way the mock's canvas did, and reports clicks, scroll
+//! positions and divider drags back through [`Out`]; the app applies them
+//! once the frame is drawn, so drawing only ever reads the state.
+
+mod cpu;
+mod graph;
+mod help;
+mod mem;
+mod overview;
+mod procs;
+mod tiles;
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use egui::{Align2, Color32, FontId, Id, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
+use tsumugi_layout::ui::{Look, dividers, from_egui, to_egui};
+
+use crate::app::{App, Mode, Out, TOAST, fmt_interval};
+use crate::config::theme::{BAR, BG, BG_ALT, BLUE, CYAN, DIM, FG, LINE, MAGENTA, ROW, SEL, SEL_UNFOCUSED, YELLOW};
+use crate::i18n::{tr, trf};
+use crate::screen::{Pane, Screen};
+use crate::util::{fmt_bytes, fmt_uptime};
+
+pub const FONT: f32 = 13.0;
+const SMALL: f32 = 10.0;
+const HEADER: f32 = 28.0;
+const CRUMB: f32 = 24.0;
+const STATUS: f32 = 24.0;
+/// Between two panels, and around the body.
+pub const GAP: f32 = 6.0;
+
+pub fn font() -> FontId {
+    FontId::monospace(FONT)
+}
+
+fn small_font() -> FontId {
+    FontId::monospace(SMALL)
+}
+
+/// The painter with the width of one character of the monospace font, so
+/// text can be cut to fit without asking egui to lay it out first.
+#[derive(Clone)]
+pub struct Pen {
+    pub p: Painter,
+    pub cw: f32,
+}
+
+impl Pen {
+    pub fn text(&self, pos: Pos2, s: &str, color: Color32) -> Rect {
+        self.p.text(pos, Align2::LEFT_CENTER, s, font(), color)
+    }
+
+    pub fn text_r(&self, pos: Pos2, s: &str, color: Color32) -> Rect {
+        self.p.text(pos, Align2::RIGHT_CENTER, s, font(), color)
+    }
+
+    pub fn text_c(&self, pos: Pos2, s: &str, color: Color32) -> Rect {
+        self.p.text(pos, Align2::CENTER_CENTER, s, font(), color)
+    }
+
+    /// The small font, for the thread numbers and clocks inside a tile.
+    pub fn small(&self, pos: Pos2, align: Align2, s: &str, color: Color32) -> Rect {
+        self.p.text(pos, align, s, small_font(), color)
+    }
+
+    /// `s` cut to `w` pixels, with `…` where it was cut.
+    pub fn fit(&self, s: &str, w: f32) -> String {
+        let room = (w / self.cw).floor().max(0.0) as usize;
+        let n = s.chars().count();
+        if n <= room {
+            return s.to_string();
+        }
+        if room == 0 {
+            return String::new();
+        }
+        let mut out: String = s.chars().take(room - 1).collect();
+        out.push('…');
+        out
+    }
+
+    pub fn width(&self, s: &str) -> f32 {
+        s.chars().count() as f32 * self.cw
+    }
+
+    /// The same pen drawing only inside `r`.
+    pub fn clipped(&self, r: Rect) -> Pen {
+        Pen { p: self.p.with_clip_rect(r.intersect(self.p.clip_rect())), cw: self.cw }
+    }
+
+    /// A key and its value on one row: the key dim in a column `kw` wide,
+    /// the value cut to fit.
+    pub fn kv(&self, r: Rect, kw: f32, key: &str, val: &str) {
+        let y = r.center().y;
+        self.text(pos2(r.left() + 4.0, y), &self.fit(key, kw - 6.0), DIM);
+        self.text(pos2(r.left() + kw, y), &self.fit(val, r.width() - kw - 4.0), FG);
+    }
+
+    /// A label on the left and a value on the right of a row; the label is
+    /// cut where the value begins.
+    pub fn pair(&self, r: Rect, left: &str, lc: Color32, right: &str, rc: Color32) {
+        let y = r.center().y;
+        let rr = self.text_r(pos2(r.right() - 6.0, y), right, rc);
+        self.text(pos2(r.left() + 6.0, y), &self.fit(left, rr.left() - r.left() - 6.0 - self.cw), lc);
+    }
+
+    /// A small header over a block of a panel.
+    pub fn section(&self, r: Rect, s: &str) {
+        self.text(pos2(r.left() + 4.0, r.center().y), &self.fit(s, r.width()), CYAN.gamma_multiply(0.8));
+    }
+}
+
+/// What one screen draws with: the frame's painter, the app, and where to
+/// report what was clicked.
+pub struct Cx<'a> {
+    pub ui: &'a Ui,
+    pub pen: Pen,
+    pub out: &'a mut Out,
+    pub app: &'a App,
+}
+
+impl Cx<'_> {
+    pub fn focused(&self, p: Pane) -> bool {
+        self.app.focus() == p
+    }
+
+    pub fn sel(&self, p: Pane) -> usize {
+        self.app.view().sel[p.index()]
+    }
+
+    /// A row's background (the selection's colour when it is selected) and
+    /// its click.
+    pub fn row_bg(&mut self, p: Pane, i: usize, r: Rect) {
+        if i == self.sel(p) {
+            self.pen.p.rect_filled(r, 3.0, if self.focused(p) { SEL } else { SEL_UNFOCUSED });
+        }
+        let resp = self.ui.interact(r, Id::new(("row", self.app.screen, p.index(), i)), Sense::click());
+        if resp.clicked() {
+            self.out.click = Some((p, i, resp.double_clicked()));
+        }
+    }
+
+    /// `count` rows in `body`, scrolled so the selection shows; `row`
+    /// draws one after its background.
+    pub fn scroll_list(&mut self, p: Pane, body: Rect, count: usize, mut row: impl FnMut(&mut Cx, Rect, usize)) {
+        let n = ((body.height() / ROW).floor() as usize).max(1);
+        let sel = self.sel(p);
+        let mut scroll = self.app.view().scroll[p.index()];
+        if sel < scroll {
+            scroll = sel;
+        }
+        if sel >= scroll + n {
+            scroll = sel + 1 - n;
+        }
+        scroll = scroll.min(count.saturating_sub(n));
+        self.out.visible[p.index()] = n;
+        self.out.scroll[p.index()] = Some(scroll);
+        for i in scroll..count.min(scroll + n) {
+            let r = Rect::from_min_size(pos2(body.left(), body.top() + (i - scroll) as f32 * ROW), vec2(body.width(), ROW));
+            self.row_bg(p, i, r);
+            row(self, r, i);
+        }
+    }
+}
+
+/// A row of `ROW` at `y` across `body`.
+pub fn row_at(body: Rect, y: f32) -> Rect {
+    Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), ROW))
+}
+
+/// Key and value rows from `y` down, as many as fit in `body`; returns the
+/// `y` under the last one.
+pub fn kv_rows(pen: &Pen, body: Rect, mut y: f32, rows: &[(&str, String)]) -> f32 {
+    // The keys' column fits the longest key, up to half the row.
+    let longest = rows.iter().map(|(k, _)| pen.width(k)).fold(0.0, f32::max);
+    let kw = (longest + pen.cw * 2.0).clamp(pen.cw * 6.0, (body.width() * 0.5).max(pen.cw * 6.0));
+    for (k, v) in rows {
+        if y + ROW > body.bottom() + 0.5 {
+            break;
+        }
+        pen.kv(row_at(body, y), kw, k, v);
+        y += ROW;
+    }
+    y
+}
+
+/// A panel's frame and title; returns the room inside it.
+pub fn panel(pen: &Pen, r: Rect, title: &str, info: &str, focused: bool) -> Rect {
+    pen.p.rect_filled(r, 6.0, BG_ALT);
+    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, if focused { CYAN.gamma_multiply(0.45) } else { LINE }), StrokeKind::Inside);
+    let y = r.top() + 13.0;
+    let t = pen.text(pos2(r.left() + 10.0, y), &pen.fit(title, r.width() - 20.0), if focused { CYAN } else { DIM });
+    if !info.is_empty() {
+        let room = r.right() - 10.0 - (t.right() + 12.0);
+        pen.text_r(pos2(r.right() - 10.0, y), &pen.fit(info, room), DIM);
+    }
+    Rect::from_min_max(pos2(r.left() + 6.0, r.top() + 26.0), pos2(r.right() - 6.0, r.bottom() - 6.0))
+}
+
+/// A rounded pill with text in it, `w` wide; the badge in the status bar
+/// and the active tab.
+fn pill(pen: &Pen, r: Rect, s: &str, bg: Color32, fg: Color32) {
+    pen.p.rect_filled(r, 4.0, bg);
+    pen.text_c(r.center(), s, fg);
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
+}
+
+/// Draw the window and report what the pointer did.
+pub fn frame(ui: &Ui, app: &App) -> Out {
+    let mut out = Out::default();
+    let full = ui.max_rect();
+    let cw = ui.ctx().fonts_mut(|f| f.glyph_width(&font(), 'M'));
+    let pen = Pen { p: ui.painter_at(full), cw };
+    pen.p.rect_filled(full, 0.0, BG);
+
+    let header = Rect::from_min_size(full.min, vec2(full.width(), HEADER));
+    draw_header(ui, &pen, app, header, &mut out);
+    let crumb = Rect::from_min_size(pos2(full.left(), header.bottom()), vec2(full.width(), CRUMB));
+    draw_crumb(&pen, app, crumb);
+    let status = Rect::from_min_max(pos2(full.left(), full.bottom() - STATUS), full.max);
+    let area = Rect::from_min_max(pos2(full.left() + GAP, crumb.bottom()), pos2(full.right() - GAP, status.top() - GAP));
+
+    match &app.model.st {
+        _ if area.width() < 40.0 || area.height() < 40.0 => {}
+        None => {
+            let body = panel(&pen, area, tr(app.screen.label_key()), "", false);
+            pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        }
+        Some(_) if !app.screen.built() => {
+            let body = panel(&pen, area, tr(app.screen.label_key()), "", false);
+            pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.not_yet"), DIM);
+        }
+        Some(_) => {
+            let mut rects = [Rect::NOTHING; 3];
+            for (p, r) in app.layout().layout(from_egui(area), GAP) {
+                rects[p.index()] = to_egui(r);
+            }
+            {
+                let mut cx = Cx { ui, pen: pen.clone(), out: &mut out, app };
+                match app.screen {
+                    Screen::Ovw => overview::draw(&mut cx, rects),
+                    Screen::Cpu => cpu::draw(&mut cx, rects),
+                    Screen::Mem => mem::draw(&mut cx, rects),
+                    Screen::Procs => procs::draw(&mut cx, rects),
+                    _ => {}
+                }
+            }
+            for (i, r) in rects.into_iter().enumerate() {
+                out.pane_rects[i] = (r.width() > 0.0).then_some(r);
+            }
+            // After the rows, so a divider takes the pointer where both are.
+            if app.mode != Mode::Help {
+                let look = Look { gap: GAP, grab: 10.0, line: CYAN };
+                out.moved = dividers(ui, Id::new(("div", app.screen)), app.layout(), from_egui(area), look);
+            }
+        }
+    }
+
+    draw_status(ui, &pen, app, status);
+    if app.mode == Mode::Help {
+        help::draw(&pen, app, full, &mut out);
+        out.click = None;
+        out.tab = None;
+    }
+    out
+}
+
+fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
+    pen.p.rect_filled(r, 0.0, BAR);
+    let y = r.center().y;
+    let mut x = r.left() + 8.0;
+    for s in Screen::ALL {
+        let label = tr(s.label_key());
+        let w = pen.width(label) + pen.cw * 2.0 + 14.0;
+        let tab = Rect::from_center_size(pos2(x + w / 2.0, y), vec2(w, 20.0));
+        if tab.right() > r.right() - 8.0 {
+            break;
+        }
+        let digit = s.digit().to_string();
+        if s == app.screen {
+            pill(pen, tab, &format!("{digit} {label}"), BLUE, BG);
+        } else {
+            let (dc, lc) = if s.built() { (CYAN, FG) } else { (DIM, DIM) };
+            let d = pen.text(pos2(tab.left() + 7.0, y), &digit, dc);
+            pen.text(pos2(d.right() + pen.cw, y), label, lc);
+        }
+        if ui.interact(tab, Id::new(("tab", s)), Sense::click()).clicked() {
+            out.tab = Some(s);
+        }
+        x += w + 2.0;
+    }
+    if let Some(st) = &app.model.st {
+        let up = trf("header.up", &[&fmt_uptime(now_secs().saturating_sub(st.boot_time))]);
+        let info = format!("{} · {} · {up}", st.host, st.os);
+        let room = r.right() - 10.0 - x - 16.0;
+        if room > pen.cw * 8.0 {
+            pen.text_r(pos2(r.right() - 10.0, y), &pen.fit(&info, room), DIM);
+        }
+    }
+}
+
+fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
+    let Some(st) = &app.model.st else { return };
+    let m = &app.model;
+    let detail = match app.screen {
+        Screen::Ovw => format!("{} · {}", st.host, st.arch),
+        Screen::Cpu => format!("{} · {}", st.brand, st.topo.summary()),
+        Screen::Mem => trf("crumb.mem", &[&fmt_bytes(m.mem.total), &fmt_bytes(m.mem.swap_total)]),
+        Screen::Procs => {
+            let threads = m.total_threads.map_or_else(|| "—".to_string(), |t| t.to_string());
+            trf("crumb.procs", &[&m.procs.len().to_string(), &threads])
+        }
+        _ => tr("misc.not_yet").to_string(),
+    };
+    let s = format!("{} › {detail}", tr(app.screen.label_key()));
+    pen.text(pos2(r.left() + 12.0, r.center().y), &pen.fit(&s, r.width() - 24.0), DIM);
+}
+
+fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
+    pen.p.rect_filled(r, 0.0, BAR);
+    let y = r.center().y;
+    let (badge, color) = match app.mode {
+        Mode::Normal => (tr("mode.normal"), BLUE),
+        Mode::Filter => (tr("mode.filter"), YELLOW),
+        Mode::Help => (tr("mode.help"), MAGENTA),
+    };
+    let bw = pen.width(badge) + 16.0;
+    let b = Rect::from_center_size(pos2(r.left() + 6.0 + bw / 2.0, y), vec2(bw, 18.0));
+    pill(pen, b, badge, color, BG);
+    let x = b.right() + 10.0;
+
+    // The right side first, so the left knows its room.
+    let m = &app.model;
+    let mut right = trf("status.summary", &[&format!("{:.0}", m.total), &format!("{:.0}", m.mem_pct())]);
+    if app.screen.built() {
+        let p = app.focus();
+        let n = app.count(app.screen, p);
+        if n > 0 {
+            right += &format!("  {}/{n}", app.view().sel[p.index()] + 1);
+        }
+    }
+    let rr = pen.text_r(pos2(r.right() - 10.0, y), &right, DIM);
+    let room = rr.left() - 16.0 - x;
+
+    if app.mode == Mode::Filter {
+        pen.text(pos2(x, y), &pen.fit(&format!("/{}▏", app.filter), room), FG);
+    } else if let Some((t, at)) = app.toast.as_ref().filter(|(_, at)| at.elapsed() < TOAST) {
+        pen.text(pos2(x, y), &pen.fit(t, room), YELLOW);
+        ui.ctx().request_repaint_after(TOAST.saturating_sub(at.elapsed()));
+    } else {
+        let state = tr(if app.paused { "status.paused" } else { "status.sampling" });
+        let mut s = format!("{} · {state}", trf("status.interval", &[&fmt_interval(app.interval)]));
+        if !app.filter.is_empty() {
+            s += &format!(" · /{}", app.filter);
+        }
+        pen.text(pos2(x, y), &pen.fit(&s, room), if app.paused { YELLOW } else { DIM });
+    }
+}
