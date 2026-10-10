@@ -41,7 +41,7 @@
   - 設定は OUTDIR/config から読む（`UCHMK_CONFIG_DIR`）。前の回の列の幅は持ち越さない。
   - `XRUN_IDLE=10` で、最後の 10 秒の CPU 使用率を `cpu.txt` に書く。Xvfb は llvmpipe（ソフトウェア描画）なので、
     再描画 1 回が重く、1 秒ごとのサンプリングで 1 コアの 10% 前後に見える。mimamori 自身（収集 0.1%・UI 0.7% ほど）とは分けて読む。
-- CI の `smoke` は `scripts/smoke-linux.sh`（xrun.sh で 1〜0 の画面を順に撮り、panic・別の画面・真っ平らな画像で落ちる）。画像は成果物 `linux-smoke` に残る。
+- CI の `smoke` は `scripts/smoke-linux.sh`（xrun.sh で 1〜0 と F（fleet）の画面を順に撮り、panic・別の画面・真っ平らな画像で落ちる）。画像は成果物 `linux-smoke` に残る。
   画面を足したら、このスクリプトの `screens` にも足す。
 
 ## 設計の約束事
@@ -77,6 +77,7 @@
 | `src/collect/hw/` | sys の画面の変わらない情報。`smbios.rs`（SMBIOS の表のパース。システム・ファームウェア・板・プロセッサーとキャッシュ・メモリの配列とスロット）、`windows.rs`（`GetSystemFirmwareTable('RSMB')` と `GetFirmwareType`）、`linux.rs`（`/sys/firmware/dmi/tables` → `/sys/class/dmi/id` → デバイスツリーの順）、`mac.rs`（`system_profiler -xml` のパース）。読めない理由は `Note` |
 | `src/icon.rs` | アイコンをコードで描く（std だけ。`build.rs` も同じファイルを読む） |
 | `src/winres.rs`, `build.rs` | Windows の `.res`（アイコンと版の情報）を Rust で書き、MSVC のリンカーに渡す。rc.exe は要らない |
+| `src/remote/` | fleet。`proto.rs`（postcard の枠・プロトコルの番号・`Hello` と `Summary`）、`agent.rs`（`--agent`。`127.0.0.1` だけで待ち受け、収集のスレッドの `Msg` を `Model` に畳んで見る側ごとの短いチャネルへ。遅れた見る側は要約を取りこぼす）、`client.rs`（`[[host]]` ごとのスレッド。つなぎ・ping・待ちを延ばしてつなぎ直す、落ちた理由は `Why`）、`mod.rs`（`Peer`: カードの状態と履歴、`Status`）。暗号も認証も持たず、`ssh -L` か `tailscale serve` の上で使う |
 | `src/kill.rs` | プロセスの終了（確認の後、1 回ごとのスレッドで。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL） |
 | `src/svcctl.rs` | サービスの開始・停止・再起動（確認の後、1 回ごとのスレッドで。Windows は SCM、Linux は `systemctl`、macOS は `launchctl`。権限不足とエラーの読み替えは純粋な関数） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
@@ -86,5 +87,5 @@
 | `src/fonts.rs` | CJK のフォント（OS のフォントをスレッドで読み、egui のフォントの後ろに足す） |
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
-| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認） |
+| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認）・`fleet.rs`（fleet のカード。この機械と `[[host]]`、つなぎ方の手引き） |
 | `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る）、`smoke-linux.sh`（CI のスモーク）、`release-sums.sh`（リリースの SHA-256 の表） |

@@ -18,6 +18,7 @@ keymap = [
     { on = "8", run = "screen disk", desc = "Disks" },
     { on = "9", run = "screen sensors", desc = "Sensors" },
     { on = "0", run = "screen sys", desc = "System" },
+    { on = "F", run = "fleet", desc = "Fleet: every machine" },
     { on = "<Tab>", run = "screen next", desc = "Next screen" },
     { on = "<BackTab>", run = "screen prev", desc = "Previous screen" },
 

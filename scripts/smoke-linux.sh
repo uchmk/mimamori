@@ -14,7 +14,7 @@
 set -u
 out="${1:-target/smoke}"
 rm -rf -- "$out"
-screens="1:overview 2:cpu 3:mem 4:gpu 5:procs 6:svc 7:net 8:disk 9:sensors 0:sys"
+screens="1:overview 2:cpu 3:mem 4:gpu 5:procs 6:svc 7:net 8:disk 9:sensors 0:sys F:fleet"
 keys='<Wait:2000>'
 for s in $screens; do
     keys="$keys${s%%:*}<Wait:1000><Shot:${s#*:}><State:${s#*:}>"

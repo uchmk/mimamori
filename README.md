@@ -12,6 +12,7 @@ Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
 > **v0.19** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
+> **v0.31** adds the fleet: other machines' summaries on one screen, over SSH or Tailscale (see [Fleet](#fleet)).
 > What is still missing on each OS is in [TODO.md](TODO.md).
 
 ## Screens
@@ -28,6 +29,7 @@ inside each tile.
 | `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
 | `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own |
+| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the uptime or when it was last seen, the agent's version and what it allows. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a mimamori agent). `h` `j` `k` `l` move between cards, `Enter` on this machine's card goes back to its screens. See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`.
@@ -50,6 +52,7 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column). On net: every socket, or only the listening ones (TCP `LISTEN` and unconnected UDP). On svc (Windows): services, or drivers |
 | `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem. On svc it stops the selected service instead |
 | `S`, `R` | On svc: start, restart the selected service, after asking. Windows asks the Service Control Manager (run mimamori as administrator); Linux runs `systemctl` (root or polkit); macOS runs `launchctl kickstart` / `kill` in the domain the list came from (system jobs need `sudo`); a job that is not loaded is loaded from its plist first (`launchctl bootstrap`), while a disabled one is left disabled and the toast says the `launchctl enable` line. A start on a running service, or a stop on a stopped one, only says so |
+| `F` | The fleet screen, and back (`Esc` or a screen key also leave it). On it, `h` `j` `k` `l` and the arrows move between cards, `gg` / `G` to the first and last. `x`, `S`, `R` on another machine's card say what its agent allows; acting on another machine comes later |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
 | `?` | Help: every key of the keymap |
@@ -83,6 +86,14 @@ language = "auto"   # "auto" follows the OS; "en" or "ja"
 interval = 1.0      # seconds between samples, 0.5 to 10
 language = "en"     # overrides common.toml for mimamori alone
 backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
+
+[agent]             # for `mimamori --agent` on this machine
+port = 7313         # listens on 127.0.0.1 only
+allow = []          # "kill", "service": what a fleet viewer may do (read and shown; acting comes later)
+
+[[host]]            # a machine on the fleet screen, once per machine
+name = "nas"
+addr = "localhost:7314"   # host or host:port; the port defaults to 7313
 ```
 
 `keymap.toml` uses yazi's format, section by section (`[main]`, `[input]`,
@@ -117,8 +128,54 @@ What `run` can say in a keymap:
 | `service start`, `service stop`, `service restart` | On svc: ask, then start, stop or restart the selected service |
 | `tree` | Procs as a tree, or a flat list |
 | `scope`, `scope all`, `scope mine` | Switch procs' scope, or set it |
+| `fleet` | The fleet screen, and back |
 | `help`, `escape`, `quit` | As the keys above |
 | `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended or a service is started, stopped or restarted (`[confirm]`) |
+
+## Fleet
+
+The fleet screen (`F`) shows other machines next to this one. On each of them
+run the same binary without a window:
+
+```sh
+mimamori --agent
+```
+
+It listens on `127.0.0.1:7313` only and has no keys or passwords of its own:
+the viewer reaches it through a tunnel that already decides who may connect
+and encrypts the way. Either
+
+```sh
+ssh -N -L 7314:localhost:7313 nas          # on the viewer: nas's agent on localhost:7314
+tailscale serve --bg --tcp 7313 tcp://localhost:7313   # on the agent: reachable as nas.<tailnet>.ts.net:7313
+```
+
+and name it in the viewer's `config.toml`:
+
+```toml
+[[host]]
+name = "nas"
+addr = "localhost:7314"        # through ssh -L
+
+[[host]]
+name = "pi"
+addr = "pi.tail1234.ts.net"    # through tailscale serve
+```
+
+The agent samples like the window does (`interval`, without the process
+list) and sends a summary each round: CPU, memory, the first GPU's usage and the
+hottest temperature, with its host name, OS, CPU, uptime and version once at
+the start. The viewer keeps one thread per host, pings it every 5 s for the
+round trip, marks it slow over 200 ms or after three missed summaries, and
+connects again after 2 s, doubling to 30 s while it stays down. The messages
+are [postcard](https://crates.io/crates/postcard) (serde's compact binary
+form) with a protocol number, so a viewer and an agent that speak different
+protocols say so instead of misreading each other.
+
+The agent is view only. `[agent] allow = ["kill", "service"]` is read and
+shown on its card, but acting on another machine (and entering its screens)
+comes in a later version. On Windows, `mimamori.exe --agent` run from a
+console writes there; run it at logon with Task Scheduler to keep it up.
 
 ## Languages
 

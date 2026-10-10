@@ -106,6 +106,8 @@ pub enum Ctl {
     Services(bool),
     /// Read sockets (at once, then every [`NET_EVERY`]) or stop reading them.
     Net(bool),
+    /// Sample processes (the default) or stop: the fleet agent sends none.
+    Procs(bool),
 }
 
 /// How often services are read while wanted: listing them spawns `systemctl`
@@ -116,8 +118,9 @@ pub const SVC_EVERY: Duration = Duration::from_secs(5);
 /// process's open files.
 pub const NET_EVERY: Duration = Duration::from_secs(2);
 
-/// Start the sampler; `wake` is repainted after every message.
-pub fn spawn(wake: egui::Context, interval: Duration) -> (Receiver<Msg>, Sender<Ctl>) {
+/// Start the sampler; `wake` is repainted after every message (the agent has
+/// no window and passes `None`).
+pub fn spawn(wake: Option<egui::Context>, interval: Duration) -> (Receiver<Msg>, Sender<Ctl>) {
     let (tx, rx) = unbounded();
     let (ctl_tx, ctl_rx) = unbounded();
     hw::spawn(tx.clone(), wake.clone());
@@ -128,10 +131,12 @@ pub fn spawn(wake: egui::Context, interval: Duration) -> (Receiver<Msg>, Sender<
     (rx, ctl_tx)
 }
 
-fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval: Duration) {
+fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut interval: Duration) {
     let send = |m: Msg| {
         let ok = tx.send(m).is_ok();
-        wake.request_repaint();
+        if let Some(w) = wake {
+            w.request_repaint();
+        }
         ok
     };
     let cpu_kind = CpuRefreshKind::nothing().with_cpu_usage().with_frequency();
@@ -162,6 +167,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
     let mut sensors = sensors::Reader::new();
     let mut net_next: Option<Instant> = None;
     let mut paused = false;
+    let mut want_procs = true;
     // The first CPU reading needs a gap after the first refresh.
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
     let mut tick: u64 = 0;
@@ -195,6 +201,10 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
                     return;
                 }
                 net_next = on.then(|| Instant::now() + NET_EVERY);
+                continue;
+            }
+            Ok(Ctl::Procs(on)) => {
+                want_procs = on;
                 continue;
             }
             Err(RecvTimeoutError::Disconnected) => return,
@@ -241,7 +251,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
         if !send(Msg::Gpu(devs)) || !send(Msg::Nics(nics.read())) || !send(Msg::Disks(disk)) || !send(Msg::Sensors(temps)) {
             return;
         }
-        if tick.is_multiple_of(2) {
+        if want_procs && tick.is_multiple_of(2) {
             let (procs, total_threads) = procs.sample(&mut sys);
             if !send(Msg::Procs { procs, total_threads }) {
                 return;

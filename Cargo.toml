@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.30.0"
+version = "0.31.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -16,6 +16,8 @@ serde = { version = "1", features = ["derive"] }
 toml = "1.1"
 dirs = "7"
 png = "0.18"
+# The fleet agent's messages (serde's compact binary form, pure Rust).
+postcard = { version = "1", default-features = false, features = ["use-std"] }
 # The split tree behind the resizable panels, shared with tsumugi and filer.
 # Pinned to the commit filer reads; to take a fix, move `rev` and run
 # `cargo build` so Cargo.lock follows. It depends on nothing but egui.
@@ -60,6 +62,7 @@ windows = { version = "0.62", features = [
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Com",
+    "Win32_System_Console",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_IO",
     "Win32_System_LibraryLoader",

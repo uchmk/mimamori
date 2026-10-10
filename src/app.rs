@@ -15,6 +15,7 @@ use crate::i18n::{tr, trf};
 use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
 use crate::persist::Saver;
+use crate::remote::{Peer, client::Event, proto};
 use crate::screen::{Pane, Screen};
 use crate::svcctl::{self, Action};
 
@@ -97,6 +98,12 @@ pub struct Out {
     pub moved: Option<tsumugi_layout::ui::Moved<Pane>>,
     /// How far the help can scroll, so a key past the end stays there.
     pub help_max: Option<usize>,
+    /// The fleet tab clicked.
+    pub fleet_tab: bool,
+    /// Cards in a row of the fleet, for the up and down keys.
+    pub fleet_cols: Option<usize>,
+    /// A fleet card clicked (0 is this machine), and whether twice.
+    pub fleet_click: Option<(usize, bool)>,
 }
 
 pub struct App {
@@ -156,6 +163,15 @@ pub struct App {
     saver: Saver,
     pub quit: bool,
     wheel_acc: f32,
+    /// The fleet shows over the screen (`F`).
+    pub fleet: bool,
+    /// The `[[host]]` machines; card 0 is this one, card `i` is `peers[i - 1]`.
+    pub peers: Vec<Peer>,
+    fleet_rx: Option<Receiver<(usize, Event)>>,
+    /// The card selected.
+    pub fleet_sel: usize,
+    /// Cards in a row, as last drawn.
+    pub fleet_cols: usize,
 }
 
 impl App {
@@ -205,7 +221,23 @@ impl App {
             saver,
             quit: false,
             wheel_acc: 0.0,
+            fleet: false,
+            peers: Vec::new(),
+            fleet_rx: None,
+            fleet_sel: 0,
+            fleet_cols: 1,
         }
+    }
+
+    /// The `[[host]]` machines and their watchers' events.
+    pub fn set_fleet(&mut self, peers: Vec<Peer>, rx: Receiver<(usize, Event)>) {
+        self.peers = peers;
+        self.fleet_rx = Some(rx);
+    }
+
+    /// The fleet card selected, unless it is this machine's.
+    pub fn selected_peer(&self) -> Option<&Peer> {
+        self.fleet_sel.checked_sub(1).and_then(|i| self.peers.get(i))
     }
 
     pub fn keymap(&self) -> &Keymap {
@@ -284,6 +316,13 @@ impl App {
             // Read the list again now rather than at the next interval.
             if self.screen == Screen::Svc {
                 let _ = self.ctl.send(Ctl::Services(true));
+            }
+        }
+        if let Some(rx) = &self.fleet_rx {
+            while let Ok((i, e)) = rx.try_recv() {
+                if let Some(p) = self.peers.get_mut(i) {
+                    p.apply(e);
+                }
             }
         }
         if self.dirty {
@@ -593,6 +632,18 @@ impl App {
         if let Some(s) = out.tab {
             self.goto(s);
         }
+        if out.fleet_tab {
+            self.fleet = true;
+        }
+        if let Some(c) = out.fleet_cols {
+            self.fleet_cols = c.max(1);
+        }
+        if let Some((i, double)) = out.fleet_click {
+            self.fleet_sel = i.min(self.peers.len());
+            if double {
+                self.run(Act::Enter);
+            }
+        }
         if let Some(m) = out.moved.take() {
             self.moved(m);
         }
@@ -675,6 +726,7 @@ impl App {
         self.screen = s;
         self.drag = None;
         self.pending.clear();
+        self.fleet = false;
     }
 
     /// One key, through the layer of the current mode.
@@ -810,9 +862,56 @@ impl App {
         self.mode = Mode::Confirm;
     }
 
+    /// The keys while the fleet shows; false for those that work as on
+    /// any screen.
+    fn run_fleet(&mut self, a: Act) -> bool {
+        let last = self.peers.len() as i64;
+        let (sel, cols) = (self.fleet_sel as i64, self.fleet_cols.max(1) as i64);
+        let to = |i: i64| i.clamp(0, last) as usize;
+        match a {
+            Act::Arrow(Step::By(d)) => self.fleet_sel = to(sel + d * cols),
+            Act::Arrow(Step::Page(f)) => self.fleet_sel = to(sel + if f < 0.0 { -cols } else { cols }),
+            Act::Arrow(Step::Top) => self.fleet_sel = 0,
+            Act::Arrow(Step::Bot) => self.fleet_sel = last as usize,
+            Act::Focus(d) => self.fleet_sel = to(sel + d as i64),
+            // This machine's card is the screens behind.
+            Act::Enter if self.fleet_sel == 0 => self.fleet = false,
+            Act::Enter => {
+                let name = self.selected_peer().map(|p| p.name.clone()).unwrap_or_default();
+                self.toast(trf("toast.fleet_enter_later", &[&name]));
+            }
+            Act::Fleet | Act::Escape => self.fleet = false,
+            Act::Kill | Act::Service(_) => {
+                let what = if a == Act::Kill { "kill" } else { "service" };
+                let t = match self.selected_peer() {
+                    None => tr("toast.fleet_local").to_string(),
+                    Some(p) if p.hello.as_ref().is_some_and(|h| proto::allowed(&h.allow, what)) => {
+                        trf("toast.fleet_actions_later", &[&p.name])
+                    }
+                    Some(p) => trf("toast.fleet_view_only", &[&p.name, what]),
+                };
+                self.toast(t);
+            }
+            Act::Sort | Act::Tree | Act::Scope(_) | Act::Resize(_) | Act::Equalize | Act::Backspace => {}
+            Act::Screen(_) | Act::Filter => {
+                self.fleet = false;
+                return false;
+            }
+            _ => return false,
+        }
+        true
+    }
+
     pub fn run(&mut self, a: Act) {
+        if self.fleet && self.run_fleet(a) {
+            return;
+        }
         let built = self.screen.built();
         match a {
+            Act::Fleet => {
+                self.fleet = true;
+                self.fleet_sel = self.fleet_sel.min(self.peers.len());
+            }
             Act::Screen(g) => {
                 let s = match g {
                     Goto::To(s) => s,
@@ -1070,7 +1169,12 @@ impl App {
     pub fn report(&self) -> String {
         let v = self.view();
         let mut s = String::new();
-        s += &format!("screen: {}\n", self.screen.name());
+        s += &format!("screen: {}\n", if self.fleet { "fleet" } else { self.screen.name() });
+        if self.fleet {
+            let now = Instant::now();
+            let hosts: Vec<String> = self.peers.iter().map(|p| format!("{}={}", p.name, p.status(now).key())).collect();
+            s += &format!("fleet: sel {} of {}; {}\n", self.fleet_sel, self.peers.len() + 1, hosts.join(" "));
+        }
         s += &format!("mode: {:?}\n", self.mode);
         s += &format!("focus: {}\n", self.focus().name());
         s += &format!("sel: {:?}\n", v.sel);
@@ -1302,6 +1406,49 @@ mod tests {
         keys(&mut a, "u t");
         assert!(!a.mine_only() && !a.tree && a.tree_lines.is_empty());
         assert_eq!(a.rows.len(), 5);
+    }
+
+    #[test]
+    fn f_shows_the_fleet_and_its_keys_stay_on_the_cards() {
+        use crate::config::settings::Host;
+        use crate::remote::{Status, proto::Hello};
+        let (mut a, _tx, _ctl) = app();
+        let (ftx, frx) = crossbeam_channel::unbounded();
+        let host = |n: &str| Peer::new(&Host { name: n.into(), addr: format!("localhost:{}", proto::PORT) });
+        a.set_fleet(vec![host("nas"), host("pi"), host("mac")], frx);
+        keys(&mut a, "3 F");
+        assert!(a.fleet && a.report().contains("screen: fleet"), "{}", a.report());
+        // Two cards in a row: down goes to the card under.
+        a.apply_out(Out { fleet_cols: Some(2), ..Out::default() }, &egui::Context::default());
+        keys(&mut a, "j");
+        assert_eq!(a.fleet_sel, 2);
+        keys(&mut a, "l l l G");
+        assert_eq!((a.fleet_sel, a.screen), (3, Screen::Mem));
+        keys(&mut a, "k g g");
+        assert_eq!(a.fleet_sel, 0);
+        // The hosts' threads report through the channel.
+        ftx.send((1, Event::Up(Hello { proto: proto::PROTO, interval: 1.0, ..Hello::default() }))).unwrap();
+        a.pump();
+        assert_eq!(a.peers[1].status(Instant::now()), Status::Ok);
+        assert_eq!(a.peers[0].status(Instant::now()), Status::Connecting);
+        // View only: the card says why x does nothing.
+        keys(&mut a, "l l x");
+        assert_eq!((a.fleet_sel, a.mode), (2, Mode::Normal));
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.fleet_view_only", &["pi", "kill"])));
+        keys(&mut a, "h h x");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.fleet_local")));
+        // Esc closes it, F opens it on the same card, a screen key closes it there.
+        keys(&mut a, "<Esc> F");
+        assert!(a.fleet);
+        keys(&mut a, "2");
+        assert!(!a.fleet && a.screen == Screen::Cpu);
+        a.apply_out(Out { fleet_tab: true, ..Out::default() }, &egui::Context::default());
+        assert!(a.fleet);
+        a.apply_out(Out { fleet_click: Some((9, false)), ..Out::default() }, &egui::Context::default());
+        assert_eq!(a.fleet_sel, 3);
+        // Enter on this machine's card is the screens behind.
+        keys(&mut a, "g g <Enter>");
+        assert!(!a.fleet && a.screen == Screen::Cpu);
     }
 
     #[test]

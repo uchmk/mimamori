@@ -15,6 +15,7 @@ mod keyscript;
 mod kill;
 mod model;
 mod persist;
+mod remote;
 mod screen;
 mod svcctl;
 mod tree;
@@ -38,15 +39,21 @@ const USAGE: &str = "\
 mimamori — a keyboard-driven system monitor
 
 usage: mimamori [--keys SCRIPT]
+       mimamori --agent
 
   --keys SCRIPT  press these keys once the window is up, as filer's --keys
                  (`<Wait:ms>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`,
                  `<Drag:x,y-x,y>`, `<Quit>`); MIMAMORI_KEYS_DONE names the
                  file the final state is written to
+  --agent        no window: serve this machine's summary to the fleet screen
+                 of other machines, on 127.0.0.1:7313 only (`[agent] port`);
+                 reach it through `ssh -L 7313:localhost:7313 HOST` or
+                 `tailscale serve --bg --tcp 7313 tcp://localhost:7313`.
+                 View only unless `[agent] allow` says otherwise
   --version      print the version
   --help         print this
 
-Settings: <config dir>/uchmk/mimamori/config.toml and keymap.toml;
+Settings: <config dir>/uchmk/mimamori/config.toml ([[host]] lists the fleet) and keymap.toml;
 the language can also be set for every uchmk app in <config dir>/uchmk/common.toml.";
 
 struct Mimamori {
@@ -137,9 +144,25 @@ impl eframe::App for Mimamori {
     }
 }
 
+/// A release build on Windows has no console of its own: borrow the one it
+/// was started from, so `--help`, `--version` and `--agent` can be read.
+#[cfg(windows)]
+fn attach_console() {
+    use ::windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+    // SAFETY: no arguments to get wrong; failing (no parent console) is fine.
+    let _ = unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
+}
+
+#[cfg(not(windows))]
+fn attach_console() {}
+
 fn main() -> eframe::Result {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
+    if args.peek().is_some() {
+        attach_console();
+    }
     let mut script = None;
+    let mut agent = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--version" | "-V" => {
@@ -150,6 +173,7 @@ fn main() -> eframe::Result {
                 println!("{USAGE}");
                 return Ok(());
             }
+            "--agent" => agent = true,
             "--keys" => {
                 let Some(s) = args.next() else {
                     eprintln!("mimamori: --keys needs a script");
@@ -171,6 +195,17 @@ fn main() -> eframe::Result {
     }
 
     let s = settings::load(None);
+    if agent {
+        for w in &s.warnings {
+            eprintln!("mimamori: {w}");
+        }
+        let cfg = remote::agent::Config { allow: s.allow.clone(), interval: s.interval };
+        if let Err(e) = remote::agent::run(s.port, cfg) {
+            eprintln!("mimamori --agent: 127.0.0.1:{}: {e}", s.port);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     i18n::set_language(&s.language);
     let (km, km_warn) = Keymap::load(s.keymap.as_deref());
     let (layouts, layout_warn) = persist::load(s.dir.as_deref());
@@ -181,6 +216,7 @@ fn main() -> eframe::Result {
     }
     let saver = persist::Saver::new(s.dir.clone());
     let interval = s.interval;
+    let hosts = s.hosts.clone();
     let done = std::env::var_os("MIMAMORI_KEYS_DONE").filter(|v| !v.is_empty()).map(PathBuf::from);
 
     let options = eframe::NativeOptions {
@@ -200,9 +236,13 @@ fn main() -> eframe::Result {
         Box::new(move |cc| {
             cc.egui_ctx.set_visuals(theme::visuals());
             fonts::load_in_background(cc.egui_ctx.clone());
-            let (rx, ctl) = collect::spawn(cc.egui_ctx.clone(), Duration::from_secs_f32(interval));
+            let (rx, ctl) = collect::spawn(Some(cc.egui_ctx.clone()), Duration::from_secs_f32(interval));
             let mut app = App::new(km, rx, ctl, layouts, saver, interval);
             app.wake = Some(cc.egui_ctx.clone());
+            if !hosts.is_empty() {
+                let peers = hosts.iter().map(remote::Peer::new).collect();
+                app.set_fleet(peers, remote::client::spawn(&hosts, Some(cc.egui_ctx.clone())));
+            }
             // One line in the status bar; the whole list went to stderr.
             if let Some(first) = warnings.first() {
                 let more = if warnings.len() > 1 { format!(" (+{})", warnings.len() - 1) } else { String::new() };

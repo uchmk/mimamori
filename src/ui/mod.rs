@@ -6,6 +6,7 @@
 mod confirm;
 mod cpu;
 mod disk;
+mod fleet;
 mod gpu;
 mod graph;
 mod help;
@@ -24,8 +25,11 @@ use egui::{Align2, Color32, FontId, Id, Painter, Pos2, Rect, Sense, Stroke, Stro
 use tsumugi_layout::ui::{Look, dividers, from_egui, to_egui};
 
 use crate::app::{App, Mode, Out, TOAST, fmt_interval};
+use crate::config::cmd::Act;
+use crate::config::keys::render_seq;
 use crate::config::theme::{BAR, BG, BG_ALT, BLUE, CYAN, DIM, FG, LINE, MAGENTA, RED, ROW, SEL, SEL_UNFOCUSED, YELLOW};
 use crate::i18n::{tr, trf};
+use crate::remote::Status;
 use crate::screen::{Pane, Screen};
 use crate::util::{fmt_bytes, fmt_uptime};
 
@@ -249,6 +253,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
             let body = panel(&pen, area, tr(app.screen.label_key()), "", false);
             pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.not_yet"), DIM);
         }
+        Some(_) if app.fleet => fleet::draw(&mut Cx { ui, pen: pen.clone(), out: &mut out, app }, area),
         Some(_) => {
             let mut rects = [Rect::NOTHING; 3];
             for (p, r) in app.layout().layout(from_egui(area), GAP) {
@@ -285,11 +290,15 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
         help::draw(&pen, app, full, &mut out);
         out.click = None;
         out.tab = None;
+        out.fleet_click = None;
+        out.fleet_tab = false;
     }
     if app.mode == Mode::Confirm {
         confirm::draw(&pen, app, full);
         out.click = None;
         out.tab = None;
+        out.fleet_click = None;
+        out.fleet_tab = false;
     }
     out
 }
@@ -306,7 +315,7 @@ fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
             break;
         }
         let digit = s.digit().to_string();
-        if s == app.screen {
+        if s == app.screen && !app.fleet {
             pill(pen, tab, &format!("{digit} {label}"), BLUE, BG);
         } else {
             let (dc, lc) = if s.built() { (CYAN, FG) } else { (DIM, DIM) };
@@ -317,6 +326,23 @@ fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
             out.tab = Some(s);
         }
         x += w + 2.0;
+    }
+    // The fleet after the screens, by its letter.
+    let label = tr("tab.fleet");
+    let key = app.keymap().main.iter().find(|b| b.run == [Act::Fleet]).map(|b| render_seq(&b.on)).unwrap_or_default();
+    let w = pen.width(label) + pen.width(&key) + pen.cw + 14.0;
+    let tab = Rect::from_center_size(pos2(x + 6.0 + w / 2.0, y), vec2(w, 20.0));
+    if tab.right() <= r.right() - 8.0 {
+        if app.fleet {
+            pill(pen, tab, &format!("{key} {label}"), MAGENTA, BG);
+        } else {
+            let d = pen.text(pos2(tab.left() + 7.0, y), &key, MAGENTA);
+            pen.text(pos2(d.right() + pen.cw, y), label, FG);
+        }
+        if ui.interact(tab, Id::new("tab-fleet"), Sense::click()).clicked() {
+            out.fleet_tab = true;
+        }
+        x = tab.right() + 2.0;
     }
     if let Some(st) = &app.model.st {
         let up = trf("header.up", &[&fmt_uptime(now_secs().saturating_sub(st.boot_time))]);
@@ -388,7 +414,14 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
             }
         },
     };
-    let s = format!("{} › {detail}", tr(app.screen.label_key()));
+    let s = if app.fleet {
+        let now = std::time::Instant::now();
+        let up = app.peers.iter().filter(|p| matches!(p.status(now), Status::Ok | Status::Slow)).count() + 1;
+        let detail = trf("crumb.fleet", &[&(app.peers.len() + 1).to_string(), &up.to_string()]);
+        format!("{} › {detail}", tr("tab.fleet"))
+    } else {
+        format!("{} › {detail}", tr(app.screen.label_key()))
+    };
     pen.text(pos2(r.left() + 12.0, r.center().y), &pen.fit(&s, r.width() - 24.0), DIM);
 }
 
@@ -396,6 +429,10 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
     pen.p.rect_filled(r, 0.0, BAR);
     let y = r.center().y;
     let (badge, color) = match app.mode {
+        Mode::Normal if app.fleet => match app.selected_peer() {
+            Some(p) if p.status(std::time::Instant::now()) == Status::Down => (tr("mode.stale"), RED),
+            _ => (tr("mode.fleet"), MAGENTA),
+        },
         Mode::Normal => (tr("mode.normal"), BLUE),
         Mode::Filter => (tr("mode.filter"), YELLOW),
         Mode::Help => (tr("mode.help"), MAGENTA),
@@ -409,7 +446,9 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
     // The right side first, so the left knows its room.
     let m = &app.model;
     let mut right = trf("status.summary", &[&format!("{:.0}", m.total), &format!("{:.0}", m.mem_pct())]);
-    if app.screen.built() {
+    if app.fleet {
+        right += &format!("  {}/{}", app.fleet_sel + 1, app.peers.len() + 1);
+    } else if app.screen.built() {
         let p = app.focus();
         let n = app.count(app.screen, p);
         if n > 0 {

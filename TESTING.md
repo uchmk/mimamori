@@ -133,6 +133,19 @@ back to `[ ]`.
 - [ ] 3f.10 The Graphics section lists each GPU and NPU the gpu·npu screen lists (with its VRAM where known) and the Drives section each drive the disk screen lists (model and size); each ends with `Details  Press 4` / `Press 8`, and those keys open those screens. Rebinding the screen in `keymap.toml` changes the key shown.
 - [ ] 3f.7 The screen opens on the slots; `j`/`k` move through them and the right column follows; `h` to the left column scrolls its facts. A narrow window drops the maker, then the type columns.
 
+## 3g. Fleet (`F`)
+
+- [ ] 3g.1 Windows: `mimamori.exe --agent` from PowerShell prints `listening on 127.0.0.1:7313 (view only)` and the ssh / tailscale lines in that console, opens no window, and stops with `Ctrl+C`. `--help` and `--version` print there too. `netstat -ano | findstr 7313` shows it on 127.0.0.1 only.
+- [ ] 3g.2 Linux and macOS: `mimamori --agent` the same; `ss -ltn` / `lsof -iTCP:7313` shows 127.0.0.1 only. With `[agent] port = 7400` it listens there instead; with the port taken it says so and exits.
+- [ ] 3g.3 Over SSH: on the viewer `ssh -N -L 7314:localhost:7313 <agent host>` and a `[[host]]` with `addr = "localhost:7314"`: the card turns green within a few seconds and shows the other machine's host name, OS, CPU, its CPU / memory / GPU gauges moving with its load, the temperature, the uptime, the round trip in ms and `actions: view only`.
+- [ ] 3g.4 Over Tailscale: `tailscale serve --bg --tcp 7313 tcp://localhost:7313` on the agent and `addr = "<name>.<tailnet>.ts.net"` on the viewer: the same as 3g.3.
+- [ ] 3g.5 Down and back: stop the tunnel — the card goes red and dim within 15 s, keeps its last numbers, says `seen …` and why, and the status bar says `STALE` in red while it is selected (`nothing listens there — is the ssh -L or tailscale serve up?` with nothing on the local port; `closed — is mimamori --agent running there?` with the tunnel up but no agent). Start it again: the card turns green again within 30 s without restarting the viewer.
+- [ ] 3g.6 Slow: on a link with over 200 ms round trip (a far machine, or `tc qdisc add dev lo root netem delay 150ms` on Linux), the card's dot is yellow (the status bar still says `FLEET`); a `[[host]]` pointing at a web server's port says `something else answers on that port`.
+- [ ] 3g.7 `[agent] allow = ["kill"]` on the agent: its card shows `actions: kill`; `x` on it says acting on another machine comes later, `S` says the agent does not list `service`; `x` on a view-only card says it is view only; `x` on this machine's card says to act on its screens.
+- [ ] 3g.8 Keys and mouse: the header has the `F fleet` tab after `0 sys`, magenta while the fleet shows, and a click on it opens the fleet; the status bar says `FLEET` and `2/3`; `h` `j` `k` `l`, `gg` and `G` move the selection by cards and rows (the rows follow the window's width); a click selects a card; `Enter` on this machine's card, `Esc`, `F` or a screen key go back to the screens, and `F` again opens the fleet on the same card. Rebinding `fleet` in `keymap.toml` changes the tab's key.
+- [ ] 3g.9 With no `[[host]]`, the fleet shows this machine's card and the steps to add one (in Japanese with `language = "ja"`); a long down reason wraps onto the next line instead of being cut.
+- [ ] 3g.10 Idle: with the fleet showing and three hosts up, the viewer's CPU stays low (it redraws when a summary or ping comes, about once a second per host), and the agent's own CPU is about that of the window's sampler.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

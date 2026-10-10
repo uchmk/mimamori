@@ -45,6 +45,8 @@ pub enum Act {
     Kill,
     /// Ask, then start, stop or restart the selected service.
     Service(Action),
+    /// Every machine of `[[host]]` at once, or back to the screen.
+    Fleet,
     Pause,
     /// One step faster (-1) or slower (+1) sampling.
     Interval(i32),
@@ -116,6 +118,7 @@ pub fn parse(s: &str) -> Result<Act, String> {
         "tree" => none(Act::Tree),
         "kill" => none(Act::Kill),
         "pause" => none(Act::Pause),
+        "fleet" => none(Act::Fleet),
         "help" => none(Act::Help),
         "quit" => none(Act::Quit),
         "escape" | "close" => none(Act::Escape),
@@ -141,6 +144,8 @@ mod tests {
         assert_eq!(parse("focus left"), Ok(Act::Focus(-1)));
         assert_eq!(parse("kill"), Ok(Act::Kill));
         assert_eq!(parse("tree"), Ok(Act::Tree));
+        assert_eq!(parse("fleet"), Ok(Act::Fleet));
+        assert!(parse("fleet nas").is_err());
         assert_eq!(parse("scope"), Ok(Act::Scope(None)));
         assert_eq!(parse("scope mine"), Ok(Act::Scope(Some(true))));
         assert_eq!(parse("scope all"), Ok(Act::Scope(Some(false))));
