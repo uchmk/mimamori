@@ -1,14 +1,16 @@
-//! Network (7): the interfaces with a minute of traffic on the left, the
-//! sockets in the middle, the selected interface's graphs and addresses
-//! and the selected socket on the right. Enter on a socket opens its
-//! process in procs.
+//! Network (7): the interfaces with a minute of traffic on the left; in the
+//! middle the received and sent graphs of the interfaces that are up (or of
+//! the one the sockets are narrowed to) side by side, and the sockets under
+//! them; the selected interface's details and the selected socket under
+//! them on the right. Enter on a socket opens its process in procs.
 
 use egui::{Color32, Rect, pos2, vec2};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
-use crate::collect::net::{Conn, Nic, State};
+use crate::collect::net::{Conn, Kind, Nic, State};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
+use crate::model::{Model, Ring};
 use crate::screen::Pane;
 use crate::util::fmt_bytes;
 
@@ -159,7 +161,89 @@ fn cell(c: &Conn, col: Col, process: Option<&str>) -> (String, Color32) {
     }
 }
 
+/// `rings` added up reading by reading, lined up at the newest one (an
+/// interface that came up later has a shorter history).
+fn add_up<'a>(rings: impl Iterator<Item = &'a Ring>) -> Vec<f32> {
+    let mut out: Vec<f32> = Vec::new();
+    for r in rings {
+        if r.len() > out.len() {
+            out.splice(0..0, std::iter::repeat_n(0.0, r.len() - out.len()));
+        }
+        let skip = out.len() - r.len();
+        for (o, v) in out[skip..].iter_mut().zip(r.iter()) {
+            *o += v;
+        }
+    }
+    out
+}
+
+/// What the graphs in the middle show: the interface the sockets are
+/// narrowed to, or else every interface that is up but loopback.
+struct Traffic {
+    what: String,
+    rx: Vec<f32>,
+    tx: Vec<f32>,
+    rx_now: f64,
+    tx_now: f64,
+}
+
+fn traffic(m: &Model, only: Option<&str>) -> Traffic {
+    let nics: Vec<&Nic> = match only {
+        Some(name) => m.nics.iter().filter(|n| n.name == name).collect(),
+        None => m.nics.iter().filter(|n| n.up && n.kind != Kind::Loopback).collect(),
+    };
+    let what = match only {
+        Some(name) => name.to_string(),
+        None => trf("net.up_count", &[&nics.len().to_string()]),
+    };
+    let hist = || nics.iter().filter_map(|n| m.net_hist.get(&n.name));
+    Traffic {
+        what,
+        rx: add_up(hist().map(|(rx, _)| rx)),
+        tx: add_up(hist().map(|(_, tx)| tx)),
+        rx_now: nics.iter().map(|n| n.rx_rate).sum(),
+        tx_now: nics.iter().map(|n| n.tx_rate).sum(),
+    }
+}
+
+/// The graphs on top, as tall as about a fifth of the column, and the
+/// sockets under them; a short column keeps only the sockets.
 fn draw_mid(cx: &mut Cx, r: Rect) {
+    let h = (r.height() * 0.22).clamp(ROW * 4.0, 180.0);
+    if r.height() - h - GAP < ROW * 6.0 {
+        draw_conns(cx, r);
+        return;
+    }
+    let half = (r.width() - GAP) / 2.0;
+    let rx = Rect::from_min_size(r.min, vec2(half, h));
+    let tx = Rect::from_min_max(pos2(rx.right() + GAP, r.top()), pos2(r.right(), rx.bottom()));
+    draw_traffic(cx, rx, tx);
+    draw_conns(cx, Rect::from_min_max(pos2(r.left(), rx.bottom() + GAP), r.max));
+}
+
+/// A graph each way, so a quiet upload is not flattened by a download.
+fn draw_traffic(cx: &mut Cx, rx: Rect, tx: Rect) {
+    let app = cx.app;
+    let m = &app.model;
+    let t = traffic(m, app.net_nic.as_deref());
+    let empty = t.rx.is_empty() && app.net_nic.is_none();
+    for (r, label, data, now, color) in [(rx, "net.rx", &t.rx, t.rx_now, theme::cyan()), (tx, "net.tx", &t.tx, t.tx_now, theme::magenta())]
+    {
+        let title = format!("{} · {}", tr(label), t.what);
+        let info = if m.nic_read && !empty { rate(now) } else { String::new() };
+        let body = panel(&cx.pen, r, &title, &info, false);
+        if !m.nic_read {
+            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
+        } else if empty {
+            para(&cx.pen, body, body.top(), tr("net.none_up"), theme::dim());
+        } else {
+            let max = data.iter().copied().fold(0.0, f32::max).max(FLOOR);
+            graph::line(&cx.pen, body, data.iter().copied(), max, color);
+        }
+    }
+}
+
+fn draw_conns(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
     let info = if m.conn_read { trf("net.count", &[&app.net_rows.len().to_string()]) } else { String::new() };
@@ -215,6 +299,7 @@ fn nic_rows(n: &Nic) -> Vec<(&'static str, String)> {
         (true, None) => tr("net.up").to_string(),
     };
     vec![
+        (tr("net.name"), n.name.clone()),
         (tr("net.desc"), if n.desc.is_empty() { dash() } else { n.desc.clone() }),
         (tr("net.type"), tr(n.kind.key()).to_string()),
         (tr("net.link"), link),
@@ -230,42 +315,35 @@ fn nic_rows(n: &Nic) -> Vec<(&'static str, String)> {
 fn draw_right(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
-    let Some(n) = app.selected_nic() else {
-        let body = panel(&cx.pen, r, tr("net.detail"), "", cx.focused(Pane::Right));
-        if m.nic_read {
+    let rows = app.selected_nic().map(nic_rows);
+    // The details take what they need up to a little over half; the
+    // selected socket the rest.
+    let want = 26.0 + 6.0 + ROW * rows.as_ref().map_or(10.0, |r| r.len() as f32);
+    let top_h = want.min(r.height() * 0.6).max(r.height().min(ROW * 4.0));
+    let top = Rect::from_min_size(r.min, vec2(r.width(), top_h));
+    let bottom = Rect::from_min_max(pos2(r.left(), top.bottom() + GAP), r.max);
+
+    let body = panel(&cx.pen, top, tr("net.details"), "", false);
+    match &rows {
+        Some(rows) => {
+            kv_rows(&cx.pen, body, body.top(), rows);
+        }
+        None if m.nic_read => {
             cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("net.none"), theme::dim());
+        }
+        None => {}
+    }
+
+    if bottom.height() < ROW * 2.0 {
+        return;
+    }
+    let body = panel(&cx.pen, bottom, tr("net.conn"), "", cx.focused(Pane::Right));
+    let Some(c) = app.selected_conn() else {
+        if m.conn_read {
+            para(&cx.pen, body, body.top(), tr("net.no_conn"), theme::dim());
         }
         return;
     };
-    let body = panel(&cx.pen, r, &n.name, tr(n.kind.key()), cx.focused(Pane::Right));
-    let mut y = body.top();
-    // A graph each way, so a quiet upload is not flattened by a download.
-    if let Some((rx, tx)) = m.net_hist.get(&n.name) {
-        let h = (body.height() * 0.16).clamp(28.0, 90.0);
-        for (label, ring, now, color) in [("net.rx", rx, n.rx_rate, theme::cyan()), ("net.tx", tx, n.tx_rate, theme::magenta())] {
-            if y + ROW + h > body.bottom() {
-                break;
-            }
-            cx.pen.pair(row_at(body, y), tr(label), theme::dim(), &rate(now), color);
-            y += ROW;
-            graph::line(
-                &cx.pen,
-                Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), h)),
-                ring.iter(),
-                ring.max().max(FLOOR),
-                color,
-            );
-            y += h + GAP;
-        }
-    }
-    y = kv_rows(&cx.pen, body, y, &nic_rows(n)) + GAP;
-
-    let Some(c) = app.selected_conn() else { return };
-    if y + ROW * 2.0 > body.bottom() {
-        return;
-    }
-    cx.pen.section(row_at(body, y), tr("net.conn"));
-    y += ROW;
     let dash = || "—".to_string();
     let rows = [
         (tr("net.proto"), c.proto.label().to_string()),
@@ -276,7 +354,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         (tr("net.process"), app.proc_name(c.pid).map_or_else(dash, str::to_string)),
         (tr("net.source"), m.conns.source.to_string()),
     ];
-    y = kv_rows(&cx.pen, body, y, &rows) + GAP;
+    let y = kv_rows(&cx.pen, body, body.top(), &rows) + GAP;
     if c.pid.is_some() {
         para(&cx.pen, body, y, tr("net.hint"), theme::dim());
     }
@@ -295,5 +373,18 @@ mod tests {
         // The two addresses share what is left.
         let cols = columns(120.0, 1.0);
         assert_eq!(cols[1].2, cols[2].2);
+    }
+
+    #[test]
+    fn traffic_adds_up_at_the_newest_reading() {
+        let ring = |v: &[f32]| {
+            let mut r = Ring::default();
+            v.iter().for_each(|&x| r.push(x));
+            r
+        };
+        let (a, b) = (ring(&[1.0, 2.0, 3.0]), ring(&[10.0, 20.0]));
+        assert_eq!(add_up([&a, &b].into_iter()), [1.0, 12.0, 23.0]);
+        assert_eq!(add_up([&b, &a].into_iter()), [1.0, 12.0, 23.0]);
+        assert!(add_up(std::iter::empty()).is_empty());
     }
 }
