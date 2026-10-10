@@ -1,26 +1,36 @@
 //! Windows: the `PhysicalDisk` performance counters (PDH) for the traffic and
 //! how busy each drive is, and `IOCTL_STORAGE_QUERY_PROPERTY` for what each
-//! drive is, asked once per drive. The folding is in `windows.rs`.
+//! drive is, asked once per drive, and how hot a solid-state one is, asked every few
+//! seconds. The health check asks `IOCTL_STORAGE_PREDICT_FAILURE` once a
+//! minute, after making sure the drive is not spun down. The folding is in
+//! `windows.rs`.
 
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::null_mut;
+use std::time::{Duration, Instant};
 
 use ::windows::Win32::Foundation::{CloseHandle, HANDLE};
 use ::windows::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
 use ::windows::Win32::System::IO::DeviceIoControl;
 use ::windows::Win32::System::Ioctl::{
-    DEVICE_SEEK_PENALTY_DESCRIPTOR, DISK_GEOMETRY_EX, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, IOCTL_STORAGE_QUERY_PROPERTY,
-    PropertyStandardQuery, STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY, StorageDeviceProperty, StorageDeviceSeekPenaltyProperty,
+    DEVICE_SEEK_PENALTY_DESCRIPTOR, DISK_GEOMETRY_EX, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, IOCTL_STORAGE_PREDICT_FAILURE,
+    IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, STORAGE_PREDICT_FAILURE, STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY,
+    StorageDeviceProperty, StorageDeviceSeekPenaltyProperty, StorageDeviceTemperatureProperty,
 };
 use ::windows::Win32::System::Performance::{
     PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhOpenQueryW,
 };
-use ::windows::core::{HSTRING, PCWSTR, w};
+use ::windows::Win32::System::Power::GetDevicePowerState;
+use ::windows::core::{BOOL, HRESULT, HSTRING, PCWSTR, w};
 
-use super::windows::{Info, describe, fold, parse_instance};
-use super::{Drive, Kind};
+use super::health::{Ask, Check};
+use super::windows::{Info, describe, fold, parse_instance, predict, temperature, why_of};
+use super::{Drive, Kind, Temp, Why};
 use crate::collect::pdh::array;
+
+/// How often a solid-state drive's temperature is asked.
+const TEMP_EVERY: Duration = Duration::from_secs(5);
 
 pub struct Reader {
     query: PDH_HQUERY,
@@ -29,6 +39,9 @@ pub struct Reader {
     idle: Option<PDH_HCOUNTER>,
     /// What each drive said about itself, by disk number.
     info: HashMap<u32, Info>,
+    /// The last temperatures, by disk number, and when they were asked.
+    temps: HashMap<u32, Option<Temp>>,
+    temp_at: Option<Instant>,
 }
 
 impl Reader {
@@ -59,7 +72,7 @@ impl Reader {
         // A rate counter needs a first collection to measure from.
         // SAFETY: as above.
         unsafe { PdhCollectQueryData(query) };
-        Some(Self { query, read, write, idle, info: HashMap::new() })
+        Some(Self { query, read, write, idle, info: HashMap::new(), temps: HashMap::new(), temp_at: None })
     }
 
     pub fn read(&mut self) -> Vec<Drive> {
@@ -74,7 +87,28 @@ impl Reader {
             }
         }
         let idle = self.idle.map(array).unwrap_or_default();
-        fold(&read, &array(self.write), &idle, &self.info)
+        let mut drives = fold(&read, &array(self.write), &idle, &self.info);
+        self.temps(&mut drives);
+        drives
+    }
+
+    /// Each solid-state drive's temperature, asked every few seconds. Any
+    /// other drive's (spinning, or not saying) comes with the health check
+    /// instead, which leaves a spun-down drive asleep.
+    fn temps(&mut self, drives: &mut [Drive]) {
+        let now = Instant::now();
+        if self.temp_at.is_none_or(|t| now.duration_since(t) >= TEMP_EVERY) {
+            self.temp_at = Some(now);
+            self.temps = drives
+                .iter()
+                .filter(|d| d.kind == Kind::Ssd)
+                .filter_map(|d| d.id.parse().ok())
+                .map(|i| (i, Disk::open(i).and_then(|h| temp(&h))))
+                .collect();
+        }
+        for d in drives {
+            d.temp = d.id.parse().ok().and_then(|i: u32| self.temps.get(&i).cloned().flatten());
+        }
     }
 }
 
@@ -85,16 +119,33 @@ impl Drop for Reader {
     }
 }
 
-/// Ask `\\.\PhysicalDriveN` what it is. Opening it with no access rights
-/// needs no administrator; what it will not say stays empty.
+/// `\\.\PhysicalDriveN`, opened with no access rights: that needs no
+/// administrator, and what the drive will not say then stays empty.
+struct Disk(HANDLE);
+
+impl Disk {
+    fn open(index: u32) -> Option<Self> {
+        let path = HSTRING::from(format!("\\\\.\\PhysicalDrive{index}"));
+        // SAFETY: a plain open; the handle is closed in Drop.
+        let h =
+            unsafe { CreateFileW(&path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None) };
+        h.ok().map(Self)
+    }
+}
+
+impl Drop for Disk {
+    fn drop(&mut self) {
+        // SAFETY: opened in `open`, closed once here.
+        unsafe {
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+/// Ask a drive what it is.
 fn query(index: u32) -> Info {
-    let path = HSTRING::from(format!("\\\\.\\PhysicalDrive{index}"));
-    // SAFETY: a plain open; the handle is closed below.
-    let Ok(h) =
-        (unsafe { CreateFileW(&path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None) })
-    else {
-        return Info::default();
-    };
+    let Some(disk) = Disk::open(index) else { return Info::default() };
+    let h = disk.0;
     let mut info = Info::default();
     let mut buf = vec![0u8; 1024];
     if let Some(n) = property(h, StorageDeviceProperty, &mut buf)
@@ -130,11 +181,57 @@ fn query(index: u32) -> Info {
         let size = unsafe { (*geo.as_ptr().cast::<DISK_GEOMETRY_EX>()).DiskSize };
         info.size = u64::try_from(size).ok().filter(|&s| s > 0);
     }
-    // SAFETY: opened above, closed once.
-    unsafe {
-        let _ = CloseHandle(h);
-    }
     info
+}
+
+/// The drive's temperature, where its driver answers for it (NVMe and most
+/// SATA drives on the inbox drivers).
+fn temp(disk: &Disk) -> Option<Temp> {
+    let mut buf = vec![0u8; 256];
+    let n = property(disk.0, StorageDeviceTemperatureProperty, &mut buf)?;
+    let (value, high, crit) = temperature(&buf[..n])?;
+    Some(Temp { value, high, crit, source: "IOCTL_STORAGE_QUERY_PROPERTY".into(), chip: None })
+}
+
+/// The Win32 error inside an HRESULT (`0x8007xxxx`).
+fn win32(code: HRESULT) -> u32 {
+    let c = code.0 as u32;
+    if c & 0xFFFF_0000 == 0x8007_0000 { c & 0xFFFF } else { c }
+}
+
+/// The health of each drive, for the health thread.
+pub fn check(asks: &[Ask]) -> HashMap<String, Check> {
+    asks.iter().map(|a| (a.id.clone(), check_one(&a.id))).collect()
+}
+
+fn check_one(id: &str) -> Check {
+    let Some(disk) = id.parse().ok().and_then(Disk::open) else { return Check::why(Why::Unsupported) };
+    let mut on = BOOL(1);
+    // SAFETY: an open handle and a BOOL to write; asking does not spin the drive up.
+    if unsafe { GetDevicePowerState(disk.0, &mut on) }.as_bool() && !on.as_bool() {
+        return Check::why(Why::Asleep);
+    }
+    let mut out = STORAGE_PREDICT_FAILURE::default();
+    let mut got = 0u32;
+    // SAFETY: the output is a plain struct of its own size; no input.
+    let asked = unsafe {
+        DeviceIoControl(
+            disk.0,
+            IOCTL_STORAGE_PREDICT_FAILURE,
+            None,
+            0,
+            Some((&raw mut out).cast::<c_void>()),
+            size_of::<STORAGE_PREDICT_FAILURE>() as u32,
+            Some(&mut got),
+            None,
+        )
+    };
+    let mut c = match asked {
+        Ok(()) => Check { health: predict(&out.PredictFailure.to_le_bytes()), ..Check::default() },
+        Err(e) => Check::why(why_of(win32(e.code()))),
+    };
+    c.temp = temp(&disk);
+    c
 }
 
 /// One `IOCTL_STORAGE_QUERY_PROPERTY` into `out`; the bytes written.

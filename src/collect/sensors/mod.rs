@@ -6,8 +6,9 @@
 //! Windows reads the ACPI thermal zones from the `Thermal Zone Information`
 //! performance counters (PDH), which need no administrator; it has no common
 //! way to read fans. macOS reads sysinfo's components (the SMC and the HID
-//! sensors). NVIDIA GPUs add their NVML temperature and fan where the OS
-//! does not list them already. The parsing is kept in pure functions so the
+//! sensors). NVIDIA GPUs add their NVML temperature and fan, and the drives
+//! the temperature the disk reading found, where the OS does not list them
+//! already. The parsing is kept in pure functions so the
 //! tests run everywhere.
 
 #[cfg(any(target_os = "linux", test))]
@@ -17,7 +18,7 @@ pub mod windows;
 #[cfg(windows)]
 mod zones;
 
-use crate::collect::gpu;
+use crate::collect::{disk, gpu};
 
 /// What a sensor measures.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -179,6 +180,29 @@ fn add_gpus(list: &mut Vec<Sensor>, gpus: &[gpu::Device]) {
     }
 }
 
+/// Add the drives' temperatures that no chip already lists (a drive's hwmon
+/// chip on Linux is matched by its name; Windows' drive temperatures and
+/// `smartctl`'s come from the disk reading alone).
+fn add_drives(list: &mut Vec<Sensor>, drives: &[disk::Drive]) {
+    for d in drives {
+        let Some(t) = &d.temp else { continue };
+        if t.chip.as_ref().is_some_and(|c| list.iter().any(|s| &s.chip_id == c)) {
+            continue;
+        }
+        list.push(Sensor {
+            id: format!("disk:{}/temp", d.id),
+            chip_id: format!("disk:{}", d.id),
+            chip: if d.model.is_empty() { d.name.clone() } else { d.model.clone() },
+            label: d.name.clone(),
+            value: t.value,
+            high: t.high,
+            crit: t.crit,
+            source: t.source.clone(),
+            ..Sensor::default()
+        });
+    }
+}
+
 /// Reads the sensors, keeping what each OS opens once.
 pub struct Reader {
     #[cfg(windows)]
@@ -197,10 +221,11 @@ impl Reader {
         }
     }
 
-    /// `gpus` is this tick's GPU reading.
-    pub fn read(&mut self, gpus: &[gpu::Device]) -> Sensors {
+    /// `gpus` and `drives` are this tick's GPU and drive readings.
+    pub fn read(&mut self, gpus: &[gpu::Device], drives: &[disk::Drive]) -> Sensors {
         let (mut list, note) = self.chips();
         add_gpus(&mut list, gpus);
+        add_drives(&mut list, drives);
         let note = if list.is_empty() && note.is_none() { Some(Note::Empty) } else { note };
         Sensors { list, note }
     }
@@ -306,5 +331,35 @@ mod tests {
         assert_eq!(ids, ["amdgpu/edge", "gpu:nv/temp", "gpu:nv/fan"]);
         assert_eq!((list[2].kind, list[2].value), (Kind::Duty, 40.0));
         assert_eq!(list[1].chip, "GPU nv");
+    }
+
+    #[test]
+    fn drives_add_what_no_chip_lists() {
+        let t = |v: f32, chip: Option<&str>| disk::Temp {
+            value: v,
+            high: Some(70.0),
+            crit: None,
+            source: "smartctl".into(),
+            chip: chip.map(Into::into),
+        };
+        let drive = |id: &str, model: &str, temp| disk::Drive {
+            id: id.into(),
+            name: id.into(),
+            model: model.into(),
+            temp,
+            ..disk::Drive::default()
+        };
+        let mut list = vec![temp("hwmon1", "Composite", 38.0)];
+        let drives = [
+            drive("nvme0n1", "Samsung SSD 980", Some(t(38.0, Some("hwmon1")))),
+            drive("sda", "WDC WD40EFRX", Some(t(33.0, None))),
+            drive("sdb", "", Some(t(30.0, Some("hwmon9")))),
+            drive("vda", "", None),
+        ];
+        add_drives(&mut list, &drives);
+        let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["hwmon1/Composite", "disk:sda/temp", "disk:sdb/temp"]);
+        assert_eq!((list[1].chip.as_str(), list[1].label.as_str(), list[1].high), ("WDC WD40EFRX", "sda", Some(70.0)));
+        assert_eq!((list[2].chip.as_str(), list[2].source.as_str()), ("sdb", "smartctl"));
     }
 }

@@ -6,8 +6,12 @@
 //! `/proc/diskstats` and `/sys/block` on Linux, and from the `PhysicalDisk`
 //! performance counters (PDH) on Windows with each drive's model, bus and
 //! kind asked of it once, and from IOKit's block storage drivers on macOS.
+//! Each drive's temperature comes with the reading where the OS has one at
+//! hand (hwmon on Linux, `IOCTL_STORAGE_QUERY_PROPERTY` on Windows); its SMART
+//! health is asked once a minute in a thread of its own (`health.rs`).
 //! The parsing is kept in pure functions so the tests run everywhere.
 
+mod health;
 #[cfg(windows)]
 mod ioctl;
 #[cfg(target_os = "macos")]
@@ -87,6 +91,83 @@ impl Note {
     }
 }
 
+/// What SMART says of a drive as a whole.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Health {
+    Good,
+    /// The drive predicts its own failure, or has a critical warning.
+    Failing,
+}
+
+impl Health {
+    #[cfg(test)]
+    pub const ALL: [Health; 2] = [Self::Good, Self::Failing];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Good => "disk.health.good",
+            Self::Failing => "disk.health.failing",
+        }
+    }
+}
+
+/// Why a drive has no health.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Why {
+    /// Not asked yet: the first check is under way.
+    Pending,
+    /// The drive keeps no SMART data: a virtual disk, a card, a RAID volume.
+    Unsupported,
+    /// Linux: `smartctl` is not installed.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    NoSmartctl,
+    /// Linux: the device node can be opened only by root (or the `disk` group).
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    NeedsRoot,
+    /// Windows: the drive answers only an administrator.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    NeedsAdmin,
+    /// The drive was spun down and is left asleep (Linux and Windows).
+    #[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+    Asleep,
+    /// Another OS: SMART is not read.
+    #[cfg_attr(any(windows, target_os = "linux", target_os = "macos"), allow(dead_code))]
+    NotRead,
+}
+
+impl Why {
+    #[cfg(test)]
+    pub const ALL: [Why; 7] =
+        [Self::Pending, Self::Unsupported, Self::NoSmartctl, Self::NeedsRoot, Self::NeedsAdmin, Self::Asleep, Self::NotRead];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Pending => "disk.why.pending",
+            Self::Unsupported => "disk.why.unsupported",
+            Self::NoSmartctl => "disk.why.no_smartctl",
+            Self::NeedsRoot => "disk.why.needs_root",
+            Self::NeedsAdmin => "disk.why.needs_admin",
+            Self::Asleep => "disk.why.asleep",
+            Self::NotRead => "disk.why.not_read",
+        }
+    }
+}
+
+/// A drive's temperature in degrees Celsius.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Temp {
+    pub value: f32,
+    /// Where the drive warns.
+    pub high: Option<f32>,
+    /// Where the drive throttles hard or shuts down.
+    pub crit: Option<f32>,
+    /// Where it was read: a sysfs file, an IOCTL, `smartctl`.
+    pub source: String,
+    /// The sensors chip (`hwmon3`) that already lists it, so the sensors
+    /// screen does not list it twice.
+    pub chip: Option<String>,
+}
+
 /// A physical drive (or what the OS shows as one: a virtual disk, an LVM or
 /// RAID device).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -111,6 +192,10 @@ pub struct Drive {
     pub busy: Option<f32>,
     /// The mount points of the volumes on it.
     pub volumes: Vec<String>,
+    pub temp: Option<Temp>,
+    pub health: Option<Health>,
+    /// Why there is no health.
+    pub why: Option<Why>,
 }
 
 /// A mounted file system.
@@ -183,6 +268,7 @@ pub struct Reader {
     win: Option<ioctl::Reader>,
     #[cfg(target_os = "macos")]
     mac: iokit::Reader,
+    health: health::Checker,
 }
 
 impl Reader {
@@ -197,11 +283,13 @@ impl Reader {
             win: ioctl::Reader::open(),
             #[cfg(target_os = "macos")]
             mac: iokit::Reader::default(),
+            health: health::Checker::default(),
         }
     }
 
     pub fn read(&mut self) -> Disks {
         let (mut drives, note) = self.drives();
+        self.health.apply(&mut drives);
         let mut volumes = self.volumes();
         for v in &mut volumes {
             v.drive = self.drive_of(v, &drives);
@@ -306,12 +394,18 @@ mod tests {
     use crate::i18n::tr;
 
     #[test]
-    fn every_kind_and_note_has_english() {
+    fn every_kind_note_health_and_reason_has_english() {
         for k in Kind::ALL {
             assert_ne!(tr(k.key()), k.key());
         }
         for n in Note::ALL {
             assert_ne!(tr(n.key()), n.key());
+        }
+        for h in Health::ALL {
+            assert_ne!(tr(h.key()), h.key());
+        }
+        for w in Why::ALL {
+            assert_ne!(tr(w.key()), w.key());
         }
     }
 

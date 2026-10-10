@@ -1,12 +1,17 @@
 //! Linux: the drives from `/proc/diskstats` (traffic and busy time) and
 //! `/sys/block` (which entries are whole drives, their size, model, bus and
-//! kind).
+//! kind, and the temperature of a drive whose driver registers a hwmon chip:
+//! `nvme`, or `drivetemp` for SATA). SMART health is asked of `smartctl`,
+//! which also gives the temperature of a SATA drive without `drivetemp`.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use super::{Drive, Kind, Note};
+#[cfg(target_os = "linux")]
+use super::health::Ask;
+use super::health::Check;
+use super::{Drive, Health, Kind, Note, Temp, Why};
 
 /// One line of `/proc/diskstats`, in bytes and milliseconds.
 #[derive(Clone, Debug, PartialEq)]
@@ -93,6 +98,38 @@ pub fn owner<'a>(dev: &str, ids: &[&'a str]) -> Option<&'a str> {
         .copied()
 }
 
+/// The hwmon chip a drive's driver registered: on the NVMe controller
+/// (`device/hwmon3`) or on the SCSI device (`device/hwmon/hwmon4`).
+fn hwmon(dir: &Path) -> Option<PathBuf> {
+    let dev = dir.join("device");
+    let mut found: Vec<PathBuf> = [dev.clone(), dev.join("hwmon")]
+        .iter()
+        .filter_map(|d| std::fs::read_dir(d).ok())
+        .flat_map(|rd| rd.flatten().map(|e| e.path()))
+        .filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.len() > 5 && n.starts_with("hwmon")))
+        .collect();
+    found.sort();
+    found.into_iter().next()
+}
+
+/// The drive's temperature from its hwmon chip, with the chip's name so the
+/// sensors screen does not list it twice.
+fn hwmon_temp(dir: &Path) -> Option<Temp> {
+    let chip = hwmon(dir)?;
+    let milli = |name: &str| {
+        let v: f32 = std::fs::read_to_string(chip.join(name)).ok()?.trim().parse().ok()?;
+        Some(v / 1000.0).filter(|c| (-60.0..250.0).contains(c))
+    };
+    let input = chip.join("temp1_input");
+    Some(Temp {
+        value: milli("temp1_input")?,
+        high: milli("temp1_max").filter(|&c| c > 0.0),
+        crit: milli("temp1_crit").filter(|&c| c > 0.0),
+        source: input.display().to_string(),
+        chip: chip.file_name().map(|n| n.to_string_lossy().into_owned()),
+    })
+}
+
 /// The whole drives among the stats, filled in from sysfs. Each comes with
 /// its busy milliseconds, for the next reading's rate.
 pub fn drives(sys_block: &Path, stats: &[Stat]) -> Vec<(Drive, u64)> {
@@ -127,6 +164,7 @@ pub fn drives(sys_block: &Path, stats: &[Stat]) -> Vec<(Drive, u64)> {
                 removable: read(&dir.join("removable")).as_deref() == Some("1"),
                 read_total: Some(s.read),
                 write_total: Some(s.write),
+                temp: hwmon_temp(&dir),
                 ..Drive::default()
             };
             Some((drive, s.ticks))
@@ -145,6 +183,98 @@ pub fn rates(list: &mut [(Drive, u64)], last: &HashMap<String, (u64, u64, u64)>,
         d.read_rate = d.read_total.unwrap_or(0).saturating_sub(r) as f64 / secs;
         d.write_rate = d.write_total.unwrap_or(0).saturating_sub(w) as f64 / secs;
         d.busy = Some((ticks.saturating_sub(t) as f64 / (secs * 10.0)).min(100.0) as f32);
+    }
+}
+
+/// Buses whose drives may keep SMART data. A virtual disk, a card, an
+/// optical drive and the block layers over other drives keep none; an
+/// unknown bus is tried.
+pub fn smart_bus(bus: Option<&str>) -> bool {
+    matches!(bus, None | Some("NVMe" | "SATA / SCSI" | "USB"))
+}
+
+/// The first number in a field: `36` from `36 (Min/Max 21/49)`.
+fn lead_num(s: &str) -> Option<f32> {
+    let end = s.find(|c: char| !c.is_ascii_digit()).unwrap_or(s.len());
+    s[..end].parse().ok()
+}
+
+/// What `smartctl -H -A` printed (in the C locale): the health from the
+/// overall assessment (ATA and NVMe) or the health status (SCSI), the
+/// temperature from NVMe's `Temperature:`, SCSI's `Current Drive
+/// Temperature:` or ATA's attribute 194 (190 where there is no 194).
+pub fn parse_smart(text: &str) -> Check {
+    if text.contains("STANDBY mode") || text.contains("SLEEP mode") {
+        return Check::why(Why::Asleep);
+    }
+    if text.contains("Permission denied") || text.contains("Operation not permitted") {
+        return Check::why(Why::NeedsRoot);
+    }
+    let mut c = Check::default();
+    let (mut temp, mut trip, mut airflow) = (None, None, None);
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(v) = line.strip_prefix("SMART overall-health self-assessment test result:") {
+            c.health = Some(if v.trim().starts_with("PASSED") { Health::Good } else { Health::Failing });
+        } else if let Some(v) = line.strip_prefix("SMART Health Status:") {
+            c.health = Some(if v.trim() == "OK" { Health::Good } else { Health::Failing });
+        } else if let Some(v) = line.strip_prefix("Current Drive Temperature:").or_else(|| line.strip_prefix("Temperature:")) {
+            temp = temp.or(lead_num(v.trim()));
+        } else if let Some(v) = line.strip_prefix("Drive Trip Temperature:") {
+            trip = lead_num(v.trim());
+        } else {
+            // ID# ATTRIBUTE_NAME FLAG VALUE WORST THRESH TYPE UPDATED WHEN_FAILED RAW_VALUE
+            let f: Vec<&str> = line.split_whitespace().collect();
+            let raw = || f.get(9).and_then(|v| lead_num(v));
+            match f.first() {
+                Some(&"194") => temp = temp.or(raw()),
+                Some(&"190") => airflow = raw(),
+                _ => {}
+            }
+        }
+    }
+    c.temp = temp.or(airflow).filter(|t| *t > 0.0 && *t < 250.0).map(|value| Temp {
+        value,
+        crit: trip.filter(|&t| t > 0.0),
+        source: "smartctl".into(),
+        ..Temp::default()
+    });
+    if c.health.is_none() {
+        c.why = Some(Why::Unsupported);
+    }
+    c
+}
+
+/// Ask `smartctl` about each drive, leaving a sleeping drive asleep.
+#[cfg(target_os = "linux")]
+pub fn smart(asks: &[Ask]) -> HashMap<String, Check> {
+    asks.iter().map(|a| (a.id.clone(), smart_one(a))).collect()
+}
+
+#[cfg(target_os = "linux")]
+fn smart_one(a: &Ask) -> Check {
+    use std::io::ErrorKind;
+    use std::process::{Command, Stdio};
+    if !smart_bus(a.bus) {
+        return Check::why(Why::Unsupported);
+    }
+    let dev = format!("/dev/{}", a.id);
+    // smartctl would say the same at more cost.
+    match std::fs::File::open(&dev) {
+        Err(e) if e.kind() == ErrorKind::PermissionDenied => return Check::why(Why::NeedsRoot),
+        Err(_) => return Check::why(Why::Unsupported),
+        Ok(_) => {}
+    }
+    let out = Command::new("smartctl")
+        .args(["-H", "-A", "-n", "standby", &dev])
+        .env("LC_ALL", "C")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output();
+    match out {
+        Ok(o) => parse_smart(&String::from_utf8_lossy(&o.stdout)),
+        Err(e) if e.kind() == ErrorKind::NotFound => Check::why(Why::NoSmartctl),
+        Err(_) => Check::why(Why::Unsupported),
     }
 }
 
@@ -253,7 +383,93 @@ mod tests {
         let (vd, _) = &list[1];
         assert_eq!((vd.kind, vd.bus, vd.removable), (Kind::Unknown, Some("virtio"), false));
         assert_eq!(vd.read_total, Some(5743114 * 512));
+        assert_eq!((&nv.temp, &vd.temp), (&None, &None));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_drive_with_a_hwmon_chip_has_its_temperature() {
+        let root = crate::util::test_dir("disk-hwmon");
+        let put = |p: &Path, body: &str| {
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        };
+        // NVMe: the chip is on the controller; SATA with drivetemp: under device/hwmon.
+        let nvme = root.join("nvme0n1/device/hwmon3");
+        put(&nvme.join("temp1_input"), "38850\n");
+        put(&nvme.join("temp1_max"), "81850\n");
+        put(&nvme.join("temp1_crit"), "84850\n");
+        let sda = root.join("sda/device/hwmon/hwmon4");
+        put(&sda.join("temp1_input"), "31000\n");
+        put(&sda.join("temp1_max"), "0\n");
+        std::fs::create_dir_all(root.join("sdb/device")).unwrap();
+        let nv = hwmon_temp(&root.join("nvme0n1")).unwrap();
+        assert_eq!((nv.value, nv.high, nv.crit, nv.chip.as_deref()), (38.85, Some(81.85), Some(84.85), Some("hwmon3")));
+        assert!(nv.source.ends_with("temp1_input"));
+        let sa = hwmon_temp(&root.join("sda")).unwrap();
+        assert_eq!((sa.value, sa.high, sa.chip.as_deref()), (31.0, None, Some("hwmon4")));
+        assert_eq!(hwmon_temp(&root.join("sdb")), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn smart_is_asked_only_of_buses_that_keep_it() {
+        assert!(smart_bus(Some("NVMe")) && smart_bus(Some("SATA / SCSI")) && smart_bus(Some("USB")) && smart_bus(None));
+        assert!(!smart_bus(Some("virtio")) && !smart_bus(Some("device-mapper")) && !smart_bus(Some("SD / MMC")));
+    }
+
+    const ATA: &str = "\
+smartctl 7.4 2023-08-01 r5530 [x86_64-linux-6.8.0] (local build)
+
+=== START OF READ SMART DATA SECTION ===
+SMART overall-health self-assessment test result: PASSED
+
+SMART Attributes Data Structure revision number: 16
+ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE
+  5 Reallocated_Sector_Ct   0x0033   100   100   010    Pre-fail  Always       -       0
+190 Airflow_Temperature_Cel 0x0032   067   051   000    Old_age   Always       -       33
+194 Temperature_Celsius     0x0022   064   049   000    Old_age   Always       -       36 (Min/Max 21/49)
+";
+
+    #[test]
+    fn smartctl_on_an_ata_drive_gives_health_and_temperature() {
+        let c = parse_smart(ATA);
+        assert_eq!((c.health, c.why), (Some(Health::Good), None));
+        let t = c.temp.unwrap();
+        assert_eq!((t.value, t.crit, t.source.as_str(), t.chip), (36.0, None, "smartctl", None));
+        // Without 194 the airflow temperature stands in.
+        let c = parse_smart(&ATA.replace("194 Temperature_Celsius", "999 Something_Else"));
+        assert_eq!(c.temp.map(|t| t.value), Some(33.0));
+        let c = parse_smart(&ATA.replace("PASSED", "FAILED!"));
+        assert_eq!(c.health, Some(Health::Failing));
+    }
+
+    #[test]
+    fn smartctl_on_nvme_and_scsi_drives() {
+        let nvme = "=== START OF SMART DATA SECTION ===\nSMART overall-health self-assessment test result: PASSED\n\n\
+SMART/Health Information (NVMe Log 0x02)\nCritical Warning:                   0x00\nTemperature:                        41 Celsius\n\
+Temperature Sensor 1:               52 Celsius\n";
+        let c = parse_smart(nvme);
+        assert_eq!((c.health, c.temp.map(|t| t.value)), (Some(Health::Good), Some(41.0)));
+        let scsi = "SMART Health Status: OK\n\nCurrent Drive Temperature:     30 C\nDrive Trip Temperature:        65 C\n";
+        let c = parse_smart(scsi);
+        let t = c.temp.clone().unwrap();
+        assert_eq!((c.health, t.value, t.crit), (Some(Health::Good), 30.0, Some(65.0)));
+        let c = parse_smart("SMART Health Status: FIRMWARE IMPENDING FAILURE TOO MANY BLOCK REASSIGNS [asc=5d, ascq=64]\n");
+        assert_eq!(c.health, Some(Health::Failing));
+    }
+
+    #[test]
+    fn smartctl_says_why_there_is_no_health() {
+        let asleep = "smartctl 7.4\n\nDevice is in STANDBY mode, exit(2)\n";
+        assert_eq!(parse_smart(asleep), Check::why(Why::Asleep));
+        let denied = "Smartctl open device: /dev/sda failed: Permission denied\n";
+        assert_eq!(parse_smart(denied), Check::why(Why::NeedsRoot));
+        let raw = "Read Device Identity failed: Operation not permitted\n";
+        assert_eq!(parse_smart(raw), Check::why(Why::NeedsRoot));
+        let none = "SMART support is: Unavailable - device lacks SMART capability.\n";
+        assert_eq!(parse_smart(none), Check::why(Why::Unsupported));
+        assert_eq!(parse_smart("/dev/vda: Unable to detect device type\n"), Check::why(Why::Unsupported));
     }
 
     #[test]

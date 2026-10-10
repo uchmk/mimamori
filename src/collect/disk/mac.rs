@@ -4,11 +4,15 @@
 //! the BSD name and the size. Disk images have drivers too and are left out.
 //! macOS keeps no busy time for a drive, so there is none. The IOKit calls
 //! are in `iokit.rs`; what they read is folded here, where the tests run on
-//! every OS.
+//! every OS. SMART health is `diskutil info`'s `SMARTStatus`; macOS gives no
+//! drive temperature outside the SMC sensors.
 
 use std::collections::HashMap;
 
-use super::{Drive, Kind};
+#[cfg(target_os = "macos")]
+use super::health::Ask;
+use super::health::Check;
+use super::{Drive, Health, Kind, Why};
 
 /// What IOKit says about one block storage driver.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -97,6 +101,35 @@ pub fn bsd_of(from: &str) -> Option<&str> {
     from.strip_prefix("/dev/").filter(|n| n.starts_with("disk"))
 }
 
+/// The health from `diskutil info -plist`: `SMARTStatus` is `Verified`,
+/// `Failing` or `Not Supported` (an external or virtual disk).
+pub fn smart_status(plist_bytes: &[u8]) -> Check {
+    let status = plist::Value::from_reader(std::io::Cursor::new(plist_bytes))
+        .ok()
+        .and_then(|v| v.into_dictionary())
+        .and_then(|d| d.get("SMARTStatus").and_then(|v| v.as_string()).map(str::to_string));
+    match status.as_deref() {
+        Some("Verified") => Check { health: Some(Health::Good), ..Check::default() },
+        Some("Failing") => Check { health: Some(Health::Failing), ..Check::default() },
+        _ => Check::why(Why::Unsupported),
+    }
+}
+
+/// Ask `diskutil` about each drive.
+#[cfg(target_os = "macos")]
+pub fn check(asks: &[Ask]) -> HashMap<String, Check> {
+    asks.iter()
+        .map(|a| {
+            let out = std::process::Command::new("diskutil").args(["info", "-plist", &a.id]).stderr(std::process::Stdio::null()).output();
+            let c = match out {
+                Ok(o) if o.status.success() => smart_status(&o.stdout),
+                _ => Check::why(Why::Unsupported),
+            };
+            (a.id.clone(), c)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +182,22 @@ mod tests {
         let mut first = list.clone();
         rates(&mut first, &HashMap::new(), None);
         assert_eq!(first, list);
+    }
+
+    fn info(status: &str) -> Vec<u8> {
+        format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict>\
+<key>DeviceIdentifier</key><string>disk0</string><key>SMARTStatus</key><string>{status}</string></dict></plist>"
+        )
+        .into_bytes()
+    }
+
+    #[test]
+    fn diskutil_says_the_smart_status() {
+        assert_eq!(smart_status(&info("Verified")).health, Some(Health::Good));
+        assert_eq!(smart_status(&info("Failing")).health, Some(Health::Failing));
+        assert_eq!(smart_status(&info("Not Supported")), Check::why(Why::Unsupported));
+        assert_eq!(smart_status(b"not a plist"), Check::why(Why::Unsupported));
     }
 
     #[test]

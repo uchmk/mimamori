@@ -449,6 +449,9 @@ device = "Device"
 fs = "File system"
 flags = "Flags"
 drive = "Drive"
+health_key = "Health"
+temp = "Temperature"
+temp_mark = "{0} (warns at {1})"
 
 [disk.col]
 mount = "MOUNT"
@@ -471,6 +474,19 @@ not_read = "Drives are not read on this system: each volume shows its own traffi
 no_iokit = "IOKit lists no block storage drivers: each volume shows its own traffic"
 counters_off = "The PhysicalDisk performance counters are off (turn them on with diskperf -y or lodctr /E:PerfDisk)"
 no_diskstats = "/proc/diskstats could not be read"
+
+[disk.health]
+good = "good"
+failing = "failing: back it up"
+
+[disk.why]
+pending = "checking…"
+unsupported = "no SMART data"
+no_smartctl = "needs smartctl (smartmontools)"
+needs_root = "needs root"
+needs_admin = "needs administrator"
+asleep = "spun down, left asleep"
+not_read = "not read on this OS"
 
 [sensors]
 chips = "Chips"

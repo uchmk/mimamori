@@ -236,8 +236,9 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
             return;
         }
         let devs = gpus.sample();
-        let temps = sensors.read(&devs);
-        if !send(Msg::Gpu(devs)) || !send(Msg::Nics(nics.read())) || !send(Msg::Disks(disks.read())) || !send(Msg::Sensors(temps)) {
+        let disk = disks.read();
+        let temps = sensors.read(&devs, &disk.drives);
+        if !send(Msg::Gpu(devs)) || !send(Msg::Nics(nics.read())) || !send(Msg::Disks(disk)) || !send(Msg::Sensors(temps)) {
             return;
         }
         if tick.is_multiple_of(2) {

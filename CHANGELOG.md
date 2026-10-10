@@ -4,6 +4,23 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.12.0] - 2026-10-10
+
+### 追加
+
+- disk の画面: 右の列の先頭に、選んだドライブの SMART の健康状態（`Health`）と温度（`Temperature`）を出す。
+  健康なら緑、故障が近いと出たら赤で「failing: back it up」とし、左の一覧でもそのドライブの名前を赤くする。
+  読めないときは理由を淡く出す（checking…・no SMART data・needs smartctl・needs root・needs administrator・spun down, left asleep）。
+- 健康状態は 1 分に 1 回（ドライブの顔ぶれが変わったときはすぐ）、専用のスレッドで聞く。
+  - Windows: `IOCTL_STORAGE_PREDICT_FAILURE`。先に `GetDevicePowerState` を見て、止まっている HDD は起こさない。権限が足りなければ「needs administrator」。
+  - Linux: `smartctl -H -A -n standby`（smartmontools）の出力を読む。止まっているドライブは起こさず、無いとき・root でないとき・SMART の無い装置（virtio など）は理由を出す。
+  - macOS: `diskutil info -plist` の `SMARTStatus`。
+- 温度は警告の値と一緒に出し（「41 °C (warns at 70 °C)」）、警告の値を超えたら黄、危険の値を超えたら赤にする。
+  - Windows: `StorageDeviceTemperatureProperty`。SSD は 5 秒ごと、ほかのドライブは健康状態の確認と一緒に 1 分ごと。
+  - Linux: ドライブの hwmon（NVMe・`drivetemp`）、無ければ `smartctl` の読み値。macOS はまだ温度を読まない。
+- sensors の画面: ドライブの温度を足した。hwmon のチップとしてすでに出ているものは重ねない。
+- 新しいクレートは足していない（`windows` クレートに `Win32_System_Power` の機能を足しただけ）。
+
 ## [0.11.0] - 2026-10-10
 
 ### 追加

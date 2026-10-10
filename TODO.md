@@ -28,8 +28,15 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → 左がドライブ（1 分の読み書き）、真ん中がマウントされたボリューム（容量・使用率・読み書き）、右が選んだドライブのグラフ（読み・書き・ビジー）と型番・種類・バス・容量。
   Windows は PhysicalDisk のパフォーマンスカウンター（PDH）と `IOCTL_STORAGE_QUERY_PROPERTY`（管理者は要らない）、Linux は `/proc/diskstats` と `/sys/block`、ボリュームはどの OS も sysinfo（v0.8.0）。
 - [x] disk: macOS のドライブ（IOKit の `IOBlockStorageDriver` の `Statistics`）。型番・SSD / HDD・バス・BSD 名と大きさ、ボリュームは `statfs` の装置から IOKit を上って結ぶ。忙しさは macOS に無いので出さない（v0.11.0）。
-- [ ] disk: SMART の状態と温度（Windows は `MSFT_PhysicalDisk` / `StorageReliabilityCounter`、Linux は NVMe の `hwmon` と `smartctl`）。sensors の画面と合わせて決める。
+- [x] disk: SMART の状態と温度（Windows は `MSFT_PhysicalDisk` / `StorageReliabilityCounter`、Linux は NVMe の `hwmon` と `smartctl`）。sensors の画面と合わせて決める。
   Linux の NVMe の温度は v0.9.0 から sensors の画面に出る（hwmon の `nvme`）。残るのは SATA の温度（`drivetemp` が無いとき）と、Windows・macOS の温度、SMART の健康状態。
+  → 健康状態は 1 分に 1 回、専用のスレッドで聞く（ドライブの顔ぶれが変わったときも）。Windows は WMI ではなく `IOCTL_STORAGE_PREDICT_FAILURE`（`GetDevicePowerState` で回っていないドライブは起こさない）、
+  Linux は `smartctl -H -A -n standby`（root か `disk` のグループが要る。無ければ理由を出す）、macOS は `diskutil info -plist` の `SMARTStatus`。
+  温度は Windows が `StorageDeviceTemperatureProperty`（SSD は 5 秒ごと、ほかは 1 分の確認で）、Linux が hwmon、無ければ smartctl の値。
+  右の列に「Health」と「Temperature」の行、壊れかけのドライブは左の名前も赤。hwmon のチップに無いドライブの温度は sensors の画面にも出る（v0.12.0）。
+- [ ] disk: Windows で `IOCTL_STORAGE_PREDICT_FAILURE` に答えないドライブ（実機の 3d.8 で分かる）があれば、WMI の `MSFT_PhysicalDisk` の `HealthStatus` と `StorageReliabilityCounter`（管理者）を足す。
+- [ ] disk: macOS のドライブの温度（NVMe の SMART ログは IOKit の `IONVMeSMARTInterface`、SATA は `IOATASMARTInterface`。どちらもプラグインの COM 風の呼び出しになる）。
+- [ ] disk: SMART の中身（使った寿命の %・代替処理済みのセクタ・電源を入れた時間）を右の列に。smartctl は `-j`、Windows は `IOCTL_STORAGE_QUERY_PROPERTY` の `StorageDeviceProtocolSpecificProperty`（NVMe の SMART ログ）。
 - [ ] disk の実機の確認 `【実機】`（TESTING.md 3d）。
 - [x] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
   → 左がチップ（チップごとの一番熱い温度の 1 分のグラフ）、真ん中が温度とファンの一覧（今・1 分の最低と最高・高温の目安・限界）、右が選んだセンサーのグラフと目安の線。

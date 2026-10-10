@@ -6,7 +6,7 @@
 use egui::{Color32, Rect, pos2, vec2};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
-use crate::collect::disk::{Drive, Volume};
+use crate::collect::disk::{Drive, Health, Temp, Volume};
 use crate::config::theme::{CYAN, DIM, FG, GREEN, MAGENTA, RED, ROW, YELLOW};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
@@ -54,7 +54,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &rate(x.read_rate + x.write_rate), CYAN);
         let room = rr.left() - row.left() - 6.0 - cx.pen.cw * 2.0;
         let name = cx.pen.fit(&x.name, (room * 0.5).max(cx.pen.cw * 6.0));
-        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, FG);
+        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, if x.health == Some(Health::Failing) { RED } else { FG });
         let sr = Rect::from_min_max(pos2(t.right() + cx.pen.cw, row.top() + 4.0), pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0));
         if let Some((rd, wr, _)) = m.drive_hist.get(&x.id) {
             let max = rd.max().max(wr.max()).max(FLOOR);
@@ -205,6 +205,33 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     });
 }
 
+/// The health row: what SMART says, or why it says nothing.
+fn health(d: &Drive) -> (String, Color32) {
+    match (d.health, d.why) {
+        (Some(h), _) => (tr(h.key()).to_string(), if h == Health::Failing { RED } else { GREEN }),
+        (None, Some(w)) => (tr(w.key()).to_string(), DIM),
+        (None, None) => ("—".to_string(), DIM),
+    }
+}
+
+/// The temperature row, with the drive's warning mark; yellow from the
+/// warning mark, red from the critical one.
+fn temp_row(t: &Temp) -> (String, Color32) {
+    let now = format!("{:.0}°C", t.value);
+    let text = match t.high.or(t.crit) {
+        Some(m) => trf("disk.temp_mark", &[&now, &format!("{m:.0}°C")]),
+        None => now,
+    };
+    let color = if t.crit.is_some_and(|c| t.value >= c) {
+        RED
+    } else if t.high.is_some_and(|h| t.value >= h) {
+        YELLOW
+    } else {
+        FG
+    };
+    (text, color)
+}
+
 fn drive_rows(d: &Drive) -> Vec<(&'static str, String)> {
     let dash = || "—".to_string();
     let yes_no = |b: bool| tr(if b { "disk.yes" } else { "disk.no" }).to_string();
@@ -282,6 +309,18 @@ fn draw_right(cx: &mut Cx, r: Rect) {
             }
             y = graphs(cx, body, y, &list);
         }
+        if y + ROW <= body.bottom() {
+            let (text, color) = health(d);
+            cx.pen.pair(row_at(body, y), tr("disk.health_key"), DIM, &text, color);
+            y += ROW;
+        }
+        if let Some(t) = &d.temp
+            && y + ROW <= body.bottom()
+        {
+            let (text, color) = temp_row(t);
+            cx.pen.pair(row_at(body, y), tr("disk.temp"), DIM, &text, color);
+            y += ROW;
+        }
         y = kv_rows(&cx.pen, body, y, &drive_rows(d)) + GAP;
     } else if let Some(v) = vol {
         // No drives (macOS, or the counters are off): the volume's own traffic.
@@ -334,6 +373,19 @@ mod tests {
         // The mount point and the device share what is left.
         let cols = columns(200.0, 1.0);
         assert_eq!(cols[0].2, cols[1].2);
+    }
+
+    #[test]
+    fn health_and_temperature_rows_say_how_worried_to_be() {
+        let d = |health, why| Drive { health, why, ..Drive::default() };
+        assert_eq!(health(&d(Some(Health::Good), None)), (tr("disk.health.good").to_string(), GREEN));
+        assert_eq!(health(&d(Some(Health::Failing), None)).1, RED);
+        assert_eq!(health(&d(None, Some(crate::collect::disk::Why::NeedsRoot))), (tr("disk.why.needs_root").to_string(), DIM));
+        let t = |value, high, crit| Temp { value, high, crit, ..Temp::default() };
+        assert_eq!(temp_row(&t(38.0, None, None)), ("38°C".to_string(), FG));
+        assert_eq!(temp_row(&t(38.0, Some(70.0), Some(80.0))), (trf("disk.temp_mark", &["38°C", "70°C"]), FG));
+        assert_eq!(temp_row(&t(72.0, Some(70.0), Some(80.0))).1, YELLOW);
+        assert_eq!(temp_row(&t(85.0, None, Some(80.0))), (trf("disk.temp_mark", &["85°C", "80°C"]), RED));
     }
 
     #[test]

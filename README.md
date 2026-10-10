@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.11** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
+> **v0.12** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
 > What is still missing on each OS is in [TODO.md](TODO.md).
 
 ## Screens
@@ -25,7 +25,7 @@ inside each tile.
 | `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
 | `6` | svc      | Services: Windows' services, systemd's units, launchd's jobs (with their plists, so disabled jobs show too). Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`; on Windows `u` switches it to the kernel and file-system drivers and back); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). `S` starts, `x` stops and `R` restarts the selected one after asking; the question shows the same thing as a command line (`systemctl restart foo.service`, `launchctl kickstart -k gui/501/…`, `Restart-Service foo`, or `sc.exe stop foo` for a driver). Read every 5 s, and only while the screen shows |
 | `7` | net      | The network interfaces, each with its traffic over the last minute, and counts of the sockets; every TCP and UDP socket (protocol, local and remote address, state, PID, process; filter with `/`, only the listening ones with `u`; `Enter` on an interface keeps only the sockets on its addresses and those bound to any address, until `Esc`); the selected interface's received and sent graphs, adapter, kind, link speed, addresses, MAC, MTU and totals, and the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
-| `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
+| `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
 | `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, CPU, uptime and boot time, the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking); every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own |
 
@@ -169,12 +169,21 @@ The disk screen reads:
 | Linux | `/proc/diskstats` for the traffic, totals and busy time; `/sys/block` for the whole drives (not `loop`, `ram`, `zram` or partitions), their size, model, bus and `rotational`. Volumes are linked through the device they were mounted from | sysinfo |
 | macOS | IOKit: each `IOBlockStorageDriver`'s `Statistics` for the traffic and totals since boot, the device above it for the model, SSD / HDD and bus, the whole disk below it for the BSD name (`disk0`) and size. Disk images are left out; macOS keeps no busy time, so there is no busy graph. Volumes are linked by walking up from the device they were mounted from (an APFS volume through its container to the partition it lives on) | sysinfo |
 
+Each drive's SMART health is asked once a minute (and when the drives
+change) in a thread of its own, so a slow drive never holds up the screen:
+
+| OS | Health | Temperature |
+| --- | --- | --- |
+| Windows | `IOCTL_STORAGE_PREDICT_FAILURE`, skipped while the drive is spun down (`GetDevicePowerState`) so it is left asleep. Some drivers answer it only for an administrator, and the row says so | `StorageDeviceTemperatureProperty` through `IOCTL_STORAGE_QUERY_PROPERTY`, without administrator: an SSD's every 5 seconds, any other drive's with the minute's check |
+| Linux | `smartctl -H -A -n standby` (smartmontools), which leaves a spun-down drive asleep. It needs root or the `disk` group, and the row says so, or that smartctl is not installed; virtual disks (`virtio`, `xen`) have no SMART data | The drive's hwmon chip (`nvme`, `drivetemp`), else what smartctl read |
+| macOS | `diskutil info -plist`'s `SMARTStatus` (internal drives; most USB enclosures pass nothing) | Not read yet |
+
 The sensors screen reads:
 
 | OS | Sensors |
 | --- | --- |
-| Windows | The ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH), without administrator. Fans and the cores' own temperatures need the board maker's driver, so the screen says so; NVIDIA GPUs add their temperature and fan from NVML |
-| Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice |
+| Windows | The ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH), without administrator. Fans and the cores' own temperatures need the board maker's driver, so the screen says so; NVIDIA GPUs add their temperature and fan from NVML, and the drives theirs from the disk reading |
+| Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice. A drive with no hwmon chip (SATA without `drivetemp`) adds the temperature smartctl read |
 | macOS | sysinfo's components: the SMC and HID temperatures. Fans are not read yet |
 
 The sys screen reads:

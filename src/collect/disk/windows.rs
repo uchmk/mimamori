@@ -1,10 +1,11 @@
 //! Windows: folding the `PhysicalDisk` counters into drives, and reading what
-//! `IOCTL_STORAGE_QUERY_PROPERTY` says about each. Pure, so the tests run
-//! everywhere; the calls are in `ioctl.rs`.
+//! `IOCTL_STORAGE_QUERY_PROPERTY` says about each (what it is, how hot it
+//! is) and what `IOCTL_STORAGE_PREDICT_FAILURE` says of its health. Pure, so
+//! the tests run everywhere; the calls are in `ioctl.rs`.
 
 use std::collections::HashMap;
 
-use super::{Drive, Kind};
+use super::{Drive, Health, Kind, Why};
 
 /// What a drive says about itself, asked once.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -80,6 +81,35 @@ pub fn describe(buf: &[u8]) -> Option<(String, Option<&'static str>, bool)> {
         format!("{vendor} {product}")
     };
     Some((model, bus, removable))
+}
+
+/// The temperature and the drive's warning and critical marks from a
+/// `STORAGE_TEMPERATURE_DATA_DESCRIPTOR`: critical at 8, warning at 10, the
+/// count of readings at 12 and the first 16-byte reading at 24, its value 2
+/// bytes in. A mark of 0 is none; a reading of 0 is a drive that keeps none.
+pub fn temperature(buf: &[u8]) -> Option<(f32, Option<f32>, Option<f32>)> {
+    let i16_at = |i: usize| Some(i16::from_le_bytes(buf.get(i..i + 2)?.try_into().ok()?));
+    let count = u16::from_le_bytes(buf.get(12..14)?.try_into().ok()?);
+    let value = i16_at(26).filter(|&t| count > 0 && t != 0 && (-60..250).contains(&t))?;
+    let mark = |i: usize| i16_at(i).filter(|&t| t > 0).map(f32::from);
+    Some((f32::from(value), mark(10), mark(8)))
+}
+
+/// The health from a `STORAGE_PREDICT_FAILURE`: a nonzero `PredictFailure`
+/// is a drive expecting to fail.
+pub fn predict(buf: &[u8]) -> Option<Health> {
+    let v = u32::from_le_bytes(buf.get(..4)?.try_into().ok()?);
+    Some(if v == 0 { Health::Good } else { Health::Failing })
+}
+
+/// Why a drive gave no health, from the Win32 error: access denied wants an
+/// administrator; the rest (invalid function, not supported) is a drive or
+/// driver that keeps no SMART data.
+pub fn why_of(code: u32) -> Why {
+    match code {
+        5 => Why::NeedsAdmin,
+        _ => Why::Unsupported,
+    }
 }
 
 /// The drives from the three counters (by instance), with what each said
@@ -167,6 +197,37 @@ mod tests {
         let d = descriptor("SanDisk ", "Ultra", 7, true);
         assert_eq!(describe(&d), Some(("SanDisk Ultra".to_string(), Some("USB"), true)));
         assert_eq!(describe(&[0u8; 8]), None);
+    }
+
+    fn temps(crit: i16, warn: i16, count: u16, value: i16) -> Vec<u8> {
+        let mut b = vec![0u8; 40];
+        b[8..10].copy_from_slice(&crit.to_le_bytes());
+        b[10..12].copy_from_slice(&warn.to_le_bytes());
+        b[12..14].copy_from_slice(&count.to_le_bytes());
+        b[26..28].copy_from_slice(&value.to_le_bytes());
+        b
+    }
+
+    #[test]
+    fn a_temperature_descriptor_gives_the_reading_and_the_marks() {
+        assert_eq!(temperature(&temps(84, 77, 1, 39)), Some((39.0, Some(77.0), Some(84.0))));
+        assert_eq!(temperature(&temps(0, 0, 2, 41)), Some((41.0, None, None)));
+        // No readings, a reading of 0 (none kept) or nonsense: no temperature.
+        assert_eq!(temperature(&temps(84, 77, 0, 39)), None);
+        assert_eq!(temperature(&temps(84, 77, 1, 0)), None);
+        assert_eq!(temperature(&temps(84, 77, 1, 300)), None);
+        assert_eq!(temperature(&[0u8; 20]), None);
+    }
+
+    #[test]
+    fn predict_failure_and_errors_say_the_health() {
+        assert_eq!(predict(&[0u8; 516]), Some(Health::Good));
+        let mut b = vec![0u8; 516];
+        b[0] = 1;
+        assert_eq!(predict(&b), Some(Health::Failing));
+        assert_eq!(predict(&[0u8; 2]), None);
+        assert_eq!(why_of(5), Why::NeedsAdmin);
+        assert_eq!((why_of(1), why_of(50)), (Why::Unsupported, Why::Unsupported));
     }
 
     #[test]
