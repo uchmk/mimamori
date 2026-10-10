@@ -13,6 +13,10 @@ back to `[ ]`.
 - [ ] 1.4 Linux (X11 and Wayland): the same.
 - [ ] 1.5 Idle CPU on a real GPU: with sampling every 1 s, mimamori stays under about 1% of one core in Task Manager / Activity Monitor / top; with `P` (paused) it drops to about 0%.
 - [ ] 1.6 Minimised for a minute and restored: the graphs carry on from where they were, with no burst of CPU on restore.
+- [ ] 1.7 Windows: Explorer draws `mimamori.exe` with the icon (four tiles on a dark rounded square, filled cyan, blue, yellow, cyan) at every view size, sharp and not a blurred small one.
+- [ ] 1.8 Windows: the title bar, the taskbar button (also pinned) and Alt+Tab show the same icon.
+- [ ] 1.9 Windows: the file's Properties → Details shows "mimamori" as the description and product name and the version from `Cargo.toml`; Task Manager lists the process as "mimamori".
+- [ ] 1.10 Linux (X11) and macOS: the window's icon (the dock or task switcher on Linux, the Dock on macOS) is the same drawing.
 
 ## 2. Core layout (cpu screen, `2`)
 

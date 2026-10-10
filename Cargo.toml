@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.28.0"
+version = "0.29.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -42,6 +42,10 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 objc2-io-kit = { version = "0.3", default-features = false, features = ["std", "libc"] }
 libc = "0.2"
 
+# build.rs writes the icon into mimamori.exe's resources as PNG.
+[build-dependencies]
+png = "0.18"
+
 [dev-dependencies]
 plist = { version = "1.8", default-features = false }
 
@@ -57,6 +61,7 @@ windows = { version = "0.62", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_IO",
+    "Win32_System_LibraryLoader",
     "Win32_System_Ioctl",
     "Win32_System_Performance",
     "Win32_System_Power",

@@ -10,6 +10,7 @@ mod config;
 mod fonts;
 mod gpu_backend;
 mod i18n;
+mod icon;
 mod keyscript;
 mod kill;
 mod model;
@@ -19,6 +20,8 @@ mod svcctl;
 mod tree;
 mod ui;
 mod util;
+#[cfg(test)]
+mod winres;
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -27,6 +30,9 @@ use app::App;
 use config::keys::{Key, from_egui};
 use config::{keymap::Keymap, settings, theme};
 use keyscript::{Do, Runner};
+
+/// The window's icon, in pixels square.
+const ICON_PX: u32 = 128;
 
 const USAGE: &str = "\
 mimamori — a keyboard-driven system monitor
@@ -181,7 +187,10 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("mimamori")
             .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([480.0, 320.0]),
+            .with_min_inner_size([480.0, 320.0])
+            // The title bar, Alt+Tab, the taskbar and the Dock; build.rs bakes
+            // the same drawing into mimamori.exe for Explorer.
+            .with_icon(std::sync::Arc::new(egui::IconData { rgba: icon::rgba(ICON_PX), width: ICON_PX, height: ICON_PX })),
         wgpu_options,
         ..Default::default()
     };

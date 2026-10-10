@@ -158,7 +158,10 @@ cargo build --release
 
 Pure Rust apart from the OS's own libraries; the six targets (Windows, macOS
 and Linux on x86_64 and ARM64) need no C toolchain beyond the platform's
-linker. The core layout comes from sysfs on Linux and
+linker. `build.rs` gives `mimamori.exe` its icon and version information on
+the MSVC targets, writing the resource file in Rust (`src/winres.rs`), so no
+`rc.exe` is needed, from Windows or not. The icon is drawn in code
+(`src/icon.rs`); the window uses the same drawing on every OS. The core layout comes from sysfs on Linux and
 `GetLogicalProcessorInformationEx` on Windows. On Apple silicon it comes
 from the device tree's `cpus` node in IOKit: a group per cluster (P or E
 cores sharing one L2; there is no L3), with the L2's size from
