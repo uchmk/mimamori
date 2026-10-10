@@ -18,6 +18,7 @@ mod persist;
 mod prefs;
 mod remote;
 mod screen;
+mod stacks;
 mod svcctl;
 mod tree;
 mod ui;
@@ -257,7 +258,7 @@ fn main() -> eframe::Result {
     }
     i18n::set_language(&s.language);
     let (km, km_warn) = Keymap::load(s.keymap.as_deref());
-    let (layouts, layout_warn) = persist::load(s.dir.as_deref());
+    let (layouts, stacks, layout_warn) = persist::load(s.dir.as_deref());
     let (wgpu_options, gpu_warn) = gpu_backend::options(s.backend.as_deref());
     let warnings: Vec<String> = s.warnings.iter().chain(&km_warn).chain(&layout_warn).cloned().chain(gpu_warn).collect();
     for w in &warnings {
@@ -287,6 +288,7 @@ fn main() -> eframe::Result {
             fonts::load_in_background(cc.egui_ctx.clone());
             let (rx, ctl) = collect::spawn(Some(cc.egui_ctx.clone()), Duration::from_secs_f32(interval));
             let mut app = App::new(km, rx, ctl, layouts, saver, interval);
+            app.stacks = stacks;
             app.wake = Some(cc.egui_ctx.clone());
             app.prefs = prefs::Prefs::load(settings::base_dir(), s);
             app.prefs.watch(&cc.egui_ctx);

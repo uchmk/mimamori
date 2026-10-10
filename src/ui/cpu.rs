@@ -1,15 +1,17 @@
 //! CPU (2): the groups and counts on the left, the core tiles, the total
-//! and the thread heatmap in the middle, the selected core and the top CPU
+//! and the thread heatmap stacked in the middle, the selected core and the top CPU
 //! users on the right.
 
 use egui::{Align2, Rect, pos2, vec2};
+use ito_layout::Dir;
 
-use super::tiles::tiles;
-use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at};
+use super::tiles::{tiles, tiles_height};
+use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at, shown};
 use crate::collect::topo::CoreKind;
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
+use crate::stacks;
 use crate::util::fmt_uptime;
 
 /// The average usage of some logical CPUs.
@@ -30,9 +32,6 @@ fn ghz(freq: &[u64], cpus: &[usize]) -> Option<String> {
     let mhz: Vec<u64> = cpus.iter().filter_map(|&i| freq.get(i).copied()).filter(|&f| f > 0).collect();
     (!mhz.is_empty()).then(|| format!("{:.2} GHz", mhz.iter().sum::<u64>() as f32 / mhz.len() as f32 / 1000.0))
 }
-
-/// The height the heatmap wants per thread.
-const HEAT_ROW: f32 = 14.0;
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
     draw_left(cx, left);
@@ -80,20 +79,18 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
     let Some(st) = &m.st else { return };
-    let body = panel(&cx.pen, r, tr("cpu.cores"), &st.topo.summary(), cx.focused(Pane::Mid));
+    // The cores, the total and the heatmap, each a third of the column.
+    let rects = cx.stack(Pane::Mid, r, stacks::chain(Dir::Down, 0, 3));
 
-    // What goes under the tiles: legend, hint, the total, the heatmap.
-    let graph_h = 80.0;
-    let heat_min = 60.0;
-    let below = ROW * 3.0 + graph_h + GAP + ROW + heat_min;
-    let tiles_bottom = (body.bottom() - below).max(body.top() + 60.0).min(body.bottom());
-    let area = Rect::from_min_max(body.min, pos2(body.right(), tiles_bottom));
-    let sel = cx.sel(Pane::Mid);
-    let mut y = tiles(cx, area, true, Some(sel), Some(Pane::Mid));
-
-    // The legend of the usage ramp.
-    if y + ROW <= body.bottom() {
-        let cy = y + ROW / 2.0;
+    if shown(rects[0]) {
+        let body = panel(&cx.pen, rects[0], tr("cpu.cores"), &st.topo.summary(), cx.focused(Pane::Mid));
+        // Full tiles when they fit over the legend, compact ones otherwise.
+        let full = tiles_height(&st.topo, body.width(), true) + ROW <= body.height();
+        let area = Rect::from_min_max(body.min, pos2(body.right(), body.bottom() - ROW));
+        let sel = cx.sel(Pane::Mid);
+        tiles(cx, area, full, Some(sel), Some(Pane::Mid));
+        // The legend of the usage ramp, at the bottom.
+        let cy = body.bottom() - ROW / 2.0;
         let mut x = body.left() + 4.0;
         for (label, v) in [("<30", 15.0), ("30–70", 50.0), ("70–90", 80.0), ("≥90", 95.0)] {
             let sw = Rect::from_center_size(pos2(x + 5.0, cy), vec2(10.0, 10.0));
@@ -103,27 +100,18 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         }
         let hint = cx.pen.fit(tr("cpu.hint"), body.right() - x - 4.0);
         cx.pen.text_r(pos2(body.right() - 4.0, cy), &hint, theme::dim());
-        y += ROW;
     }
 
-    // The whole chip over the last minute: what the heatmap leaves, so a
-    // few threads do not get rows a hundred pixels tall.
-    let heat_want = ROW + (m.threads.len() as f32 * HEAT_ROW).max(heat_min);
-    let graph_h = (body.bottom() - y - ROW - GAP - heat_want).max(graph_h);
-    if y + ROW + 30.0 <= body.bottom() {
-        cx.pen.pair(row_at(body, y), tr("cpu.total"), theme::dim(), &format!("{:.0}%", m.total), ramp(m.total));
-        y += ROW;
-        let g = Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), graph_h.min(body.bottom() - y)));
-        graph::line(&cx.pen, g, m.cpu_hist.iter(), 100.0, theme::blue());
-        y = g.bottom() + GAP;
+    // The whole chip over the last minute.
+    if shown(rects[1]) {
+        let body = panel(&cx.pen, rects[1], tr("cpu.total"), &format!("{:.0}%", m.total), false);
+        graph::line(&cx.pen, body, m.cpu_hist.iter(), 100.0, theme::blue());
     }
 
     // Every thread over the last minute.
-    if y + ROW + 20.0 <= body.bottom() {
-        cx.pen.pair(row_at(body, y), tr("cpu.heatmap"), theme::dim(), &trf("cpu.threads_n", &[&m.threads.len().to_string()]), theme::dim());
-        y += ROW;
-        let h = Rect::from_min_max(pos2(body.left(), y), body.max);
-        graph::heatmap(&cx.pen, h, &m.threads);
+    if shown(rects[2]) {
+        let body = panel(&cx.pen, rects[2], tr("cpu.heatmap"), &trf("cpu.threads_n", &[&m.threads.len().to_string()]), false);
+        graph::heatmap(&cx.pen, body, &m.threads);
     }
 }
 

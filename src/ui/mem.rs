@@ -1,12 +1,14 @@
-//! Memory (3): used, available and swap on the left, the bars and the
-//! minute of each in the middle, the processes holding the most on the right.
+//! Memory (3): used, available and swap on the left, memory and swap
+//! stacked in the middle (a bar and the last minute each), the processes holding the most on the right.
 
 use egui::{Rect, pos2, vec2};
+use ito_layout::{Dir, Node};
 
-use super::{Cx, GAP, graph, kv_rows, panel, row_at};
+use super::{Cx, GAP, graph, kv_rows, panel, row_at, shown};
 use crate::config::theme::{self, ROW, ramp};
-use crate::i18n::{tr, trf};
+use crate::i18n::tr;
 use crate::screen::Pane;
+use crate::stacks;
 use crate::util::fmt_bytes;
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -64,63 +66,63 @@ fn draw_left(cx: &mut Cx, r: Rect) {
 fn draw_mid(cx: &mut Cx, r: Rect) {
     let m = &cx.app.model;
     let mem = m.mem;
-    let info = format!("{} / {}", fmt_bytes(mem.used), fmt_bytes(mem.total));
-    let body = panel(&cx.pen, r, tr("mem.usage"), &info, cx.focused(Pane::Mid));
     let swap = mem.swap_total > 0;
-    // Memory takes the larger part, swap the rest.
-    let split = if swap { body.top() + (body.height() * 0.62).max(ROW * 3.0) } else { body.bottom() };
+    // Memory and swap, half the column each; memory alone without swap.
+    let default = if swap { stacks::chain(Dir::Down, 0, 2) } else { Node::Leaf(0) };
+    let rects = cx.stack(Pane::Mid, r, default);
 
-    let mut y = body.top();
-    let used = pct(mem.used, mem.total);
-    let cached = pct(mem.total.saturating_sub(mem.used).saturating_sub(mem.available), mem.total);
-    cx.pen.pair(row_at(body, y), tr("mem.used"), theme::dim(), &format!("{used:.1}%"), ramp(used));
-    y += ROW;
-
-    // Used, then what is held but not counted as available, then free.
-    let bar = Rect::from_min_size(pos2(body.left() + 4.0, y), vec2(body.width() - 8.0, 10.0));
-    graph::bar(&cx.pen, bar, used, theme::green());
-    if cached > 0.5 {
-        let x0 = bar.left() + bar.width() * (used / 100.0).clamp(0.0, 1.0);
-        let w = bar.width() * (cached / 100.0).clamp(0.0, 1.0);
-        cx.pen.p.rect_filled(
-            Rect::from_min_size(pos2(x0, bar.top()), vec2(w.min(bar.right() - x0), bar.height())),
-            2.0,
-            theme::green().gamma_multiply(0.35),
-        );
-    }
-    y = bar.bottom() + 6.0;
-    if y + ROW <= split {
-        let legend = format!("■ {} {}   ■ {} {}", tr("mem.used"), fmt_bytes(mem.used), tr("mem.available"), fmt_bytes(mem.available));
-        cx.pen.text(pos2(body.left() + 4.0, y + ROW / 2.0), &cx.pen.fit(&legend, body.width() - 8.0), theme::dim());
+    if shown(rects[0]) {
+        let info = format!("{} / {}", fmt_bytes(mem.used), fmt_bytes(mem.total));
+        let body = panel(&cx.pen, rects[0], tr("mem.usage"), &info, cx.focused(Pane::Mid));
+        let mut y = body.top();
+        let used = pct(mem.used, mem.total);
+        let cached = pct(mem.total.saturating_sub(mem.used).saturating_sub(mem.available), mem.total);
+        cx.pen.pair(row_at(body, y), tr("mem.used"), theme::dim(), &format!("{used:.1}%"), ramp(used));
         y += ROW;
-    }
-    if y + ROW + 20.0 <= split {
-        cx.pen.section(row_at(body, y), &trf("ovw.history", &[tr("mem.title")]));
-        y += ROW;
-        let g = Rect::from_min_max(pos2(body.left(), y), pos2(body.right(), split - if swap { GAP } else { 0.0 }));
-        graph::line(&cx.pen, g, m.mem_hist.iter(), 100.0, theme::green());
-    }
-    if !swap {
-        return;
+
+        // Used, then what is held but not counted as available, then free.
+        let bar = Rect::from_min_size(pos2(body.left() + 4.0, y), vec2(body.width() - 8.0, 10.0));
+        if bar.bottom() <= body.bottom() {
+            graph::bar(&cx.pen, bar, used, theme::green());
+            if cached > 0.5 {
+                let x0 = bar.left() + bar.width() * (used / 100.0).clamp(0.0, 1.0);
+                let w = bar.width() * (cached / 100.0).clamp(0.0, 1.0);
+                cx.pen.p.rect_filled(
+                    Rect::from_min_size(pos2(x0, bar.top()), vec2(w.min(bar.right() - x0), bar.height())),
+                    2.0,
+                    theme::green().gamma_multiply(0.35),
+                );
+            }
+        }
+        y = bar.bottom() + 6.0;
+        if y + ROW <= body.bottom() {
+            let legend = format!("■ {} {}   ■ {} {}", tr("mem.used"), fmt_bytes(mem.used), tr("mem.available"), fmt_bytes(mem.available));
+            cx.pen.text(pos2(body.left() + 4.0, y + ROW / 2.0), &cx.pen.fit(&legend, body.width() - 8.0), theme::dim());
+            y += ROW;
+        }
+        if y + 20.0 <= body.bottom() {
+            let g = Rect::from_min_max(pos2(body.left(), y), body.max);
+            graph::line(&cx.pen, g, m.mem_hist.iter(), 100.0, theme::green());
+        }
     }
 
-    let mut y = split + GAP;
-    let sp = pct(mem.swap_used, mem.swap_total);
-    if y + ROW > body.bottom() {
-        return;
-    }
-    let s = format!("{} / {}", fmt_bytes(mem.swap_used), fmt_bytes(mem.swap_total));
-    cx.pen.pair(row_at(body, y), tr("mem.swap"), theme::dim(), &s, ramp(sp));
-    y += ROW;
-    let bar = Rect::from_min_size(pos2(body.left() + 4.0, y), vec2(body.width() - 8.0, 10.0));
-    if bar.bottom() > body.bottom() {
-        return;
-    }
-    graph::bar(&cx.pen, bar, sp, theme::magenta());
-    y = bar.bottom() + 6.0;
-    if y + 20.0 <= body.bottom() {
-        let g = Rect::from_min_max(pos2(body.left(), y), body.max);
-        graph::line(&cx.pen, g, m.swap_hist.iter(), 100.0, theme::magenta());
+    if swap && shown(rects[1]) {
+        let sp = pct(mem.swap_used, mem.swap_total);
+        let info = format!("{} / {}", fmt_bytes(mem.swap_used), fmt_bytes(mem.swap_total));
+        let body = panel(&cx.pen, rects[1], tr("mem.swap"), &info, false);
+        let mut y = body.top();
+        cx.pen.pair(row_at(body, y), tr("mem.used"), theme::dim(), &format!("{sp:.1}%"), ramp(sp));
+        y += ROW;
+        let bar = Rect::from_min_size(pos2(body.left() + 4.0, y), vec2(body.width() - 8.0, 10.0));
+        if bar.bottom() > body.bottom() {
+            return;
+        }
+        graph::bar(&cx.pen, bar, sp, theme::magenta());
+        y = bar.bottom() + 6.0;
+        if y + 20.0 <= body.bottom() {
+            let g = Rect::from_min_max(pos2(body.left(), y), body.max);
+            graph::line(&cx.pen, g, m.swap_hist.iter(), 100.0, theme::magenta());
+        }
     }
 }
 

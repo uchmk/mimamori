@@ -23,6 +23,7 @@ mod tiles;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use egui::{Align2, Color32, FontId, Id, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
+use ito_layout::Node;
 use ito_layout::ui::{Look, dividers, from_egui, to_egui};
 
 use crate::app::{App, Mode, Out, TOAST, fmt_interval};
@@ -161,6 +162,22 @@ impl Cx<'_> {
         }
     }
 
+    /// The panels `default` stacks in column `p`, laid over `r` as the mouse
+    /// left them: each panel's room, by its number. Their dividers are
+    /// taken after the screen is drawn.
+    pub fn stack(&mut self, p: Pane, r: Rect, default: Node<u8>) -> Vec<Rect> {
+        let node = self.app.stack(p, default);
+        let mut out = vec![Rect::NOTHING; node.leaves().iter().map(|&i| i as usize + 1).max().unwrap_or(0)];
+        if r.width() < 1.0 || r.height() < 1.0 {
+            return out;
+        }
+        for (i, part) in node.layout(from_egui(r), GAP) {
+            out[i as usize] = to_egui(part);
+        }
+        self.out.stacks.push((p, node, r));
+        out
+    }
+
     /// `count` rows in `body`, scrolled so the selection shows; `row`
     /// draws one after its background.
     pub fn scroll_list(&mut self, p: Pane, body: Rect, count: usize, mut row: impl FnMut(&mut Cx, Rect, usize)) {
@@ -182,6 +199,13 @@ impl Cx<'_> {
             row(self, r, i);
         }
     }
+}
+
+/// Whether a panel laid out in `r` has room for its frame, its title and a
+/// little of its body; smaller ones (a stack's divider dragged nearly to
+/// its end) are left out.
+pub fn shown(r: Rect) -> bool {
+    r.is_finite() && r.width() >= 40.0 && r.height() >= 40.0
 }
 
 /// A row of `ROW` at `y` across `body`.
@@ -283,9 +307,15 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
             for (i, r) in rects.into_iter().enumerate() {
                 out.pane_rects[i] = (r.width() > 0.0).then_some(r);
             }
-            // After the rows, so a divider takes the pointer where both are.
+            // After the rows, so a divider takes the pointer where both are;
+            // the columns' last, over the panels' where they meet.
             if !matches!(app.mode, Mode::Help | Mode::Confirm) {
                 let look = Look { gap: GAP, grab: 10.0, line: theme::cyan() };
+                for (p, node, r) in std::mem::take(&mut out.stacks) {
+                    if let Some(m) = dividers(ui, Id::new(("stack", app.screen, p.index())), &node, from_egui(r), look) {
+                        out.stack_moved = Some((p, m));
+                    }
+                }
                 out.moved = dividers(ui, Id::new(("div", app.screen)), app.layout(), from_egui(area), look);
             }
         }

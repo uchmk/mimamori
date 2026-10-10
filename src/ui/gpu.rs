@@ -1,14 +1,16 @@
 //! GPU·NPU (4): the devices on the left, the selected one's usage, engines
-//! and memory in the middle, its details, what it cannot report and the
+//! and memory stacked in the middle, its details, what it cannot report and the
 //! processes on it on the right.
 
 use egui::{Rect, pos2, vec2};
+use ito_layout::{Dir, Node};
 
-use super::{Cx, GAP, Pen, graph, kv_rows, panel, row_at};
+use super::{Cx, GAP, Pen, graph, kv_rows, panel, row_at, shown};
 use crate::collect::gpu::{self, Device, Fan, Kind};
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
+use crate::stacks;
 use crate::util::fmt_bytes;
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
@@ -142,15 +144,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         let t = cx.pen.text(pos2(row.left() + 6.0, cy), &tag(devs, i), color);
         let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &pct(d.usage), d.usage.map_or(theme::dim(), ramp));
         let room = rr.left() - t.right() - cx.pen.cw * 2.0;
-        let name_w = (room * 0.65).max(cx.pen.cw * 6.0);
-        cx.pen.text(pos2(t.right() + cx.pen.cw, cy), &cx.pen.fit(&name(d), name_w), theme::fg());
-        let sr = Rect::from_min_max(
-            pos2(t.right() + cx.pen.cw * 2.0 + name_w, row.top() + 4.0),
-            pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0),
-        );
-        if let Some((u, _)) = m.gpu_hist.get(&d.id) {
-            graph::spark(&cx.pen, sr, u.iter(), 100.0, color);
-        }
+        cx.pen.text(pos2(t.right() + cx.pen.cw, cy), &cx.pen.fit(&name(d), room), theme::fg());
     });
     // Why a kind is missing, so an empty list is not a mystery.
     let (g, n) = counts(devs);
@@ -173,33 +167,31 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         }
         return;
     };
-    let body = panel(&cx.pen, r, &name(d), &pct(d.usage), cx.focused(Pane::Mid));
     let (uh, vh) = app.model.gpu_hist.get(&d.id).map_or((None, None), |(u, v)| (Some(u), Some(v)));
-    let mut y = body.top();
-
     let color = if d.kind == Kind::Npu { theme::magenta() } else { theme::blue() };
-    match d.usage {
-        Some(u) => cx.pen.pair(row_at(body, y), tr("gpu.usage"), theme::dim(), &format!("{u:.1}%"), ramp(u)),
-        None => cx.pen.pair(row_at(body, y), tr("gpu.usage"), theme::dim(), "—", theme::dim()),
-    }
-    y += ROW;
-    if let (Some(u), true) = (uh, d.usage.is_some()) {
-        let h = (body.height() * 0.3).clamp(40.0, 160.0);
-        if y + ROW + h <= body.bottom() {
-            cx.pen.section(row_at(body, y), &trf("ovw.history", &[tr("gpu.usage")]));
-            y += ROW;
-            graph::line(&cx.pen, Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), h)), u.iter(), 100.0, color);
-            y += h + GAP;
+    // The usage, the engines when it names them, and the memory, each the
+    // same share of the column.
+    let engines = !d.engines.is_empty();
+    let n = 2 + u8::from(engines);
+    let rects = cx.stack(Pane::Mid, r, stacks::chain(Dir::Down, 0, n));
+
+    if shown(rects[0]) {
+        let body = panel(&cx.pen, rects[0], &format!("{} · {}", name(d), tr("gpu.usage")), &pct(d.usage), cx.focused(Pane::Mid));
+        match uh.filter(|_| d.usage.is_some()) {
+            Some(u) => graph::line(&cx.pen, body, u.iter(), 100.0, color),
+            None => {
+                para(&cx.pen, body, body.top(), "—", theme::dim());
+            }
         }
     }
 
-    if !d.engines.is_empty() && y + ROW * 2.0 <= body.bottom() {
-        cx.pen.section(row_at(body, y), tr("gpu.engines"));
-        y += ROW;
+    if engines && shown(rects[1]) {
+        let body = panel(&cx.pen, rects[1], tr("gpu.engines"), &d.engines.len().to_string(), false);
         let lw = d.engines.iter().map(|(e, _)| cx.pen.width(e)).fold(0.0, f32::max).min(body.width() * 0.4) + cx.pen.cw * 2.0;
+        let mut y = body.top();
         for (e, v) in &d.engines {
             if y + ROW > body.bottom() + 0.5 {
-                return;
+                break;
             }
             let row = row_at(body, y);
             let cy = row.center().y;
@@ -211,14 +203,14 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
             }
             y += ROW;
         }
-        y += GAP;
     }
 
-    if y + ROW * 2.0 > body.bottom() {
+    let mr = rects[n as usize - 1];
+    if !shown(mr) {
         return;
     }
-    cx.pen.section(row_at(body, y), tr("gpu.memory"));
-    y += ROW;
+    let body = panel(&cx.pen, mr, tr("gpu.memory"), &pct(d.vram_pct()), false);
+    let mut y = body.top();
     let mut bars = vec![(tr("gpu.dedicated"), d.vram_used, d.vram_total, theme::green())];
     if d.shared_total.is_some() || d.shared_used.is_some() {
         bars.push((tr("gpu.shared"), d.shared_used, d.shared_total, theme::magenta()));
@@ -267,15 +259,25 @@ fn fan(f: Fan) -> String {
 fn draw_right(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let d = app.selected_gpu();
-    // The details take what they need up to about half; the processes the rest.
-    let want = 26.0 + 6.0 + ROW * (10.0 + d.map_or(0.0, |d| 1.0 + d.why.len() as f32 * 2.0));
-    // With nothing selected there are no processes to list either.
-    let top_h = if d.is_none() { r.height() } else { want.min(r.height() * 0.55).max(r.height().min(ROW * 4.0)) };
-    let top = Rect::from_min_size(r.min, vec2(r.width(), top_h));
-    let bottom = Rect::from_min_max(pos2(r.left(), top.bottom() + GAP), r.max);
+    // The details take what they need up to about half, the processes the
+    // rest; with nothing selected there are no processes to list either.
+    let (top, bottom) = match d {
+        Some(d) => {
+            let want = 26.0 + 6.0 + ROW * (11.0 + d.why.len() as f32 * 2.0);
+            let ratio = want.min(r.height() * 0.55) / r.height().max(1.0);
+            let rects = cx.stack(Pane::Right, r, stacks::split(Dir::Down, ratio, Node::Leaf(0), Node::Leaf(1)));
+            (rects[0], rects[1])
+        }
+        None => (r, Rect::NOTHING),
+    };
 
+    let Some(d) = d.filter(|_| shown(top)) else {
+        if shown(top) {
+            panel(&cx.pen, top, tr("gpu.details"), "", false);
+        }
+        return;
+    };
     let body = panel(&cx.pen, top, tr("gpu.details"), "", false);
-    let Some(d) = d else { return };
     let dash = || "—".to_string();
     let rows = [
         (tr("gpu.name"), name(d)),
@@ -299,7 +301,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         }
     }
 
-    if bottom.height() < ROW * 2.0 {
+    if !shown(bottom) {
         return;
     }
     let procs = app.gpu_procs();

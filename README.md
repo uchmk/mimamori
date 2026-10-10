@@ -20,20 +20,26 @@ inside each tile.
 
 | Key | Screen   | What it shows |
 | --- | -------- | ------------- |
-| `1` | overview | CPU / memory / swap gauges, then one per GPU and NPU (its usage) and per drive (how busy it is), and the system with what each device is; a big graph of the selected gauge over the compact core tiles; the top processes by CPU and by memory |
-| `2` | cpu      | Groups and counts; the core tiles, the total over the last minute and a thread heatmap; the selected core's threads and the top CPU users |
-| `3` | mem      | Used / available / swap; the usage bar and graph; the processes using the most memory |
-| `4` | gpu·npu  | The GPUs and NPUs found, each with its usage over the last minute (and why a missing one is missing); the selected device's usage, engines, dedicated and shared memory and VRAM graph; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
+| `1` | overview | CPU / memory / swap gauges, then one per GPU and NPU (its usage) and per drive (how busy it is), and the system with what each device is; a graph for every gauge, laid out evenly (two columns of three for CPU, memory, swap, two GPUs and a drive; clicking one selects its gauge); the top processes by CPU and by memory |
+| `2` | cpu      | Groups and counts; the core tiles, the total over the last minute and a thread heatmap, a third of the column each; the selected core's threads and the top CPU users |
+| `3` | mem      | Used / available / swap; memory and swap stacked, each a bar and its last minute (swap only when there is some); the processes using the most memory |
+| `4` | gpu·npu  | The GPUs and NPUs found, with their usage now (and why a missing one is missing); the selected device's usage, engines and memory (dedicated and shared, with the VRAM graph) stacked; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
 | `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
 | `6` | svc      | Services: Windows' services, systemd's units, launchd's jobs (with their plists, so disabled jobs show too). Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`; on Windows `u` switches it to the kernel and file-system drivers and back); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). `S` starts, `x` stops and `R` restarts the selected one after asking; the question shows the same thing as a command line (`systemctl restart foo.service`, `launchctl kickstart -k gui/501/…`, `Restart-Service foo`, or `sc.exe stop foo` for a driver). Read every 5 s, and only while the screen shows |
 | `7` | net      | The network interfaces with their rates, and counts of the sockets; in the middle, a row per interface that is up (loopback included) with its received and sent graphs over the last minute side by side, above every TCP and UDP socket (protocol, local and remote address, state, PID, process; it scrolls with the wheel, `j` / `k`, `PageDown` / `PageUp`; filter with `/`, only the listening ones with `u`; `Enter` on an interface keeps only the sockets on its addresses and those bound to any address, until `Esc`); on the right, the selected interface's details (name, adapter, kind, link speed, addresses, MAC, MTU, totals) and under them the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
-| `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
+| `8` | disk     | The drives with their traffic now, and the totals of all of them; the selected drive's read, write and busy graphs side by side over every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
 | `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own |
 | `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the uptime or when it was last seen, the agent's version and what it allows. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
-divider) or the keyboard, and are kept per screen in `state.toml`.
+divider) or the keyboard, and are kept per screen in `state.toml`. A column
+holding several panels splits evenly among them (three panels, three
+thirds); drag the line between two panels to give one more room, or
+double-click it to put it halfway along the room it splits, as with the
+column dividers. The heights are kept per screen in
+`state.toml` too, as long as the screen shows the same panels, and
+`Ctrl+Shift+e` puts both the columns and the panels back to equal.
 
 ## Keys
 
@@ -45,7 +51,7 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `Ctrl+d`, `Ctrl+u`, `PageDown`, `PageUp` | Half a page, a page |
 | `h` `l` / `←` `→` | Column to the left, to the right |
 | `Alt+Shift+←→↑↓` (macOS `Cmd+Ctrl+arrow`) | Move the focused column's divider (tsumugi's keys) |
-| `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) | Columns back to equal widths |
+| `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) | Columns back to equal widths, and the panels in them to equal heights |
 | `Enter` | Open the selection (a gauge's screen, on the device for a GPU, NPU or drive; a process in procs, a service's or a socket's process). On a net interface: only the sockets on it. On disk: a drive's first volume, or a volume's drive. On sensors: a chip's first sensor, or a sensor's chip |
 | `/` | Filter processes, or on svc services by name and description, or on net sockets by protocol, address, state, PID and process (`Enter` keeps it, `Esc` drops it). One filter serves all three |
 | `s` | Next sort column |
@@ -71,7 +77,7 @@ Everything lives in one folder shared by uchmk's apps:
 <config dir>/uchmk/common.toml         settings every uchmk app reads
 <config dir>/uchmk/yagura/config.toml  yagura's own settings
 <config dir>/uchmk/yagura/keymap.toml  laid over the built-in keymap
-<config dir>/uchmk/yagura/state.toml   the column widths (yagura writes it)
+<config dir>/uchmk/yagura/state.toml   the column widths and panel heights (yagura writes it)
 ```
 
 `<config dir>` is `%APPDATA%` on Windows, `~/Library/Application Support` on
@@ -165,7 +171,7 @@ What `run` can say in a keymap:
 | `arrow N`, `arrow top`, `arrow bot`, `arrow 50%` | Move the selection by rows, to an end, by a share of the page |
 | `focus left`, `focus right` | Move between columns |
 | `resize left` / `right` / `up` / `down` | Move the focused column's divider |
-| `equalize` | Columns back to equal widths |
+| `equalize` | Columns back to equal widths, and the panels in them to equal heights |
 | `enter`, `filter`, `sort`, `pause` | As the keys above |
 | `interval +`, `interval -` | Sample less / more often |
 | `kill` | Ask, then end the selected process; on svc, stop the selected service |

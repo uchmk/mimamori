@@ -1,18 +1,22 @@
 //! Overview (1): the gauges (CPU, memory, swap, each GPU and NPU, each drive)
-//! and the system on the left, a big graph of the selected gauge over the
-//! compact tiles in the middle, the top processes on the right.
+//! and the system on the left, a graph for each gauge in the middle, the
+//! top processes on the right.
 
-use egui::{Color32, Rect, pos2, vec2};
+use egui::{Color32, Id, Rect, Sense, pos2};
 
-use super::tiles::{tiles, tiles_height};
-use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at};
+use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at, shown};
 use crate::app::{App, Gauge, OVW_TOP};
 use crate::collect::gpu;
 use crate::config::theme::{self, ROW, ramp};
-use crate::i18n::{tr, trf};
+use crate::i18n::tr;
 use crate::model::Ring;
 use crate::screen::Pane;
+use crate::stacks;
 use crate::util::{fmt_bytes, fmt_uptime};
+
+/// How short a gauge's graph may get before the middle takes a second
+/// column.
+const MIN_GRAPH: f32 = 90.0;
 
 /// A row of the left column as it is drawn.
 struct Row<'a> {
@@ -139,46 +143,20 @@ fn draw_left(cx: &mut Cx, r: Rect) {
 fn draw_mid(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let gs = gauges(app);
-    let sel = cx.sel(Pane::Left).min(gs.len() - 1);
-    let g = &gs[sel];
-    let body = panel(&cx.pen, r, &trf("ovw.history", &[&g.title()]), &g.pct_text(), cx.focused(Pane::Mid));
-    // The tiles take what they need, the two small graphs at the bottom a
-    // fixed height, and the graph of the selected gauge the rest.
-    let small_h = ROW + 56.0;
-    let tiles_h = app.model.st.as_ref().map_or(0.0, |st| ROW + tiles_height(&st.topo, body.width(), false));
-    let min_g = 80.0_f32.min(body.height());
-    let smalls = body.height() - tiles_h - min_g - GAP * 2.0 > small_h + ROW * 3.0;
-    let below = tiles_h + GAP + if smalls { small_h + GAP } else { 0.0 };
-    let gh = (body.height() - below).max(min_g);
-    let big = Rect::from_min_size(body.min, vec2(body.width(), gh));
-    if let Some(ring) = g.ring {
-        graph::line(&cx.pen, big, ring.iter(), 100.0, g.color);
-    }
-    let mut y = big.bottom() + GAP;
-    let tiles_bottom = if smalls { body.bottom() - small_h - GAP } else { body.bottom() };
-
-    if let Some(st) = &app.model.st {
-        cx.pen.section(row_at(body, y), &format!("{} · {}", tr("ovw.cores"), st.topo.summary()));
-        y += ROW;
-        let area = Rect::from_min_max(pos2(body.left(), y), pos2(body.right(), tiles_bottom));
-        if area.height() > 20.0 {
-            tiles(cx, area, false, None, None);
+    let n = gs.len() as u8;
+    let sel = cx.sel(Pane::Left);
+    // One graph per gauge, the column shared equally; a second or third
+    // column only when a graph would get shorter than `MIN_GRAPH`.
+    let rects = cx.stack(Pane::Mid, r, stacks::grid(n, stacks::cols_for(n, r.height(), MIN_GRAPH, 3)));
+    for (i, g) in gs.iter().enumerate() {
+        let Some(&pr) = rects.get(i).filter(|pr| shown(**pr)) else { continue };
+        let body = panel(&cx.pen, pr, &g.title(), &g.pct_text(), i == sel);
+        if let Some(ring) = g.ring {
+            graph::line(&cx.pen, body, ring.iter(), 100.0, g.color);
         }
-    }
-
-    if smalls {
-        let top = body.bottom() - small_h;
-        // Two of CPU, memory and swap: the ones not shown above.
-        let others = gs.iter().take(3).enumerate().filter(|(i, _)| *i != sel).map(|(_, g)| g).take(2);
-        let w = (body.width() - GAP) / 2.0;
-        for (k, o) in others.enumerate() {
-            let x = body.left() + k as f32 * (w + GAP);
-            let head = Rect::from_min_size(pos2(x, top), vec2(w, ROW));
-            cx.pen.pair(head, &o.label, theme::dim(), &o.pct_text(), o.pct_color());
-            let gr = Rect::from_min_max(pos2(x, head.bottom()), pos2(x + w, body.bottom()));
-            if let Some(ring) = o.ring {
-                graph::line(&cx.pen, gr, ring.iter(), 100.0, o.color);
-            }
+        // A click on the graph selects its gauge, as its row on the left.
+        if cx.ui.interact(pr, Id::new(("ovw-gauge", i)), Sense::click()).clicked() {
+            cx.out.click = Some((Pane::Left, i, false));
         }
     }
 }

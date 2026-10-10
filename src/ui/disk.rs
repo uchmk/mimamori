@@ -1,15 +1,18 @@
-//! Disks (8): the drives with a minute of traffic on the left, the mounted
-//! volumes with their space in the middle, the selected drive's graphs and
-//! what it is with the selected volume on the right. Enter on a drive jumps
-//! to its first volume, and on a volume back to its drive.
+//! Disks (8): the drives on the left, the selected drive's read, write and
+//! busy graphs over the mounted volumes in the middle, what the drive is over
+//! the selected volume on the right. Enter on a drive jumps to its first
+//! volume, and on a volume back to its drive.
 
 use egui::{Color32, Rect, pos2, vec2};
+use ito_layout::{Dir, Node};
 
-use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
+use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at, shown};
 use crate::collect::disk::{Drive, Health, Smart, Temp, Volume};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
+use crate::model::Ring;
 use crate::screen::Pane;
+use crate::stacks;
 use crate::util::fmt_bytes;
 
 /// Below this the graphs do not scale up, so an idle drive stays flat.
@@ -53,14 +56,8 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         let cy = row.center().y;
         let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &rate(x.read_rate + x.write_rate), theme::cyan());
         let room = rr.left() - row.left() - 6.0 - cx.pen.cw * 2.0;
-        let name = cx.pen.fit(&x.name, (room * 0.5).max(cx.pen.cw * 6.0));
-        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, if x.health == Some(Health::Failing) { theme::red() } else { theme::fg() });
-        let sr = Rect::from_min_max(pos2(t.right() + cx.pen.cw, row.top() + 4.0), pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0));
-        if let Some((rd, wr, _)) = m.drive_hist.get(&x.id) {
-            let max = rd.max().max(wr.max()).max(FLOOR);
-            graph::spark(&cx.pen, sr, wr.iter(), max, theme::magenta());
-            graph::spark(&cx.pen, sr, rd.iter(), max, theme::cyan());
-        }
+        let name = cx.pen.fit(&x.name, room);
+        cx.pen.text(pos2(row.left() + 6.0, cy), &name, if x.health == Some(Health::Failing) { theme::red() } else { theme::fg() });
     });
     // The whole machine, and why the drive list may be short.
     let mut y = list.bottom() + if drives.is_empty() { 0.0 } else { GAP };
@@ -164,7 +161,64 @@ fn cell(v: &Volume, col: Col) -> (String, Color32) {
     }
 }
 
+/// One traffic graph: its label, the value now, its history and its scale
+/// (`None` scales to the history over the floor).
+type Graph<'a> = (&'static str, Option<String>, Option<&'a Ring>, Option<f32>, Color32);
+
 fn draw_mid(cx: &mut Cx, r: Rect) {
+    let app = cx.app;
+    let m = &app.model;
+    // The traffic side by side over the volumes: read, write and busy for
+    // the selected drive, or read and write for the selected volume when
+    // there are no drives (macOS, or the counters are off).
+    let n: u8 = if m.disks.drives.is_empty() { 2 } else { 3 };
+    let rects = cx.stack(Pane::Mid, r, stacks::split(Dir::Down, 0.4, stacks::chain(Dir::Right, 0, n), Node::Leaf(n)));
+    // Each way on its own scale, so quiet writes are not flattened by reads.
+    let mut list: Vec<Graph> = vec![
+        (tr("disk.read"), None, None, None, theme::cyan()),
+        (tr("disk.write"), None, None, None, theme::magenta()),
+        (tr("disk.busy"), None, None, Some(100.0), theme::yellow()),
+    ];
+    let mut name = None;
+    if let Some(d) = app.selected_drive() {
+        name = Some(d.name.as_str());
+        let hist = m.drive_hist.get(&d.id);
+        list[0].1 = Some(rate(d.read_rate));
+        list[0].2 = hist.map(|h| &h.0);
+        list[1].1 = Some(rate(d.write_rate));
+        list[1].2 = hist.map(|h| &h.1);
+        if let Some(b) = d.busy {
+            list[2].1 = Some(format!("{b:.0}%"));
+            list[2].2 = hist.map(|h| &h.2);
+        }
+    } else if let Some(v) = app.selected_volume() {
+        name = Some(v.mount.as_str());
+        let hist = m.vol_hist.get(&v.mount);
+        list[0].1 = Some(rate(v.read_rate));
+        list[0].2 = hist.map(|h| &h.0);
+        list[1].1 = Some(rate(v.write_rate));
+        list[1].2 = hist.map(|h| &h.1);
+    }
+    for (k, (label, now, ring, max, color)) in list.into_iter().take(n as usize).enumerate() {
+        if !shown(rects[k]) {
+            continue;
+        }
+        let title = name.map_or_else(|| label.to_string(), |n| format!("{label} · {n}"));
+        let body = panel(&cx.pen, rects[k], &title, now.as_deref().unwrap_or(""), false);
+        match ring {
+            Some(ring) => graph::line(&cx.pen, body, ring.iter(), max.unwrap_or_else(|| ring.max().max(FLOOR)), color),
+            None => {
+                cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), "—", theme::dim());
+            }
+        }
+    }
+    if shown(rects[n as usize]) {
+        vols(cx, rects[n as usize]);
+    }
+}
+
+/// The mounted volumes with their space and traffic.
+fn vols(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
     let vols = &m.disks.volumes;
@@ -321,86 +375,62 @@ fn volume_rows(v: &Volume) -> Vec<(&'static str, String)> {
     ]
 }
 
-/// A labelled graph per ring, while there is room; returns the next free y.
-fn graphs(cx: &Cx, body: Rect, mut y: f32, list: &[(&str, String, &crate::model::Ring, f32, Color32)]) -> f32 {
-    let h = (body.height() * 0.16).clamp(28.0, 90.0);
-    for (label, now, ring, max, color) in list {
-        if y + ROW + h > body.bottom() {
-            break;
-        }
-        cx.pen.pair(row_at(body, y), label, theme::dim(), now, *color);
-        y += ROW;
-        graph::line(&cx.pen, Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), h)), ring.iter(), *max, *color);
-        y += h + GAP;
-    }
-    y
-}
-
 fn draw_right(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
     let vol = app.selected_volume();
-    let mut y;
-    let body;
-    if let Some(d) = app.selected_drive() {
-        body = panel(&cx.pen, r, &d.name, tr(d.kind.key()), cx.focused(Pane::Right));
-        y = body.top();
-        // Each way on its own scale, so quiet writes are not flattened by reads.
-        if let Some((rd, wr, busy)) = m.drive_hist.get(&d.id) {
-            let mut list = vec![
-                (tr("disk.read"), rate(d.read_rate), rd, rd.max().max(FLOOR), theme::cyan()),
-                (tr("disk.write"), rate(d.write_rate), wr, wr.max().max(FLOOR), theme::magenta()),
-            ];
-            if let Some(b) = d.busy {
-                list.push((tr("disk.busy"), format!("{b:.0}%"), busy, 100.0, theme::yellow()));
+    let Some(d) = app.selected_drive() else {
+        // No drives (macOS, or the counters are off): the volume alone.
+        match vol {
+            Some(v) => volume(cx, r, v, cx.focused(Pane::Right)),
+            None => {
+                let body = panel(&cx.pen, r, tr("disk.detail"), "", cx.focused(Pane::Right));
+                if m.disk_read {
+                    cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("disk.none"), theme::dim());
+                }
             }
-            y = graphs(cx, body, y, &list);
         }
-        if y + ROW <= body.bottom() {
-            let (text, color) = health(d);
-            cx.pen.pair(row_at(body, y), tr("disk.health_key"), theme::dim(), &text, color);
-            y += ROW;
+        return;
+    };
+    // The drive over the selected volume, each with the room its rows want.
+    let smart = smart_rows(&d.smart);
+    let rows = drive_rows(d);
+    let n = 1 + usize::from(d.temp.is_some()) + smart.len() + rows.len();
+    let rects = match vol {
+        Some(_) => {
+            let want = 26.0 + 6.0 + ROW * n as f32;
+            let ratio = want.min(r.height() * 0.65) / r.height().max(1.0);
+            cx.stack(Pane::Right, r, stacks::split(Dir::Down, ratio, Node::Leaf(0), Node::Leaf(1)))
         }
-        if let Some(t) = &d.temp
-            && y + ROW <= body.bottom()
-        {
-            let (text, color) = temp_row(t);
-            cx.pen.pair(row_at(body, y), tr("disk.temp"), theme::dim(), &text, color);
-            y += ROW;
-        }
-        for (label, text, color) in smart_rows(&d.smart) {
+        None => vec![r, Rect::NOTHING],
+    };
+    if shown(rects[0]) {
+        let body = panel(&cx.pen, rects[0], &d.name, tr(d.kind.key()), cx.focused(Pane::Right));
+        let mut y = body.top();
+        let (text, color) = health(d);
+        cx.pen.pair(row_at(body, y), tr("disk.health_key"), theme::dim(), &text, color);
+        y += ROW;
+        let temp = d.temp.as_ref().map(temp_row).map(|(t, c)| (tr("disk.temp"), t, c));
+        for (label, text, color) in temp.into_iter().chain(smart) {
             if y + ROW > body.bottom() {
                 break;
             }
             cx.pen.pair(row_at(body, y), label, theme::dim(), &text, color);
             y += ROW;
         }
-        y = kv_rows(&cx.pen, body, y, &drive_rows(d)) + GAP;
-    } else if let Some(v) = vol {
-        // No drives (macOS, or the counters are off): the volume's own traffic.
-        body = panel(&cx.pen, r, &v.mount, tr(v.kind.key()), cx.focused(Pane::Right));
-        y = body.top();
-        if let Some((rd, wr)) = m.vol_hist.get(&v.mount) {
-            let list = [
-                (tr("disk.read"), rate(v.read_rate), rd, rd.max().max(FLOOR), theme::cyan()),
-                (tr("disk.write"), rate(v.write_rate), wr, wr.max().max(FLOOR), theme::magenta()),
-            ];
-            y = graphs(cx, body, y, &list);
-        }
-    } else {
-        let body = panel(&cx.pen, r, tr("disk.detail"), "", cx.focused(Pane::Right));
-        if m.disk_read {
-            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("disk.none"), theme::dim());
-        }
-        return;
+        kv_rows(&cx.pen, body, y, &rows);
     }
+    if let Some(v) = vol
+        && shown(rects[1])
+    {
+        volume(cx, rects[1], v, false);
+    }
+}
 
-    let Some(v) = vol else { return };
-    if y + ROW * 2.0 > body.bottom() {
-        return;
-    }
-    cx.pen.section(row_at(body, y), tr("disk.volume"));
-    y += ROW;
+/// The selected volume: how full it is and what it is.
+fn volume(cx: &Cx, r: Rect, v: &Volume, focused: bool) {
+    let body = panel(&cx.pen, r, &v.mount, tr(v.kind.key()), focused);
+    let mut y = body.top();
     if let Some(p) = v.use_pct() {
         let row = row_at(body, y);
         graph::bar(

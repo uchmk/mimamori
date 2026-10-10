@@ -14,12 +14,13 @@ use crate::config::keys::{Code, Key};
 use crate::i18n::{tr, trf};
 use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
-use crate::persist::Saver;
+use crate::persist::{Saver, Stacks};
 use crate::prefs::{Prefs, Reload};
 use crate::remote::client::{Event, ToHost};
 use crate::remote::proto::{self, Done, Refusal, Want};
 use crate::remote::{self, Link, Peer};
 use crate::screen::{Pane, Screen};
+use crate::stacks;
 use crate::svcctl::{self, Action};
 
 /// The sampling intervals `+` and `-` step through, in seconds.
@@ -235,6 +236,11 @@ pub struct Out {
     pub tab: Option<Screen>,
     /// A divider dragged, released or double-clicked.
     pub moved: Option<ito_layout::ui::Moved<Pane>>,
+    /// The panels stacked in a column this frame: the column, their layout
+    /// and the room it was laid over, for their dividers.
+    pub stacks: Vec<(Pane, Node<u8>, egui::Rect)>,
+    /// A divider between stacked panels dragged, released or double-clicked.
+    pub stack_moved: Option<(Pane, ito_layout::ui::Moved<u8>)>,
     /// How far the help can scroll, so a key past the end stays there.
     pub help_max: Option<usize>,
     /// The fleet tab clicked.
@@ -256,6 +262,10 @@ pub struct App {
     pub layouts: HashMap<Screen, Node<Pane>>,
     /// The layout while a divider is being dragged; kept on release.
     pub drag: Option<Node<Pane>>,
+    /// The panels of a column where the mouse moved their dividers.
+    pub stacks: Stacks,
+    /// The panels of a column while a divider between them is dragged.
+    pub stack_drag: Option<(Screen, Pane, Node<u8>)>,
     views: HashMap<Screen, View>,
     pub visible: [usize; 3],
     pub mode: Mode,
@@ -344,6 +354,8 @@ impl App {
             screen: Screen::Ovw,
             layouts,
             drag: None,
+            stacks: Stacks::new(),
+            stack_drag: None,
             views: new_views(),
             visible: [1; 3],
             mode: Mode::Normal,
@@ -448,6 +460,26 @@ impl App {
 
     pub fn layout(&self) -> &Node<Pane> {
         self.drag.as_ref().unwrap_or(&self.layouts[&self.screen])
+    }
+
+    /// The panels to stack in column `pane` of this screen: as they are
+    /// being dragged, else as the mouse left them, else `default`; a kept
+    /// layout only while the screen stacks the same panels the same way.
+    pub fn stack(&self, pane: Pane, default: Node<u8>) -> Node<u8> {
+        if let Some((s, p, n)) = &self.stack_drag
+            && (*s, *p) == (self.screen, pane)
+            && stacks::same_shape(n, &default)
+        {
+            return n.clone();
+        }
+        match self.stacks.get(&(self.screen, pane)) {
+            Some(n) if stacks::same_shape(n, &default) => n.clone(),
+            _ => default,
+        }
+    }
+
+    fn save_layouts(&self) {
+        self.saver.save(&self.layouts, &self.stacks);
     }
 
     pub fn toast(&mut self, s: impl Into<String>) {
@@ -728,6 +760,7 @@ impl App {
         self.net_key = None;
         self.net_nic = None;
         self.drag = None;
+        self.stack_drag = None;
         self.pending.clear();
         self.rows.clear();
         self.tree_lines.clear();
@@ -1087,6 +1120,9 @@ impl App {
         if let Some(m) = out.moved.take() {
             self.moved(m);
         }
+        if let Some((p, m)) = out.stack_moved.take() {
+            self.stack_moved(p, m);
+        }
         if let Some((pane, i, double)) = out.click {
             let v = self.view_mut();
             v.focus = pane.index();
@@ -1157,6 +1193,7 @@ impl App {
     pub fn goto(&mut self, s: Screen) {
         self.screen = s;
         self.drag = None;
+        self.stack_drag = None;
         self.pending.clear();
         self.fleet = false;
         self.sync_sources();
@@ -1414,7 +1451,7 @@ impl App {
                 let focus = self.focus();
                 let l = self.layouts.get_mut(&self.screen).expect("every screen has a layout");
                 if l.nudge(&focus, t, NUDGE) {
-                    self.saver.save(&self.layouts);
+                    self.save_layouts();
                 } else {
                     self.toast(tr("toast.no_divider"));
                 }
@@ -1423,7 +1460,9 @@ impl App {
                 if let Some(l) = self.layouts.get_mut(&self.screen) {
                     l.equalize();
                 }
-                self.saver.save(&self.layouts);
+                let screen = self.screen;
+                self.stacks.retain(|&(s, _), _| s != screen);
+                self.save_layouts();
             }
             Act::Enter if built => self.enter(),
             Act::Filter => {
@@ -1634,13 +1673,32 @@ impl App {
             Moved::Released => {
                 if let Some(l) = self.drag.take() {
                     self.layouts.insert(self.screen, l);
-                    self.saver.save(&self.layouts);
+                    self.save_layouts();
                 }
             }
             Moved::Halved(l) => {
                 self.drag = None;
                 self.layouts.insert(self.screen, l);
-                self.saver.save(&self.layouts);
+                self.save_layouts();
+            }
+        }
+    }
+
+    /// A divider between the panels of a column dragged or double-clicked.
+    pub fn stack_moved(&mut self, pane: Pane, m: ito_layout::ui::Moved<u8>) {
+        use ito_layout::ui::Moved;
+        match m {
+            Moved::Dragging(n) => self.stack_drag = Some((self.screen, pane, n)),
+            Moved::Released => {
+                if let Some((s, p, n)) = self.stack_drag.take() {
+                    self.stacks.insert((s, p), n);
+                    self.save_layouts();
+                }
+            }
+            Moved::Halved(n) => {
+                self.stack_drag = None;
+                self.stacks.insert((self.screen, pane), n);
+                self.save_layouts();
             }
         }
     }
@@ -1714,6 +1772,11 @@ impl App {
             .map(|(p, r)| format!("{}={:.0}", p.name(), r.w))
             .collect();
         s += &format!("widths: {}\n", widths.join(" "));
+        for p in Pane::ALL {
+            if let Some(n) = self.stacks.get(&(self.screen, p)) {
+                s += &format!("stack {}: {}\n", p.name(), stacks::sizes(n));
+            }
+        }
         match &self.confirm {
             Some(Ask::Kill(t)) => s += &format!("confirm: kill {} {}\n", t.pid, t.name),
             Some(Ask::Svc(t)) => s += &format!("confirm: {:?} {}\n", t.action, t.name),
@@ -1776,6 +1839,34 @@ mod tests {
         for k in s.split_whitespace() {
             a.feed(Key::parse(k).unwrap());
         }
+    }
+
+    #[test]
+    fn a_dragged_stack_is_kept_while_its_shape_is_and_equalize_forgets_it() {
+        use ito_layout::{Dir, ui::Moved};
+        let (mut a, _tx, _ctl) = app();
+        a.run(Act::Screen(Goto::To(Screen::Cpu)));
+        let default = stacks::chain(Dir::Down, 0, 3);
+        let mut moved = default.clone();
+        moved.set_ratio(&[], 0.6);
+        // While dragging, the drag is drawn but not yet kept.
+        a.stack_moved(Pane::Mid, Moved::Dragging(moved.clone()));
+        assert_eq!(a.stack(Pane::Mid, default.clone()), moved);
+        assert!(a.stacks.is_empty());
+        a.stack_moved(Pane::Mid, Moved::Released);
+        assert_eq!(a.stacks.get(&(Screen::Cpu, Pane::Mid)), Some(&moved));
+        assert_eq!(a.stack(Pane::Mid, default.clone()), moved);
+        assert!(a.report().contains("stack mid: 0=1000x600"));
+        // Another shape (a machine with no swap, say) falls back to the default.
+        let other = stacks::chain(Dir::Down, 0, 2);
+        assert_eq!(a.stack(Pane::Mid, other.clone()), other);
+        // Not another screen's, and gone after equalize.
+        a.run(Act::Screen(Goto::To(Screen::Mem)));
+        assert_eq!(a.stack(Pane::Mid, default.clone()), default);
+        a.run(Act::Screen(Goto::To(Screen::Cpu)));
+        a.run(Act::Equalize);
+        assert_eq!(a.stack(Pane::Mid, default.clone()), default);
+        assert!(a.stacks.is_empty());
     }
 
     #[test]

@@ -89,7 +89,8 @@
 | `src/prefs.rs` | 設定の画面が読み書きするもの（common.toml・config.toml・自分のテーマ）。`ito-common` の見張りで 2 秒ごとに読み直して `Reload` で返し、書き込みと「Open」はスレッドで |
 | `src/i18n.rs`, `src/lang/` | `tr()` と言語の表（`en.toml`・`ja.toml`）、ヘルプの説明の `tr_desc()`。表・言語の決め方・`common.toml` の読み方・テストの検査は `ito-i18n`（ito のクレート、`rev` は `ito-layout` と揃える） |
 | `src/fonts.rs` | CJK のフォント（OS のフォントをスレッドで読み、egui のフォントの後ろに足す） |
-| `src/persist.rs` | `state.toml`（列の幅）の読み書き |
+| `src/persist.rs` | `state.toml`（列の幅と、列の中のパネルの高さ）の読み書き |
+| `src/stacks.rs` | 列の中にパネルを並べる `ito-layout` の木（`chain`・`grid`・`split`）と、保存した木が今の並びと同じ形かの確かめ。パネルの数で等分し、境目はドラッグとダブルクリックで動く。`App::stack` が画面と列ごとに覚え、`equalize` で忘れる |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
 | `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認）・`fleet.rs`（fleet のカード。この機械と `[[host]]`、つなぎ方の手引き）・`settings.rs`（設定の画面の 4 ページ。枠と部品は `ito-prefs`） |
 | `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る）、`smoke-linux.sh`（CI のスモーク）、`release-sums.sh`（リリースの SHA-256 の表） |
