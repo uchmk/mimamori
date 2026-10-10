@@ -4,6 +4,20 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.14.0] - 2026-10-10
+
+### 追加
+
+- disk の画面（macOS）: NVMe のドライブ（Mac の内蔵の SSD と、SMART を通す外付けのケース）の温度と SMART の中身を出す。
+  - IOKit の `IONVMeSMARTInterface`（`NVMe SMART Capable` の付いた装置の user client）で SMART / health ログを読む。sudo は要らない。
+  - 右の列に「Temperature」「Life used」「Powered on」「Lifetime writes」「Media errors」が出る。温度は sensors の画面にも出る。
+  - ログの critical warning も故障の印にする。`diskutil` が SMART を言わないドライブでも、ログが読めれば健康状態が出る。
+  - SATA のドライブの中身はまだ読まない。
+
+### 変更
+
+- NVMe のログを健康状態に足す処理を `Check::add_nvme` にまとめ、Windows と macOS で同じものを使う（動きは変わらない）。
+
 ## [0.13.0] - 2026-10-10
 
 ### 追加

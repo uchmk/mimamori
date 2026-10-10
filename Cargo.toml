@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -35,7 +35,7 @@ nvml-wrapper = { version = "0.13", default-features = false }
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = { version = "1.8", default-features = false }
 sysinfo = { version = "0.39", default-features = false, features = ["component"] }
-objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFDictionary", "CFNumber", "CFString"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFDictionary", "CFNumber", "CFPlugInCOM", "CFString", "CFUUID"] }
 objc2-io-kit = { version = "0.3", default-features = false, features = ["std", "libc"] }
 libc = "0.2"
 

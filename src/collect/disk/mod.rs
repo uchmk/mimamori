@@ -191,7 +191,7 @@ pub struct Smart {
 /// temperature in kelvin at 1, percentage used at 5, and 16-byte counters
 /// from 32: data units written (thousands of 512-byte blocks) at 48, power-on
 /// hours at 128 and media errors at 160.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 pub fn nvme_log(buf: &[u8]) -> Option<(Health, Option<f32>, Smart)> {
     if buf.len() < 192 {
         return None;

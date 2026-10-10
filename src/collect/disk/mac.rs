@@ -115,16 +115,20 @@ pub fn smart_status(plist_bytes: &[u8]) -> Check {
     }
 }
 
-/// Ask `diskutil` about each drive.
+/// Ask `diskutil` about each drive, and read an NVMe drive's health log for
+/// its counts and temperature.
 #[cfg(target_os = "macos")]
 pub fn check(asks: &[Ask]) -> HashMap<String, Check> {
     asks.iter()
         .map(|a| {
             let out = std::process::Command::new("diskutil").args(["info", "-plist", &a.id]).stderr(std::process::Stdio::null()).output();
-            let c = match out {
+            let mut c = match out {
                 Ok(o) if o.status.success() => smart_status(&o.stdout),
                 _ => Check::why(Why::Unsupported),
             };
+            if let Some(log) = super::iokit::nvme_smart(&a.id).as_ref().and_then(|b| super::nvme_log(b)) {
+                c.add_nvme(log);
+            }
             (a.id.clone(), c)
         })
         .collect()

@@ -233,17 +233,9 @@ fn check_one(id: &str, bus: Option<&str>) -> Check {
     };
     c.temp = temp(&disk);
     if bus == Some("NVMe")
-        && let Some((health, value, smart)) = nvme_health(&disk)
+        && let Some(log) = nvme_health(&disk)
     {
-        c.smart = smart;
-        // The log's critical warning (spare, temperature, reliability, read
-        // only) is a failing drive even where the predict call said nothing.
-        if health == Health::Failing || c.health.is_none() {
-            (c.health, c.why) = (Some(health), None);
-        }
-        if c.temp.is_none() {
-            c.temp = value.map(|value| Temp { value, high: None, crit: None, source: "NVMe health log".into(), chip: None });
-        }
+        c.add_nvme(log);
     }
     c
 }

@@ -4,14 +4,15 @@
 //! APFS volume goes through its container to the partition it lives on).
 
 use std::collections::{HashMap, HashSet};
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, c_void};
 use std::time::Instant;
 
-use objc2_core_foundation::{CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType};
+use objc2_core_foundation::{CFBoolean, CFDictionary, CFNumber, CFRetained, CFString, CFType, CFUUID, CFUUIDBytes};
 use objc2_io_kit::{
-    IOBSDNameMatching, IOIteratorNext, IOObjectConformsTo, IOObjectRelease, IORegistryEntryCreateCFProperty, IORegistryEntryGetParentEntry,
-    IORegistryEntrySearchCFProperty, IOServiceGetMatchingService, IOServiceGetMatchingServices, IOServiceMatching, io_iterator_t,
-    io_object_t, kIORegistryIterateRecursively, kIOServicePlane,
+    IOBSDNameMatching, IOCFPlugInInterface, IOCreatePlugInInterfaceForService, IODestroyPlugInInterface, IOIteratorNext,
+    IOObjectConformsTo, IOObjectRelease, IORegistryEntryCreateCFProperty, IORegistryEntryGetParentEntry, IORegistryEntrySearchCFProperty,
+    IOServiceGetMatchingService, IOServiceGetMatchingServices, IOServiceMatching, io_iterator_t, io_object_t,
+    kIORegistryIterateRecursively, kIOServicePlane,
 };
 
 use super::mac::{self, Raw};
@@ -125,15 +126,7 @@ fn raw(driver: &Obj) -> Raw {
 
 /// The drive (its whole disk's BSD name) that a device is on.
 fn owner(bsd: &str) -> Option<String> {
-    let name = CString::new(bsd).ok()?;
-    // SAFETY: a C string.
-    let matching = unsafe { IOBSDNameMatching(MAIN_PORT, 0, name.as_ptr()) }?;
-    // SAFETY: the dictionary is consumed; the service is released by `Obj`.
-    let media = unsafe { IOServiceGetMatchingService(MAIN_PORT, Some(CFRetained::<CFDictionary>::from(&matching))) };
-    if media == 0 {
-        return None;
-    }
-    let mut at = Obj(media);
+    let mut at = media(bsd)?;
     // A handful of steps in practice; the bound is against a loop.
     for _ in 0..32 {
         at = parent(at.0)?;
@@ -142,6 +135,92 @@ fn owner(bsd: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// The whole disk's `IOMedia` for a BSD name such as `disk0`.
+fn media(bsd: &str) -> Option<Obj> {
+    let name = CString::new(bsd).ok()?;
+    // SAFETY: a C string.
+    let matching = unsafe { IOBSDNameMatching(MAIN_PORT, 0, name.as_ptr()) }?;
+    // SAFETY: the dictionary is consumed; the service is released by `Obj`.
+    let media = unsafe { IOServiceGetMatchingService(MAIN_PORT, Some(CFRetained::<CFDictionary>::from(&matching))) };
+    (media != 0).then_some(Obj(media))
+}
+
+fn uuid(b: [u8; 16]) -> Option<CFRetained<CFUUID>> {
+    let [b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15] = b;
+    CFUUID::constant_uuid_with_bytes(None, b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15)
+}
+
+/// `kIONVMeSMARTUserClientTypeID`: the user client of an NVMe drive that
+/// says `NVMe SMART Capable` (the IDs are not in a public header; these are
+/// the ones smartmontools uses).
+const NVME_SMART_CLIENT: [u8; 16] = [0xAA, 0x0F, 0xA6, 0xF9, 0xC2, 0xD6, 0x45, 0x7F, 0xB1, 0x0B, 0x59, 0xA1, 0x32, 0x53, 0x29, 0x2F];
+/// `kIONVMeSMARTInterfaceID`.
+const NVME_SMART_INTERFACE: [u8; 16] = [0xCC, 0xD1, 0xDB, 0x19, 0xFD, 0x9A, 0x4D, 0xAF, 0xBF, 0x95, 0x12, 0x45, 0x4B, 0x23, 0x0A, 0xB6];
+/// `kIOCFPlugInInterfaceID`.
+const PLUGIN_INTERFACE: [u8; 16] = [0xC2, 0x44, 0xE8, 0x58, 0x10, 0x9C, 0x11, 0xD4, 0x91, 0xD4, 0x00, 0x50, 0xE4, 0xC6, 0x42, 0x6F];
+
+/// The head of `IONVMeSMARTInterface`: COM's `IUnknown`, a version, then
+/// the calls, of which only the first is used (the rest are never read).
+#[repr(C)]
+struct NvmeSmart {
+    _reserved: *mut c_void,
+    _query_interface: Option<unsafe extern "C-unwind" fn(*mut c_void, CFUUIDBytes, *mut *mut c_void) -> i32>,
+    _add_ref: Option<unsafe extern "C-unwind" fn(*mut c_void) -> u32>,
+    release: Option<unsafe extern "C-unwind" fn(*mut c_void) -> u32>,
+    _version: u16,
+    _revision: u16,
+    /// Fills the 512-byte SMART / health information log.
+    smart_read_data: Option<unsafe extern "C-unwind" fn(*mut c_void, *mut u8) -> i32>,
+}
+
+/// An NVMe drive's SMART / health log (512 bytes), from the user client of
+/// the entry above the drive that says `NVMe SMART Capable` (the internal
+/// SSD of a Mac, and NVMe drives in enclosures that pass it through). `None`
+/// for any other drive.
+pub fn nvme_smart(bsd: &str) -> Option<[u8; 512]> {
+    let mut at = media(bsd)?;
+    let mut found = false;
+    for _ in 0..8 {
+        at = parent(at.0)?;
+        if flag(prop(at.0, "NVMe SMART Capable")) {
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return None;
+    }
+    let (client, plugin_id, iface_id) = (uuid(NVME_SMART_CLIENT)?, uuid(PLUGIN_INTERFACE)?, uuid(NVME_SMART_INTERFACE)?);
+    let mut plugin: *mut *mut IOCFPlugInInterface = std::ptr::null_mut();
+    let mut score = 0;
+    // SAFETY: a live service and constant UUIDs; the plug-in is written on
+    // success and destroyed below.
+    let ok = unsafe { IOCreatePlugInInterfaceForService(at.0, Some(&client), Some(&plugin_id), &mut plugin, &mut score) } == 0;
+    if !ok || plugin.is_null() {
+        return None;
+    }
+    let mut iface: *mut *mut NvmeSmart = std::ptr::null_mut();
+    // SAFETY: a plug-in IOKit made, whose table starts with `IUnknown`; the
+    // interface is written on success and released below.
+    let asked =
+        unsafe { (**plugin).QueryInterface.map(|q| q(plugin.cast(), iface_id.uuid_bytes(), (&raw mut iface).cast())).unwrap_or(-1) };
+    let mut log = [0u8; 512];
+    let mut read = false;
+    if asked == 0 && !iface.is_null() {
+        // SAFETY: the interface the plug-in gave for this UUID, whose table
+        // has the layout of `NvmeSmart`; the log is the 512 bytes it fills.
+        unsafe {
+            read = (**iface).smart_read_data.map(|f| f(iface.cast(), log.as_mut_ptr())) == Some(0);
+            if let Some(release) = (**iface).release {
+                release(iface.cast());
+            }
+        }
+    }
+    // SAFETY: the plug-in made above, not used again.
+    unsafe { IODestroyPlugInInterface(plugin) };
+    read.then_some(log)
 }
 
 /// The device a mount point was mounted from: `/dev/disk3s1s1`.
