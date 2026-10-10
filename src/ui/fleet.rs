@@ -10,12 +10,14 @@ use egui::{Color32, Id, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use super::{Cx, Pen, graph, now_secs, panel};
 use crate::app::App;
 use crate::collect::gpu;
-use crate::config::theme::{BG, BLUE, CYAN, DIM, FG, GREEN, LINE, MAGENTA, RED, ROW, YELLOW, ramp};
+use crate::config::cmd::Act;
+use crate::config::keys::render_seq;
+use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::model::Ring;
 use crate::remote::client::Why;
-use crate::remote::proto::{PORT, PROTO};
-use crate::remote::{Link, Peer, Status, agent};
+use crate::remote::proto::PROTO;
+use crate::remote::{self, Link, Peer, Status, agent};
 use crate::util::fmt_uptime;
 
 /// The narrowest a card gets before the row takes one fewer.
@@ -36,10 +38,10 @@ pub fn columns(w: f32) -> usize {
 
 pub fn dot(s: Status) -> Color32 {
     match s {
-        Status::Ok => GREEN,
-        Status::Slow => YELLOW,
-        Status::Down => RED,
-        Status::Connecting => DIM,
+        Status::Ok => theme::green(),
+        Status::Slow => theme::yellow(),
+        Status::Down => theme::red(),
+        Status::Connecting => theme::dim(),
     }
 }
 
@@ -117,8 +119,9 @@ pub fn draw(cx: &mut Cx, area: Rect) {
     if app.peers.is_empty() {
         let y = body.top() + (cards.len().div_ceil(cols) - first) as f32 * (h + CARD_GAP);
         if y + ROW * 2.0 < body.bottom() {
-            let r = Rect::from_min_max(pos2(body.left(), y), pos2(body.right(), (y + h).min(body.bottom())));
-            hint(&cx.pen.clipped(r), r);
+            let tall = PAD * 2.0 + ROW * hint_lines(app).len() as f32;
+            let r = Rect::from_min_max(pos2(body.left(), y), pos2(body.right(), (y + tall).min(body.bottom())));
+            hint(cx, r);
         }
     }
     // A host goes slow when its summaries stop, with nothing to wake the
@@ -145,22 +148,22 @@ fn this_machine(app: &App) -> Card<'_> {
     Card {
         name: st.map_or("", |s| s.host.as_str()),
         addr: "",
-        dot: GREEN,
+        dot: theme::green(),
         right: tr("fleet.this").into(),
-        right_c: DIM,
+        right_c: theme::dim(),
         system: st
             .map(|s| {
                 [s.os.as_str(), s.arch.as_str(), s.brand.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ")
             })
             .unwrap_or_default(),
         gauges: [
-            Gauge { label: tr("fleet.cpu"), ring: Some(&m.cpu_hist), value: Some(sum.cpu), color: BLUE },
-            Gauge { label: tr("fleet.mem"), ring: Some(&m.mem_hist), value: Some(sum.mem_pct()), color: GREEN },
-            Gauge { label: tr("fleet.gpu"), ring: gpu_ring, value: sum.gpu.map(|g| g.1), color: MAGENTA },
+            Gauge { label: tr("fleet.cpu"), ring: Some(&m.cpu_hist), value: Some(sum.cpu), color: theme::blue() },
+            Gauge { label: tr("fleet.mem"), ring: Some(&m.mem_hist), value: Some(sum.mem_pct()), color: theme::green() },
+            Gauge { label: tr("fleet.gpu"), ring: gpu_ring, value: sum.gpu.map(|g| g.1), color: theme::magenta() },
         ],
         facts,
         last: format!("mimamori {}", env!("CARGO_PKG_VERSION")),
-        last_c: DIM,
+        last_c: theme::dim(),
         faded: false,
     }
 }
@@ -187,11 +190,11 @@ fn peer(p: &Peer, now: Instant) -> Card<'_> {
         facts.push((tr("fleet.seen"), fmt_uptime(seen.as_secs())));
     }
     let (last, last_c) = match &p.link {
-        Link::Down(why) => (why_text(why), RED),
+        Link::Down(why) => (why_text(why), theme::red()),
         _ => match hello {
-            Some(h) if h.allow.is_empty() => (format!("{}: {}", tr("fleet.actions"), tr("fleet.view_only")), DIM),
-            Some(h) => (format!("{}: {}", tr("fleet.actions"), h.allow.join(", ")), YELLOW),
-            None => (String::new(), DIM),
+            Some(h) if h.allow.is_empty() => (format!("{}: {}", tr("fleet.actions"), tr("fleet.view_only")), theme::dim()),
+            Some(h) => (format!("{}: {}", tr("fleet.actions"), h.allow.join(", ")), theme::yellow()),
+            None => (String::new(), theme::dim()),
         },
     };
     let system = hello
@@ -201,17 +204,17 @@ fn peer(p: &Peer, now: Instant) -> Card<'_> {
         name: &p.name,
         addr: &p.addr,
         dot: dot(status),
-        right_c: if status == Status::Slow { YELLOW } else { DIM },
+        right_c: if status == Status::Slow { theme::yellow() } else { theme::dim() },
         right,
         system,
         gauges: [
-            Gauge { label: tr("fleet.cpu"), ring: Some(&p.cpu), value: sum.map(|s| s.cpu), color: BLUE },
-            Gauge { label: tr("fleet.mem"), ring: Some(&p.mem), value: sum.map(|s| s.mem_pct()), color: GREEN },
+            Gauge { label: tr("fleet.cpu"), ring: Some(&p.cpu), value: sum.map(|s| s.cpu), color: theme::blue() },
+            Gauge { label: tr("fleet.mem"), ring: Some(&p.mem), value: sum.map(|s| s.mem_pct()), color: theme::green() },
             Gauge {
                 label: tr("fleet.gpu"),
                 ring: sum.and_then(|s| s.gpu.as_ref()).map(|_| &p.gpu),
                 value: sum.and_then(|s| s.gpu.as_ref()).map(|g| g.1),
-                color: MAGENTA,
+                color: theme::magenta(),
             },
         ],
         facts,
@@ -223,8 +226,8 @@ fn peer(p: &Peer, now: Instant) -> Card<'_> {
 
 fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
     let fade = |col: Color32| if c.faded { col.gamma_multiply(0.55) } else { col };
-    pen.p.rect_filled(r, 6.0, BG);
-    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, if selected { CYAN } else { LINE }), StrokeKind::Inside);
+    pen.p.rect_filled(r, 6.0, theme::bg());
+    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, if selected { theme::cyan() } else { theme::line() }), StrokeKind::Inside);
     let inner = r.shrink(PAD);
     let line = |k: usize| Rect::from_min_size(pos2(inner.left(), inner.top() + k as f32 * ROW), vec2(inner.width(), ROW));
 
@@ -234,28 +237,28 @@ fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
     pen.p.circle_filled(pos2(head.left() + 4.0, y), 4.0, c.dot);
     let rr = pen.text_r(pos2(head.right(), y), &c.right, fade(c.right_c));
     let room = rr.left() - head.left() - 14.0 - pen.cw;
-    let n = pen.text(pos2(head.left() + 14.0, y), &pen.fit(c.name, room), fade(FG));
+    let n = pen.text(pos2(head.left() + 14.0, y), &pen.fit(c.name, room), fade(theme::fg()));
     // Bold by drawing the name again a pixel over.
-    pen.text(pos2(head.left() + 15.0, y), &pen.fit(c.name, room), fade(FG));
+    pen.text(pos2(head.left() + 15.0, y), &pen.fit(c.name, room), fade(theme::fg()));
     if !c.addr.is_empty() && c.addr != c.name {
         let room = rr.left() - n.right() - pen.cw * 2.0;
-        pen.text(pos2(n.right() + pen.cw, y), &pen.fit(c.addr, room), DIM.gamma_multiply(0.8));
+        pen.text(pos2(n.right() + pen.cw, y), &pen.fit(c.addr, room), theme::dim().gamma_multiply(0.8));
     }
     let sys = line(1);
-    pen.text(pos2(sys.left(), sys.center().y), &pen.fit(&c.system, sys.width()), DIM);
+    pen.text(pos2(sys.left(), sys.center().y), &pen.fit(&c.system, sys.width()), theme::dim());
 
     for (k, g) in c.gauges.iter().enumerate() {
         let row = line(2 + k);
         let y = row.center().y;
-        pen.text(pos2(row.left(), y), g.label, DIM);
+        pen.text(pos2(row.left(), y), g.label, theme::dim());
         let value = g.value.map_or_else(|| "—".to_string(), |v| format!("{v:.0}%"));
-        pen.text_r(pos2(row.right(), y), &value, fade(g.value.map_or(DIM, ramp)));
+        pen.text_r(pos2(row.right(), y), &value, fade(g.value.map_or(theme::dim(), ramp)));
         let spark =
             Rect::from_min_max(pos2(row.left() + pen.cw * 5.0, row.top() + 4.0), pos2(row.right() - pen.cw * 6.0, row.bottom() - 4.0));
         if let Some(ring) = g.ring {
             graph::spark(pen, spark, ring.iter(), 100.0, fade(g.color));
         }
-        pen.p.line_segment([pos2(spark.left(), spark.bottom()), pos2(spark.right(), spark.bottom())], Stroke::new(1.0, LINE));
+        pen.p.line_segment([pos2(spark.left(), spark.bottom()), pos2(spark.right(), spark.bottom())], Stroke::new(1.0, theme::line()));
     }
 
     // Dim names, values in the text colour.
@@ -264,10 +267,10 @@ fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
     let y = facts.center().y;
     for (k, (name, value)) in c.facts.iter().enumerate() {
         if k > 0 {
-            x = pen.text(pos2(x, y), " · ", DIM).right();
+            x = pen.text(pos2(x, y), " · ", theme::dim()).right();
         }
-        x = pen.text(pos2(x, y), &format!("{name} "), DIM).right();
-        x = pen.text(pos2(x, y), value, fade(FG)).right();
+        x = pen.text(pos2(x, y), &format!("{name} "), theme::dim()).right();
+        x = pen.text(pos2(x, y), value, fade(theme::fg())).right();
     }
     // A long reason takes the facts' line when there are none.
     let last = line(6);
@@ -297,24 +300,52 @@ fn split<'s>(pen: &Pen, s: &'s str, w: f32) -> (&'s str, &'s str) {
     if cut == 0 { ("", s) } else { (&s[..cut], s[cut..].trim_start()) }
 }
 
-/// How to add a machine, while there is none.
-fn hint(pen: &Pen, r: Rect) {
-    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, LINE), StrokeKind::Inside);
-    let inner = r.shrink(PAD);
-    let lines: [(String, Color32); 7] = [
-        (tr("fleet.no_hosts").into(), YELLOW),
-        (tr("fleet.hint_agent").into(), DIM),
-        ("  mimamori --agent".into(), CYAN),
-        (tr("fleet.hint_reach").into(), DIM),
-        (format!("  ssh -L {PORT}:localhost:{PORT} <host>   ·   tailscale serve --bg --tcp {PORT} tcp://localhost:{PORT}"), CYAN),
-        (tr("fleet.hint_add").into(), DIM),
-        (format!("  [[host]]  name = \"nas\"  addr = \"localhost:{PORT}\""), CYAN),
+/// The lines of the hint: what is said, its colour, and what a click on it
+/// copies.
+fn hint_lines(app: &App) -> Vec<(String, Color32, Option<String>)> {
+    let key = app.keymap().main.iter().find(|b| b.run == [Act::Settings]).map(|b| render_seq(&b.on)).unwrap_or_default();
+    let cmd = |s: String| (format!("  {s}"), theme::cyan(), Some(s));
+    let mut lines = vec![
+        (tr("fleet.no_hosts").into(), theme::yellow(), None),
+        (trf("fleet.hint_settings", &[&key]), theme::dim(), None),
+        (tr("fleet.hint_agent").into(), theme::dim(), None),
+        cmd(remote::AGENT_LINE.into()),
+        (tr("fleet.hint_reach").into(), theme::dim(), None),
+        cmd(remote::ssh_line()),
+        cmd(remote::tailscale_line()),
+        (tr("fleet.hint_add").into(), theme::dim(), None),
     ];
-    for (k, (s, c)) in lines.iter().enumerate() {
+    let sample = remote::host_sample();
+    lines.extend(sample.lines().map(|l| (format!("  {l}"), theme::cyan(), Some(sample.clone()))));
+    if let Some(path) = app.prefs.config_path() {
+        let path = path.display().to_string();
+        lines.push((format!("  {path}"), theme::dim(), Some(path)));
+    }
+    lines
+}
+
+/// How to add a machine, while there is none; a click on a command copies it.
+fn hint(cx: &mut Cx, r: Rect) {
+    let pen = cx.pen.clipped(r);
+    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, theme::line()), StrokeKind::Inside);
+    let inner = r.shrink(PAD);
+    for (k, (s, c, copy)) in hint_lines(cx.app).into_iter().enumerate() {
         let y = inner.top() + (k as f32 + 0.5) * ROW;
         if y > inner.bottom() {
             break;
         }
-        pen.text(pos2(inner.left(), y), &pen.fit(s, inner.width()), *c);
+        let row = Rect::from_center_size(pos2(inner.center().x, y), vec2(inner.width(), ROW));
+        let mut color = c;
+        if let Some(text) = copy {
+            let resp = cx.ui.interact(row, Id::new(("fleet-hint", k)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+            if resp.hovered() {
+                pen.p.rect_filled(row, 3.0, theme::sel_unfocused());
+                color = theme::strong();
+            }
+            if resp.clicked() {
+                cx.out.copy = Some(text);
+            }
+        }
+        pen.text(pos2(inner.left(), y), &pen.fit(&s, inner.width()), color);
     }
 }

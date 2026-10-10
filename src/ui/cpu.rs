@@ -7,7 +7,7 @@ use egui::{Align2, Rect, pos2, vec2};
 use super::tiles::tiles;
 use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at};
 use crate::collect::topo::CoreKind;
-use crate::config::theme::{BLUE, DIM, FG, ROW, ramp};
+use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
 use crate::util::fmt_uptime;
@@ -55,7 +55,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         }
         let row = row_at(body, y);
         cx.row_bg(Pane::Left, i, row);
-        cx.pen.pair(row, &label, FG, &format!("{pct:.0}%"), ramp(pct));
+        cx.pen.pair(row, &label, theme::fg(), &format!("{pct:.0}%"), ramp(pct));
         y += ROW;
     }
     y += GAP;
@@ -98,11 +98,11 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         for (label, v) in [("<30", 15.0), ("30–70", 50.0), ("70–90", 80.0), ("≥90", 95.0)] {
             let sw = Rect::from_center_size(pos2(x + 5.0, cy), vec2(10.0, 10.0));
             cx.pen.p.rect_filled(sw, 2.0, ramp(v));
-            let t = cx.pen.small(pos2(sw.right() + 5.0, cy), Align2::LEFT_CENTER, label, DIM);
+            let t = cx.pen.small(pos2(sw.right() + 5.0, cy), Align2::LEFT_CENTER, label, theme::dim());
             x = t.right() + 14.0;
         }
         let hint = cx.pen.fit(tr("cpu.hint"), body.right() - x - 4.0);
-        cx.pen.text_r(pos2(body.right() - 4.0, cy), &hint, DIM);
+        cx.pen.text_r(pos2(body.right() - 4.0, cy), &hint, theme::dim());
         y += ROW;
     }
 
@@ -111,16 +111,16 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let heat_want = ROW + (m.threads.len() as f32 * HEAT_ROW).max(heat_min);
     let graph_h = (body.bottom() - y - ROW - GAP - heat_want).max(graph_h);
     if y + ROW + 30.0 <= body.bottom() {
-        cx.pen.pair(row_at(body, y), tr("cpu.total"), DIM, &format!("{:.0}%", m.total), ramp(m.total));
+        cx.pen.pair(row_at(body, y), tr("cpu.total"), theme::dim(), &format!("{:.0}%", m.total), ramp(m.total));
         y += ROW;
         let g = Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), graph_h.min(body.bottom() - y)));
-        graph::line(&cx.pen, g, m.cpu_hist.iter(), 100.0, BLUE);
+        graph::line(&cx.pen, g, m.cpu_hist.iter(), 100.0, theme::blue());
         y = g.bottom() + GAP;
     }
 
     // Every thread over the last minute.
     if y + ROW + 20.0 <= body.bottom() {
-        cx.pen.pair(row_at(body, y), tr("cpu.heatmap"), DIM, &trf("cpu.threads_n", &[&m.threads.len().to_string()]), DIM);
+        cx.pen.pair(row_at(body, y), tr("cpu.heatmap"), theme::dim(), &trf("cpu.threads_n", &[&m.threads.len().to_string()]), theme::dim());
         y += ROW;
         let h = Rect::from_min_max(pos2(body.left(), y), body.max);
         graph::heatmap(&cx.pen, h, &m.threads);
@@ -153,7 +153,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         let row = row_at(body, y);
         let v = m.usage.get(t).copied().unwrap_or(0.0);
         let cy = row.center().y;
-        cx.pen.text(pos2(row.left() + 6.0, cy), &format!("T{t}"), DIM);
+        cx.pen.text(pos2(row.left() + 6.0, cy), &format!("T{t}"), theme::dim());
         cx.pen.text_r(pos2(row.right() - 6.0, cy), &format!("{v:.0}%"), ramp(v));
         let sr = Rect::from_min_max(
             pos2(row.left() + 6.0 + cx.pen.cw * 5.0, row.top() + 3.0),
@@ -175,7 +175,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     let list = Rect::from_min_max(pos2(body.left(), y), body.max);
     cx.scroll_list(Pane::Right, list, app.top_cpu.len(), |cx, row, i| {
         if let Some(p) = app.top_cpu.get(i).and_then(|&k| app.proc_at(k)) {
-            cx.pen.pair(row, &p.name, FG, &format!("{:.1}%", p.cpu), ramp(p.cpu));
+            cx.pen.pair(row, &p.name, theme::fg(), &format!("{:.1}%", p.cpu), ramp(p.cpu));
         }
     });
 }

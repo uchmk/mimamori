@@ -15,6 +15,7 @@ mod keyscript;
 mod kill;
 mod model;
 mod persist;
+mod prefs;
 mod remote;
 mod screen;
 mod svcctl;
@@ -27,7 +28,8 @@ mod winres;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use app::App;
+use app::{App, Mode};
+use config::cmd::Act;
 use config::keys::{Key, from_egui};
 use config::{keymap::Keymap, settings, theme};
 use keyscript::{Do, Runner};
@@ -53,8 +55,10 @@ usage: mimamori [--keys SCRIPT]
   --version      print the version
   --help         print this
 
-Settings: <config dir>/uchmk/mimamori/config.toml ([[host]] lists the fleet) and keymap.toml;
-the language can also be set for every uchmk app in <config dir>/uchmk/common.toml.";
+Settings: Ctrl+, (Cmd+, on macOS) opens the settings screen. The files are
+<config dir>/uchmk/mimamori/config.toml ([[host]] lists the fleet) and keymap.toml;
+the language, the theme and the clock are shared by every uchmk app in
+<config dir>/uchmk/common.toml, and themes of your own go in <config dir>/uchmk/themes/.";
 
 struct Mimamori {
     app: App,
@@ -69,6 +73,39 @@ impl Mimamori {
         if let Err(e) = std::fs::write(&path, text) {
             eprintln!("mimamori --keys: {}: {e}", path.display());
         }
+    }
+
+    /// The settings screen's keys, from its layer of the keymap: those
+    /// taken out of egui's input, the rest left to the controls.
+    fn settings_keys(&mut self, ctx: &egui::Context) -> tsumugi_prefs::Keys {
+        let mut keys = tsumugi_prefs::Keys::default();
+        // A control had the keys: Esc is its (egui lets go of the control).
+        let busy = self.app.prefs.state.held || ctx.memory(|m| m.focused().is_some());
+        let events = ctx.input(|i| i.events.clone());
+        let mut used = Vec::new();
+        for (n, e) in events.iter().enumerate() {
+            let egui::Event::Key { key, pressed: true, modifiers, .. } = e else { continue };
+            let Some(k) = from_egui(*key, modifiers) else { continue };
+            match self.app.settings_act(k) {
+                Some(Act::Escape) if busy => continue,
+                Some(Act::Escape | Act::Settings) => keys.close = true,
+                Some(Act::Page(d)) if d < 0 => keys.back = true,
+                Some(Act::Page(_)) => keys.next = true,
+                Some(Act::Search) => keys.find = true,
+                _ => continue,
+            }
+            used.push(n);
+        }
+        if !used.is_empty() {
+            ctx.input_mut(|i| {
+                let mut n = 0;
+                i.events.retain(|_| {
+                    n += 1;
+                    !used.contains(&(n - 1))
+                });
+            });
+        }
+        keys
     }
 
     fn keys(&mut self, ctx: &egui::Context) {
@@ -124,11 +161,23 @@ impl eframe::App for Mimamori {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        self.keys(&ctx);
+        let keys = if self.app.mode == Mode::Settings { self.settings_keys(&ctx) } else { tsumugi_prefs::Keys::default() };
+        if self.app.mode != Mode::Settings {
+            self.keys(&ctx);
+        }
         self.script(&ctx);
         self.app.pump();
-        let out = ui::frame(ui, &self.app);
-        self.app.apply_out(out, &ctx);
+        // common.toml's theme, or the OS's light or dark under `system`.
+        self.app.prefs.apply_theme(&ctx);
+        if self.app.mode == Mode::Settings {
+            ui::settings::show(ui, &mut self.app, keys);
+        } else {
+            let out = ui::frame(ui, &self.app);
+            self.app.apply_out(out, &ctx);
+        }
+        if let Some(text) = self.app.copy.take() {
+            ctx.copy_text(text);
+        }
         if self.app.quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -140,7 +189,7 @@ impl eframe::App for Mimamori {
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        theme::BG.to_normalized_gamma_f32()
+        theme::bg().to_normalized_gamma_f32()
     }
 }
 
@@ -239,6 +288,9 @@ fn main() -> eframe::Result {
             let (rx, ctl) = collect::spawn(Some(cc.egui_ctx.clone()), Duration::from_secs_f32(interval));
             let mut app = App::new(km, rx, ctl, layouts, saver, interval);
             app.wake = Some(cc.egui_ctx.clone());
+            app.prefs = prefs::Prefs::load(settings::base_dir(), s);
+            app.prefs.watch(&cc.egui_ctx);
+            app.prefs.apply_theme(&cc.egui_ctx);
             if !hosts.is_empty() {
                 let peers = hosts.iter().map(remote::Peer::new).collect();
                 app.set_fleet(peers, remote::client::spawn(&hosts, Some(cc.egui_ctx.clone())));

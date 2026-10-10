@@ -15,6 +15,7 @@ mod net;
 mod overview;
 mod procs;
 mod sensors;
+pub mod settings;
 mod svc;
 pub mod sys;
 mod tiles;
@@ -27,7 +28,7 @@ use tsumugi_layout::ui::{Look, dividers, from_egui, to_egui};
 use crate::app::{App, Mode, Out, TOAST, fmt_interval};
 use crate::config::cmd::Act;
 use crate::config::keys::render_seq;
-use crate::config::theme::{BAR, BG, BG_ALT, BLUE, CYAN, DIM, FG, LINE, MAGENTA, RED, ROW, SEL, SEL_UNFOCUSED, YELLOW};
+use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::remote::Status;
 use crate::screen::{Pane, Screen};
@@ -112,8 +113,8 @@ impl Pen {
     /// the value cut to fit.
     pub fn kv(&self, r: Rect, kw: f32, key: &str, val: &str) {
         let y = r.center().y;
-        self.text(pos2(r.left() + 4.0, y), &self.fit(key, kw - 6.0), DIM);
-        self.text(pos2(r.left() + kw, y), &self.fit(val, r.width() - kw - 4.0), FG);
+        self.text(pos2(r.left() + 4.0, y), &self.fit(key, kw - 6.0), theme::dim());
+        self.text(pos2(r.left() + kw, y), &self.fit(val, r.width() - kw - 4.0), theme::fg());
     }
 
     /// A label on the left and a value on the right of a row; the label is
@@ -126,7 +127,7 @@ impl Pen {
 
     /// A small header over a block of a panel.
     pub fn section(&self, r: Rect, s: &str) {
-        self.text(pos2(r.left() + 4.0, r.center().y), &self.fit(s, r.width()), CYAN.gamma_multiply(0.8));
+        self.text(pos2(r.left() + 4.0, r.center().y), &self.fit(s, r.width()), theme::cyan().gamma_multiply(0.8));
     }
 }
 
@@ -152,7 +153,7 @@ impl Cx<'_> {
     /// its click.
     pub fn row_bg(&mut self, p: Pane, i: usize, r: Rect) {
         if i == self.sel(p) {
-            self.pen.p.rect_filled(r, 3.0, if self.focused(p) { SEL } else { SEL_UNFOCUSED });
+            self.pen.p.rect_filled(r, 3.0, if self.focused(p) { theme::sel() } else { theme::sel_unfocused() });
         }
         let resp = self.ui.interact(r, Id::new(("row", self.app.screen, p.index(), i)), Sense::click());
         if resp.clicked() {
@@ -206,13 +207,18 @@ pub fn kv_rows(pen: &Pen, body: Rect, mut y: f32, rows: &[(&str, String)]) -> f3
 
 /// A panel's frame and title; returns the room inside it.
 pub fn panel(pen: &Pen, r: Rect, title: &str, info: &str, focused: bool) -> Rect {
-    pen.p.rect_filled(r, 6.0, BG_ALT);
-    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, if focused { CYAN.gamma_multiply(0.45) } else { LINE }), StrokeKind::Inside);
+    pen.p.rect_filled(r, 6.0, theme::bg_alt());
+    pen.p.rect_stroke(
+        r,
+        6.0,
+        Stroke::new(1.0, if focused { theme::cyan().gamma_multiply(0.45) } else { theme::line() }),
+        StrokeKind::Inside,
+    );
     let y = r.top() + 13.0;
-    let t = pen.text(pos2(r.left() + 10.0, y), &pen.fit(title, r.width() - 20.0), if focused { CYAN } else { DIM });
+    let t = pen.text(pos2(r.left() + 10.0, y), &pen.fit(title, r.width() - 20.0), if focused { theme::cyan() } else { theme::dim() });
     if !info.is_empty() {
         let room = r.right() - 10.0 - (t.right() + 12.0);
-        pen.text_r(pos2(r.right() - 10.0, y), &pen.fit(info, room), DIM);
+        pen.text_r(pos2(r.right() - 10.0, y), &pen.fit(info, room), theme::dim());
     }
     Rect::from_min_max(pos2(r.left() + 6.0, r.top() + 26.0), pos2(r.right() - 6.0, r.bottom() - 6.0))
 }
@@ -234,7 +240,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
     let full = ui.max_rect();
     let cw = ui.ctx().fonts_mut(|f| f.glyph_width(&font(), 'M'));
     let pen = Pen { p: ui.painter_at(full), cw };
-    pen.p.rect_filled(full, 0.0, BG);
+    pen.p.rect_filled(full, 0.0, theme::bg());
 
     let header = Rect::from_min_size(full.min, vec2(full.width(), HEADER));
     draw_header(ui, &pen, app, header, &mut out);
@@ -247,11 +253,11 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
         _ if area.width() < 40.0 || area.height() < 40.0 => {}
         None => {
             let body = panel(&pen, area, tr(app.screen.label_key()), "", false);
-            pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+            pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         }
         Some(_) if !app.screen.built() => {
             let body = panel(&pen, area, tr(app.screen.label_key()), "", false);
-            pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.not_yet"), DIM);
+            pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.not_yet"), theme::dim());
         }
         Some(_) if app.fleet => fleet::draw(&mut Cx { ui, pen: pen.clone(), out: &mut out, app }, area),
         Some(_) => {
@@ -279,7 +285,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
             }
             // After the rows, so a divider takes the pointer where both are.
             if !matches!(app.mode, Mode::Help | Mode::Confirm) {
-                let look = Look { gap: GAP, grab: 10.0, line: CYAN };
+                let look = Look { gap: GAP, grab: 10.0, line: theme::cyan() };
                 out.moved = dividers(ui, Id::new(("div", app.screen)), app.layout(), from_egui(area), look);
             }
         }
@@ -304,7 +310,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
 }
 
 fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
-    pen.p.rect_filled(r, 0.0, BAR);
+    pen.p.rect_filled(r, 0.0, theme::bar());
     let y = r.center().y;
     let mut x = r.left() + 8.0;
     for s in Screen::ALL {
@@ -316,9 +322,9 @@ fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
         }
         let digit = s.digit().to_string();
         if s == app.screen && !app.fleet {
-            pill(pen, tab, &format!("{digit} {label}"), BLUE, BG);
+            pill(pen, tab, &format!("{digit} {label}"), theme::blue(), theme::bg());
         } else {
-            let (dc, lc) = if s.built() { (CYAN, FG) } else { (DIM, DIM) };
+            let (dc, lc) = if s.built() { (theme::cyan(), theme::fg()) } else { (theme::dim(), theme::dim()) };
             let d = pen.text(pos2(tab.left() + 7.0, y), &digit, dc);
             pen.text(pos2(d.right() + pen.cw, y), label, lc);
         }
@@ -334,10 +340,10 @@ fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
     let tab = Rect::from_center_size(pos2(x + 6.0 + w / 2.0, y), vec2(w, 20.0));
     if tab.right() <= r.right() - 8.0 {
         if app.fleet {
-            pill(pen, tab, &format!("{key} {label}"), MAGENTA, BG);
+            pill(pen, tab, &format!("{key} {label}"), theme::magenta(), theme::bg());
         } else {
-            let d = pen.text(pos2(tab.left() + 7.0, y), &key, MAGENTA);
-            pen.text(pos2(d.right() + pen.cw, y), label, FG);
+            let d = pen.text(pos2(tab.left() + 7.0, y), &key, theme::magenta());
+            pen.text(pos2(d.right() + pen.cw, y), label, theme::fg());
         }
         if ui.interact(tab, Id::new("tab-fleet"), Sense::click()).clicked() {
             out.fleet_tab = true;
@@ -349,7 +355,7 @@ fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
         let info = format!("{} · {} · {up}", st.host, st.os);
         let room = r.right() - 10.0 - x - 16.0;
         if room > pen.cw * 8.0 {
-            pen.text_r(pos2(r.right() - 10.0, y), &pen.fit(&info, room), DIM);
+            pen.text_r(pos2(r.right() - 10.0, y), &pen.fit(&info, room), theme::dim());
         }
     }
 }
@@ -422,25 +428,26 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
     } else {
         format!("{} › {detail}", tr(app.screen.label_key()))
     };
-    pen.text(pos2(r.left() + 12.0, r.center().y), &pen.fit(&s, r.width() - 24.0), DIM);
+    pen.text(pos2(r.left() + 12.0, r.center().y), &pen.fit(&s, r.width() - 24.0), theme::dim());
 }
 
 fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
-    pen.p.rect_filled(r, 0.0, BAR);
+    pen.p.rect_filled(r, 0.0, theme::bar());
     let y = r.center().y;
     let (badge, color) = match app.mode {
         Mode::Normal if app.fleet => match app.selected_peer() {
-            Some(p) if p.status(std::time::Instant::now()) == Status::Down => (tr("mode.stale"), RED),
-            _ => (tr("mode.fleet"), MAGENTA),
+            Some(p) if p.status(std::time::Instant::now()) == Status::Down => (tr("mode.stale"), theme::red()),
+            _ => (tr("mode.fleet"), theme::magenta()),
         },
-        Mode::Normal => (tr("mode.normal"), BLUE),
-        Mode::Filter => (tr("mode.filter"), YELLOW),
-        Mode::Help => (tr("mode.help"), MAGENTA),
-        Mode::Confirm => (tr("mode.confirm"), RED),
+        Mode::Normal => (tr("mode.normal"), theme::blue()),
+        Mode::Filter => (tr("mode.filter"), theme::yellow()),
+        Mode::Help => (tr("mode.help"), theme::magenta()),
+        Mode::Confirm => (tr("mode.confirm"), theme::red()),
+        Mode::Settings => (tr("mode.settings"), theme::cyan()),
     };
     let bw = pen.width(badge) + 16.0;
     let b = Rect::from_center_size(pos2(r.left() + 6.0 + bw / 2.0, y), vec2(bw, 18.0));
-    pill(pen, b, badge, color, BG);
+    pill(pen, b, badge, color, theme::bg());
     let x = b.right() + 10.0;
 
     // The right side first, so the left knows its room.
@@ -455,13 +462,25 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
             right += &format!("  {}/{n}", app.view().sel[p.index()] + 1);
         }
     }
-    let rr = pen.text_r(pos2(r.right() - 10.0, y), &right, DIM);
+    // The clock at the right end (common.toml's [clock]), as tsumugi's.
+    let mut end = r.right() - 10.0;
+    let clock = app.prefs.common.clock_or(None);
+    if clock.show {
+        let now = chrono::Local::now().naive_local();
+        let lang = crate::i18n::current_language();
+        let cr = pen.text_r(pos2(end, y), &clock.text(&now, lang), theme::strong());
+        let full = tsumugi_common::Clock::full(&now, lang);
+        ui.interact(cr, Id::new("status-clock"), Sense::hover()).on_hover_text(full);
+        ui.ctx().request_repaint_after(tsumugi_common::Clock::next_minute(&now));
+        end = cr.left() - 16.0;
+    }
+    let rr = pen.text_r(pos2(end, y), &right, theme::dim());
     let room = rr.left() - 16.0 - x;
 
     if app.mode == Mode::Filter {
-        pen.text(pos2(x, y), &pen.fit(&format!("/{}▏", app.filter), room), FG);
+        pen.text(pos2(x, y), &pen.fit(&format!("/{}▏", app.filter), room), theme::fg());
     } else if let Some((t, at)) = app.toast.as_ref().filter(|(_, at)| at.elapsed() < TOAST) {
-        pen.text(pos2(x, y), &pen.fit(t, room), YELLOW);
+        pen.text(pos2(x, y), &pen.fit(t, room), theme::yellow());
         ui.ctx().request_repaint_after(TOAST.saturating_sub(at.elapsed()));
     } else {
         let state = tr(if app.paused { "status.paused" } else { "status.sampling" });
@@ -469,6 +488,6 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         if !app.filter.is_empty() {
             s += &format!(" · /{}", app.filter);
         }
-        pen.text(pos2(x, y), &pen.fit(&s, room), if app.paused { YELLOW } else { DIM });
+        pen.text(pos2(x, y), &pen.fit(&s, room), if app.paused { theme::yellow() } else { theme::dim() });
     }
 }

@@ -51,6 +51,15 @@ pub enum Act {
     /// One step faster (-1) or slower (+1) sampling.
     Interval(i32),
     Help,
+    /// The settings screen, open or closed.
+    Settings,
+    /// Copy what is selected: on fleet, the sample `[[host]]` or the
+    /// machine's address.
+    Copy,
+    /// The settings screen's next (+1) or previous (-1) page.
+    Page(i32),
+    /// The settings screen's search.
+    Search,
     Quit,
     Escape,
     Confirm,
@@ -111,6 +120,11 @@ pub fn parse(s: &str) -> Result<Act, String> {
             "restart" => Action::Restart,
             _ => return Err(bad()),
         })),
+        "page" => Ok(Act::Page(match need()? {
+            "next" | "+1" | "1" => 1,
+            "prev" | "-1" => -1,
+            _ => return Err(bad()),
+        })),
         "equalize" => none(Act::Equalize),
         "enter" => none(Act::Enter),
         "filter" => none(Act::Filter),
@@ -120,6 +134,9 @@ pub fn parse(s: &str) -> Result<Act, String> {
         "pause" => none(Act::Pause),
         "fleet" => none(Act::Fleet),
         "help" => none(Act::Help),
+        "settings" => none(Act::Settings),
+        "copy" => none(Act::Copy),
+        "search" => none(Act::Search),
         "quit" => none(Act::Quit),
         "escape" | "close" => none(Act::Escape),
         "confirm" => none(Act::Confirm),
@@ -146,6 +163,12 @@ mod tests {
         assert_eq!(parse("tree"), Ok(Act::Tree));
         assert_eq!(parse("fleet"), Ok(Act::Fleet));
         assert!(parse("fleet nas").is_err());
+        assert_eq!(parse("settings"), Ok(Act::Settings));
+        assert_eq!(parse("copy"), Ok(Act::Copy));
+        assert_eq!(parse("page next"), Ok(Act::Page(1)));
+        assert_eq!(parse("page -1"), Ok(Act::Page(-1)));
+        assert!(parse("page").is_err());
+        assert_eq!(parse("search"), Ok(Act::Search));
         assert_eq!(parse("scope"), Ok(Act::Scope(None)));
         assert_eq!(parse("scope mine"), Ok(Act::Scope(Some(true))));
         assert_eq!(parse("scope all"), Ok(Act::Scope(Some(false))));

@@ -6,7 +6,7 @@ use egui::{Align2, Id, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 
 use super::{Cx, FONT};
 use crate::collect::topo::{Core, Topology};
-use crate::config::theme::{BG, CYAN, DIM, FG, LINE, ramp};
+use crate::config::theme::{self, ramp};
 use crate::i18n::trf;
 use crate::screen::Pane;
 use crate::util::fmt_bytes;
@@ -73,7 +73,7 @@ pub fn tiles(cx: &mut Cx, r: Rect, full: bool, sel: Option<usize>, click: Option
         if let Some(kb) = g.cache_kb {
             head += &format!(" · {}", trf("tiles.cache", &[&g.cache.to_string(), &fmt_bytes(kb * 1024)]));
         }
-        cx.pen.text(pos2(r.left() + 2.0, y + 8.0), &cx.pen.fit(&head, r.width()), DIM);
+        cx.pen.text(pos2(r.left() + 2.0, y + 8.0), &cx.pen.fit(&head, r.width()), theme::dim());
         y += GROUP_HEAD;
         let mut x = r.left();
         for (ci, core) in (start..).zip(&g.cores) {
@@ -90,12 +90,17 @@ pub fn tiles(cx: &mut Cx, r: Rect, full: bool, sel: Option<usize>, click: Option
             let vals: Vec<f32> = core.threads.iter().map(|&i| usage.get(i).copied().unwrap_or(0.0)).collect();
             let avg = if vals.is_empty() { 0.0 } else { vals.iter().sum::<f32>() / vals.len() as f32 };
             let selected = sel == Some(ci);
-            cx.pen.p.rect_filled(t, 4.0, BG);
-            cx.pen.p.rect_stroke(t, 4.0, Stroke::new(1.0, if selected { CYAN } else { LINE }), StrokeKind::Inside);
+            cx.pen.p.rect_filled(t, 4.0, theme::bg());
+            cx.pen.p.rect_stroke(t, 4.0, Stroke::new(1.0, if selected { theme::cyan() } else { theme::line() }), StrokeKind::Inside);
 
             // The core's name and its average.
             let top = t.top() + 9.0;
-            cx.pen.small(pos2(t.left() + 5.0, top), Align2::LEFT_CENTER, &format!("C{}", core.id), if selected { CYAN } else { DIM });
+            cx.pen.small(
+                pos2(t.left() + 5.0, top),
+                Align2::LEFT_CENTER,
+                &format!("C{}", core.id),
+                if selected { theme::cyan() } else { theme::dim() },
+            );
             cx.pen.small(pos2(t.right() - 5.0, top), Align2::RIGHT_CENTER, &format!("{avg:.0}%"), ramp(avg));
 
             // A bar per thread, centred.
@@ -105,20 +110,20 @@ pub fn tiles(cx: &mut Cx, r: Rect, full: bool, sel: Option<usize>, click: Option
             for (k, (&cpu, &v)) in core.threads.iter().zip(&vals).enumerate() {
                 let x0 = bx + k as f32 * (BAR_W + BAR_GAP);
                 let track = Rect::from_min_max(pos2(x0, b_top), pos2(x0 + BAR_W, b_bot));
-                cx.pen.p.rect_filled(track, 2.0, LINE.gamma_multiply(0.6));
+                cx.pen.p.rect_filled(track, 2.0, theme::line().gamma_multiply(0.6));
                 let fh = track.height() * (v / 100.0).clamp(0.0, 1.0);
                 if fh > 0.5 {
                     cx.pen.p.rect_filled(Rect::from_min_max(pos2(track.left(), track.bottom() - fh), track.max), 2.0, ramp(v));
                 }
                 if full {
-                    cx.pen.small(pos2(track.center().x, b_bot + 7.0), Align2::CENTER_CENTER, &cpu.to_string(), DIM);
+                    cx.pen.small(pos2(track.center().x, b_bot + 7.0), Align2::CENTER_CENTER, &cpu.to_string(), theme::dim());
                 }
             }
             if full {
                 let mhz: Vec<u64> = core.threads.iter().filter_map(|&i| freq.get(i).copied()).filter(|&f| f > 0).collect();
                 if !mhz.is_empty() {
                     let ghz = mhz.iter().sum::<u64>() as f32 / mhz.len() as f32 / 1000.0;
-                    cx.pen.small(pos2(t.center().x, t.bottom() - 7.0), Align2::CENTER_CENTER, &format!("{ghz:.1}G"), FG);
+                    cx.pen.small(pos2(t.center().x, t.bottom() - 7.0), Align2::CENTER_CENTER, &format!("{ghz:.1}G"), theme::fg());
                 }
             }
             if let Some(p) = click {

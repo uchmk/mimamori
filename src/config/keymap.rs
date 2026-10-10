@@ -18,13 +18,15 @@ pub struct Binding {
 }
 
 /// The layers: the screens, the filter's line, the help, the question
-/// before a process is ended.
+/// before a process is ended, the settings screen (where only these keys
+/// are taken; the rest go to the screen's fields and lists).
 #[derive(Default, Debug)]
 pub struct Keymap {
     pub main: Vec<Binding>,
     pub input: Vec<Binding>,
     pub help: Vec<Binding>,
     pub confirm: Vec<Binding>,
+    pub settings: Vec<Binding>,
 }
 
 pub enum Match<'a> {
@@ -58,6 +60,8 @@ struct File {
     help: Section,
     #[serde(default)]
     confirm: Section,
+    #[serde(default)]
+    settings: Section,
 }
 
 #[derive(Deserialize, Default)]
@@ -170,6 +174,7 @@ impl Keymap {
             input: layer(&d.input, &u.input, &mut warn),
             help: layer(&d.help, &u.help, &mut warn),
             confirm: layer(&d.confirm, &u.confirm, &mut warn),
+            settings: layer(&d.settings, &u.settings, &mut warn),
         };
         (km, warn)
     }
@@ -190,6 +195,10 @@ mod tests {
         let (km, warn) = Keymap::load(None);
         assert!(warn.is_empty(), "{warn:?}");
         assert!(!km.main.is_empty() && !km.input.is_empty() && !km.help.is_empty() && !km.confirm.is_empty());
+        assert!(!km.settings.is_empty());
+        assert!(matches!(resolve(&km.main, &keys("<C-,>")), Match::Exact(b) if b.run == [Act::Settings]) || cfg!(target_os = "macos"));
+        assert!(matches!(resolve(&km.settings, &keys("<C-BackTab>")), Match::Exact(b) if b.run == [Act::Page(-1)]));
+        assert!(matches!(resolve(&km.settings, &keys("<C-PageDown>")), Match::Exact(b) if b.run == [Act::Page(1)]));
     }
 
     #[test]

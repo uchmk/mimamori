@@ -58,7 +58,9 @@ keymap = [
     { on = "+", run = "interval +", desc = "Sample less often" },
     { on = "=", run = "interval +", desc = "Sample less often" },
     { on = "-", run = "interval -", desc = "Sample more often" },
+    { on = "y", run = "copy", desc = "Copy (fleet: the sample [[host]], or the machine's address)" },
     { on = "?", run = "help", desc = "Help" },
+    { on = "<P-,>", run = "settings", desc = "Settings" },
     { on = "q", run = "quit", desc = "Quit" },
     { on = "<Esc>", run = "escape", desc = "Clear the filter (and on net the interface)" },
 ]
@@ -91,4 +93,18 @@ keymap = [
     { on = "n", run = "escape", desc = "No, leave it as it is" },
     { on = "<Esc>", run = "escape", desc = "No, leave it as it is" },
     { on = "q", run = "escape", desc = "No, leave it as it is" },
+]
+
+# The settings screen (as tsumugi's): only these keys are taken, every other
+# goes to its fields and lists (Tab between them, Space and Enter to press).
+# Esc first leaves the field being typed in, then closes the screen.
+[settings]
+keymap = [
+    { on = "<Esc>", run = "escape", desc = "Close" },
+    { on = "<P-,>", run = "settings", desc = "Close" },
+    { on = "<C-Tab>", run = "page next", desc = "Next page" },
+    { on = "<C-PageDown>", run = "page next", desc = "Next page" },
+    { on = "<C-BackTab>", run = "page prev", desc = "Previous page" },
+    { on = "<C-PageUp>", run = "page prev", desc = "Previous page" },
+    { on = "<P-f>", run = "search", desc = "Search the settings" },
 ]

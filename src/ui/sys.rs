@@ -12,7 +12,7 @@ use crate::collect::disk::{Drive, Kind};
 use crate::collect::hw::{Hardware, Slot};
 use crate::config::cmd::{Act, Goto};
 use crate::config::keys::render_seq;
-use crate::config::theme::{CYAN, DIM, FG, ROW, YELLOW};
+use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::screen::{Pane, Screen};
 use crate::util::{fmt_bytes, fmt_epoch, fmt_uptime};
@@ -279,17 +279,17 @@ fn speed(s: &Slot) -> String {
 fn cell(s: &Slot, unified: bool, col: Col) -> (String, Color32) {
     if !s.present {
         return match col {
-            Col::Slot => (place(s, unified), DIM),
-            Col::Size => (tr("sys.empty").to_string(), DIM),
-            _ => (String::new(), DIM),
+            Col::Slot => (place(s, unified), theme::dim()),
+            Col::Size => (tr("sys.empty").to_string(), theme::dim()),
+            _ => (String::new(), theme::dim()),
         };
     }
     match col {
-        Col::Slot => (place(s, unified), FG),
-        Col::Size => (s.size.map_or_else(|| "—".to_string(), fmt_bytes), CYAN),
-        Col::Kind => (s.kind.clone(), FG),
-        Col::Speed => (speed(s), FG),
-        Col::Maker => (s.vendor.clone(), DIM),
+        Col::Slot => (place(s, unified), theme::fg()),
+        Col::Size => (s.size.map_or_else(|| "—".to_string(), fmt_bytes), theme::cyan()),
+        Col::Kind => (s.kind.clone(), theme::fg()),
+        Col::Speed => (speed(s), theme::fg()),
+        Col::Maker => (s.vendor.clone(), theme::dim()),
     }
 }
 
@@ -297,7 +297,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let Some(hw) = &app.model.hw else {
         let body = panel(&cx.pen, r, tr("sys.slot_list"), "", cx.focused(Pane::Mid));
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     };
     let info = match hw.installed() {
@@ -307,9 +307,9 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     };
     let body = panel(&cx.pen, r, tr("sys.slot_list"), &info, cx.focused(Pane::Mid));
     if hw.slots.is_empty() {
-        let y = para(&cx.pen, body, body.top(), tr("sys.no_slots"), DIM) + GAP;
+        let y = para(&cx.pen, body, body.top(), tr("sys.no_slots"), theme::dim()) + GAP;
         if let Some(n) = hw.note {
-            para(&cx.pen, body, y, tr(n.key()), YELLOW);
+            para(&cx.pen, body, y, tr(n.key()), theme::yellow());
         }
         return;
     }
@@ -319,9 +319,9 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     for &(c, x, w, right) in &cols {
         let label = cx.pen.fit(head(c), w);
         if right {
-            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, DIM);
+            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, theme::dim());
         } else {
-            cx.pen.text(pos2(x0 + x, h.center().y), &label, DIM);
+            cx.pen.text(pos2(x0 + x, h.center().y), &label, theme::dim());
         }
     }
     let rows = Rect::from_min_max(pos2(body.left(), h.bottom()), body.max);
@@ -340,7 +340,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         }
     });
     if hw.unified {
-        para(&cx.pen, rows, list.bottom() + GAP, tr("sys.unified"), DIM);
+        para(&cx.pen, rows, list.bottom() + GAP, tr("sys.unified"), theme::dim());
     }
 }
 
@@ -372,7 +372,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         let body = panel(&cx.pen, r, tr("sys.slot"), "", cx.focused(Pane::Right));
         // Why there are no slots is said once, in the middle.
         if hw.is_some_and(|h| !h.slots.is_empty()) {
-            para(&cx.pen, body, body.top(), tr("sys.none"), DIM);
+            para(&cx.pen, body, body.top(), tr("sys.none"), theme::dim());
         }
         return;
     };
@@ -428,7 +428,10 @@ mod tests {
         assert_eq!(rows[7].1, "1.35 V");
         assert_eq!(speed(&s), trf("sys.mts", &["6000"]));
         // An empty slot is named and dim; unified memory has no name of its own.
-        assert_eq!(cell(&Slot { locator: "DIMM_B1".into(), ..Slot::default() }, false, Col::Size), (tr("sys.empty").to_string(), DIM));
+        assert_eq!(
+            cell(&Slot { locator: "DIMM_B1".into(), ..Slot::default() }, false, Col::Size),
+            (tr("sys.empty").to_string(), theme::dim())
+        );
         assert_eq!(place(&Slot::default(), true), tr("sys.in_package"));
     }
 

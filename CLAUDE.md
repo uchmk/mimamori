@@ -55,7 +55,10 @@
 - **画面の文字はすべて `tr("key")` / `trf("key", &[..])` を通す。**英語の表は `src/lang/en.toml`、日本語は `ja.toml`（キーを足したら両方に。
   テストがキーと `{0}` の数の食い違いを落とす）。既定の keymap の `desc` を変えたら `ja.toml` の `[keydesc]` も直す。
   幅は `util::width`（全角は 2 桁）で数える。
-  言語は `config.toml` → `common.toml`（uchmk のアプリで共通。tsumugi の設定画面が書く）→ OS の順で決まる。表に無いキーはテストが落とす。
+  言語は `config.toml` → `common.toml`（uchmk のアプリで共通。設定の画面が書く）→ OS の順で決まる。表に無いキーはテストが落とす。
+- **uchmk の共通仕様**（tsumugi の `docs/common-spec.md`）: 設定の置き場所（`<config>/uchmk/common.toml`・`mimamori/config.toml`・`themes/`）、
+  テーマと時計は common.toml だけに置く（2 秒ごとに見て当て直す）、設定の画面は Ctrl+, で tsumugi と同じレイアウト（`tsumugi-prefs`）、
+  時計はステータスバーの右端。色は `config/theme.rs` の関数（`bg()`・`fg()`…）で今のテーマを読む。テストで全体のテーマを変えない（色を確かめるテストとぶつかる）。
 - **列の大きさは `tsumugi-layout`**（tsumugi の workspace のクレート、`Cargo.toml` の `rev` で固定）。直すときは tsumugi 側で直して `rev` を上げる。
 - **マルチ OS**: OS ごとの処理は `#[cfg(...)]` のモジュールに閉じ込める（例: `collect/topo/linux.rs`・`windows.rs`・`mac.rs`）。
   パースは純粋な関数にして、どの OS でもテストが回るようにする（`#[cfg(any(windows, test))]`）。
@@ -82,10 +85,11 @@
 | `src/svcctl.rs` | サービスの開始・停止・再起動（確認の後、1 回ごとのスレッドで。Windows は SCM、Linux は `systemctl`、macOS は `launchctl`。権限不足とエラーの読み替えは純粋な関数） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
 | `src/model.rs` | 履歴のリングバッファ（60 秒）と最新の値 |
-| `src/config/` | `keys.rs`（キーの文字列。中身は `tsumugi-keys` の再エクスポート、`rev` は `tsumugi-layout` と揃える）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`theme.rs`（filer の色） |
+| `src/config/` | `keys.rs`（キーの文字列。中身は `tsumugi-keys` の再エクスポート、`rev` は `tsumugi-layout` と揃える）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`edit.rs`（設定の画面から config.toml への書き込み。`[[host]]` は配列の表を丸ごと置き換える純粋な関数）、`theme.rs`（今のテーマの色を読む関数と egui の `Visuals`。テーマは `tsumugi-theme`） |
+| `src/prefs.rs` | 設定の画面が読み書きするもの（common.toml・config.toml・自分のテーマ）。`tsumugi-common` の見張りで 2 秒ごとに読み直して `Reload` で返し、書き込みと「Open」はスレッドで |
 | `src/i18n.rs`, `src/lang/` | `tr()` と言語の表（`en.toml`・`ja.toml`）、ヘルプの説明の `tr_desc()`。表・言語の決め方・`common.toml` の読み方・テストの検査は `tsumugi-i18n`（tsumugi の workspace のクレート、`rev` は `tsumugi-layout` と揃える） |
 | `src/fonts.rs` | CJK のフォント（OS のフォントをスレッドで読み、egui のフォントの後ろに足す） |
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
-| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認）・`fleet.rs`（fleet のカード。この機械と `[[host]]`、つなぎ方の手引き） |
+| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認）・`fleet.rs`（fleet のカード。この機械と `[[host]]`、つなぎ方の手引き）・`settings.rs`（設定の画面の 4 ページ。枠と部品は `tsumugi-prefs`） |
 | `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る）、`smoke-linux.sh`（CI のスモーク）、`release-sums.sh`（リリースの SHA-256 の表） |

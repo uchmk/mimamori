@@ -4,6 +4,31 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.32.0] - 2026-10-11
+
+### 追加
+
+- 設定の画面（`Ctrl+,`、macOS は `Cmd+,`）。tsumugi と同じレイアウトで窓いっぱいに出す（左に検索・ページ・「Open config.toml」、右にページの題とカード）。
+  - General: 言語（common.toml）・更新の間隔（すぐ効く）・時計のカード（common.toml）。
+  - Theme: Follow OS / Light / Dark・テーマの一覧・mimamori のタイルとプロセスの行とステータスバーで描く見本（common.toml）。
+  - Fleet: この機械のエージェント（プロセスの終了・サービスの操作を許すスイッチ、ポート）、`[[host]]` の一覧（名前・宛先・Delete・Add host）、
+    つなぎ方の行（`mimamori --agent`・ssh・tailscale・`[[host]]` の見本・config.toml のパス）と Copy のボタン。ホストを足すと再起動なしでつなぐ。
+  - Advanced: 描画のバックエンド（次の起動から）、設定のフォルダー（Copy・Open）、common.toml のパス、読み込みの警告。
+  - 書き込みは toml_edit でコメントを残し、UI ではないスレッドで行う。画面の中では `[settings]` の節のキーだけを取り（閉じる・ページを移る・検索）、
+    ほかのキーは部品に渡す（欄に `q` や `3` を打っても終わったり画面が変わったりしない）。
+- テーマ。tsumugi と同じ 13 の組み込み（tsumugi Dark / Light、Tokyo Night、Catppuccin Mocha / Latte、Dracula、Nord、Gruvbox Dark / Light、
+  Solarized Dark / Light、One Dark、Rosé Pine）と、`<config>/uchmk/themes/*.toml` の自分のテーマ。明るいテーマでは egui の部品も明るくなる。
+- ステータスバーの右端に日付と時刻（tsumugi と同じ場所・字体・色・書式）。分が変わるときだけ再描画し、ポインタを載せると日付を全部出す。日本語では曜日を「(土)」と出す。
+- コピー。`y`（fleet の手引きでは `[[host]]` の見本、ほかの機械のカードではその宛先）、手引きの水色の行のクリック、設定の Copy のボタン。トーストで「Copied: …」と言う。
+  手引きの頭に「Ctrl+, で設定が開く」を添えた。
+- キーマップの `settings`・`copy`・`page next` / `page prev`・`search` のコマンドと、`[settings]` の節。
+
+### 変更
+
+- テーマと時計の設定は `<config>/uchmk/common.toml`（`theme`・`dark_theme`・`light_theme`・`[clock]`）に置く。uchmk の全部のアプリが読む共通の設定で、
+  このファイルを変えれば起動中のアプリも 2 秒のうちに一括で変わる（言語も、起動中に切り替わるようになった）。置き場所と画面の約束は tsumugi の `docs/common-spec.md`。
+- 既定のテーマ「tsumugi Dark」で今までの見た目をほぼ保つが、薄い文字（DIM）が少し明るくなった。
+
 ## [0.31.0] - 2026-10-10
 
 ### 追加

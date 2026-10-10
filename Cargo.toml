@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.31.0"
+version = "0.32.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -21,11 +21,19 @@ postcard = { version = "1", default-features = false, features = ["use-std"] }
 # The split tree behind the resizable panels, shared with tsumugi and filer.
 # Pinned to the commit filer reads; to take a fix, move `rev` and run
 # `cargo build` so Cargo.lock follows. It depends on nothing but egui.
-tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "34e5cd253b98a8882cee87ea9c7ded2b60130e67", features = ["egui", "serde"] }
+tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "a26aefd5443a65b040a1b3368f9ad430144da0b8", features = ["egui", "serde"] }
 # The translation table and the language setting in common.toml, shared with tsumugi.
-tsumugi-i18n = { git = "https://github.com/uchmk/tsumugi", rev = "34e5cd253b98a8882cee87ea9c7ded2b60130e67" }
+tsumugi-i18n = { git = "https://github.com/uchmk/tsumugi", rev = "a26aefd5443a65b040a1b3368f9ad430144da0b8" }
 # yazi's key notation and egui's key events in the same terms, shared with tsumugi.
-tsumugi-keys = { git = "https://github.com/uchmk/tsumugi", rev = "34e5cd253b98a8882cee87ea9c7ded2b60130e67", features = ["egui"] }
+tsumugi-keys = { git = "https://github.com/uchmk/tsumugi", rev = "a26aefd5443a65b040a1b3368f9ad430144da0b8", features = ["egui"] }
+# common.toml (theme, clock, language), editing a TOML file in place and
+# watching it; the themes; the settings screen's frame and widgets. All
+# shared with tsumugi and filer (tsumugi's docs/common-spec.md).
+tsumugi-common = { git = "https://github.com/uchmk/tsumugi", rev = "a26aefd5443a65b040a1b3368f9ad430144da0b8", features = ["clock"] }
+tsumugi-theme = { git = "https://github.com/uchmk/tsumugi", rev = "a26aefd5443a65b040a1b3368f9ad430144da0b8" }
+tsumugi-prefs = { git = "https://github.com/uchmk/tsumugi", rev = "a26aefd5443a65b040a1b3368f9ad430144da0b8" }
+# The clock's local time (pure Rust).
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 # NVIDIA's management library, loaded at run time: without the driver it is
 # simply not there and no NVIDIA device is listed from it. macOS has no NVML.

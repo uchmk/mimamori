@@ -7,7 +7,7 @@ use egui::{Color32, Rect, pos2, vec2};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
 use crate::collect::net::{Conn, Nic, State};
-use crate::config::theme::{CYAN, DIM, FG, GREEN, MAGENTA, ROW, YELLOW};
+use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
 use crate::util::fmt_bytes;
@@ -27,10 +27,10 @@ fn rate(b: f64) -> String {
 
 fn state_color(s: State) -> Color32 {
     match s {
-        State::Listen => CYAN,
-        State::Established => GREEN,
-        State::SynSent | State::SynRecv => YELLOW,
-        _ => DIM,
+        State::Listen => theme::cyan(),
+        State::Established => theme::green(),
+        State::SynSent | State::SynRecv => theme::yellow(),
+        _ => theme::dim(),
     }
 }
 
@@ -40,31 +40,31 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     let info = if m.nic_read { trf("net.up_count", &[&m.nics.iter().filter(|n| n.up).count().to_string()]) } else { String::new() };
     let body = panel(&cx.pen, r, tr("net.nics"), &info, cx.focused(Pane::Left));
     if !m.nic_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     }
     let nics = &m.nics;
     if nics.is_empty() {
-        para(&cx.pen, body, body.top(), tr("net.none_nic"), DIM);
+        para(&cx.pen, body, body.top(), tr("net.none_nic"), theme::dim());
     }
     let list = Rect::from_min_size(body.min, vec2(body.width(), (nics.len() as f32 * ROW).min(body.height())));
     cx.scroll_list(Pane::Left, list, nics.len(), |cx, row, i| {
         let n = &nics[i];
         let cy = row.center().y;
         let rr = if n.up {
-            cx.pen.text_r(pos2(row.right() - 6.0, cy), &rate(n.rx_rate + n.tx_rate), CYAN)
+            cx.pen.text_r(pos2(row.right() - 6.0, cy), &rate(n.rx_rate + n.tx_rate), theme::cyan())
         } else {
-            cx.pen.text_r(pos2(row.right() - 6.0, cy), tr("net.down"), DIM)
+            cx.pen.text_r(pos2(row.right() - 6.0, cy), tr("net.down"), theme::dim())
         };
         let room = rr.left() - row.left() - 6.0 - cx.pen.cw * 2.0;
         let name_w = (room * 0.6).max(cx.pen.cw * 6.0);
         let name = cx.pen.fit(&n.name, name_w);
-        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, if n.up { FG } else { DIM });
+        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, if n.up { theme::fg() } else { theme::dim() });
         let sr = Rect::from_min_max(pos2(t.right() + cx.pen.cw, row.top() + 4.0), pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0));
         if let (true, Some((rx, tx))) = (n.up, m.net_hist.get(&n.name)) {
             let max = rx.max().max(tx.max()).max(FLOOR);
-            graph::spark(&cx.pen, sr, tx.iter(), max, MAGENTA);
-            graph::spark(&cx.pen, sr, rx.iter(), max, CYAN);
+            graph::spark(&cx.pen, sr, tx.iter(), max, theme::magenta());
+            graph::spark(&cx.pen, sr, rx.iter(), max, theme::cyan());
         }
     });
     if !m.conn_read {
@@ -88,7 +88,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     ];
     y = kv_rows(&cx.pen, body, y, &rows) + GAP;
     if let Some(n) = m.conns.note {
-        para(&cx.pen, body, y, tr(n.key()), YELLOW);
+        para(&cx.pen, body, y, tr(n.key()), theme::yellow());
     }
 }
 
@@ -150,12 +150,12 @@ fn head(c: Col) -> &'static str {
 
 fn cell(c: &Conn, col: Col, process: Option<&str>) -> (String, Color32) {
     match col {
-        Col::Proto => (c.proto.label().to_string(), DIM),
-        Col::Local => (c.local.to_string(), FG),
-        Col::Remote => c.remote.map_or(("*".to_string(), DIM), |r| (r.to_string(), FG)),
+        Col::Proto => (c.proto.label().to_string(), theme::dim()),
+        Col::Local => (c.local.to_string(), theme::fg()),
+        Col::Remote => c.remote.map_or(("*".to_string(), theme::dim()), |r| (r.to_string(), theme::fg())),
         Col::State => (tr(c.state.key()).to_string(), state_color(c.state)),
-        Col::Pid => (c.pid.map_or_else(String::new, |p| p.to_string()), DIM),
-        Col::Process => (process.unwrap_or_default().to_string(), if c.pid.is_some() { FG } else { DIM }),
+        Col::Pid => (c.pid.map_or_else(String::new, |p| p.to_string()), theme::dim()),
+        Col::Process => (process.unwrap_or_default().to_string(), if c.pid.is_some() { theme::fg() } else { theme::dim() }),
     }
 }
 
@@ -170,7 +170,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     }
     let body = panel(&cx.pen, r, &title, &info, cx.focused(Pane::Mid));
     if !m.conn_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("net.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("net.reading"), theme::dim());
         return;
     }
     let cols = columns(body.width() - 12.0, cx.pen.cw);
@@ -179,15 +179,15 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     for &(c, x, w, right) in &cols {
         let label = cx.pen.fit(head(c), w);
         if right {
-            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, DIM);
+            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, theme::dim());
         } else {
-            cx.pen.text(pos2(x0 + x, h.center().y), &label, DIM);
+            cx.pen.text(pos2(x0 + x, h.center().y), &label, theme::dim());
         }
     }
     let list = Rect::from_min_max(pos2(body.left(), h.bottom()), body.max);
     if app.net_rows.is_empty() {
         let why = m.conns.note.filter(|_| m.conns.list.is_empty()).map_or(tr("net.empty"), |n| tr(n.key()));
-        para(&cx.pen, list, list.top(), why, DIM);
+        para(&cx.pen, list, list.top(), why, theme::dim());
         return;
     }
     cx.scroll_list(Pane::Mid, list, app.net_rows.len(), |cx, row, i| {
@@ -233,7 +233,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     let Some(n) = app.selected_nic() else {
         let body = panel(&cx.pen, r, tr("net.detail"), "", cx.focused(Pane::Right));
         if m.nic_read {
-            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("net.none"), DIM);
+            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("net.none"), theme::dim());
         }
         return;
     };
@@ -242,11 +242,11 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     // A graph each way, so a quiet upload is not flattened by a download.
     if let Some((rx, tx)) = m.net_hist.get(&n.name) {
         let h = (body.height() * 0.16).clamp(28.0, 90.0);
-        for (label, ring, now, color) in [("net.rx", rx, n.rx_rate, CYAN), ("net.tx", tx, n.tx_rate, MAGENTA)] {
+        for (label, ring, now, color) in [("net.rx", rx, n.rx_rate, theme::cyan()), ("net.tx", tx, n.tx_rate, theme::magenta())] {
             if y + ROW + h > body.bottom() {
                 break;
             }
-            cx.pen.pair(row_at(body, y), tr(label), DIM, &rate(now), color);
+            cx.pen.pair(row_at(body, y), tr(label), theme::dim(), &rate(now), color);
             y += ROW;
             graph::line(
                 &cx.pen,
@@ -278,7 +278,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     ];
     y = kv_rows(&cx.pen, body, y, &rows) + GAP;
     if c.pid.is_some() {
-        para(&cx.pen, body, y, tr("net.hint"), DIM);
+        para(&cx.pen, body, y, tr("net.hint"), theme::dim());
     }
 }
 

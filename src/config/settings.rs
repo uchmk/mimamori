@@ -27,12 +27,15 @@ pub struct Host {
     pub addr: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Settings {
     /// Seconds between samples.
     pub interval: f32,
     /// The language picked from the app's, the common and the OS's setting.
     pub language: String,
+    /// config.toml's own `language`, which beats common.toml's unless it is
+    /// `auto`.
+    pub app_language: Option<String>,
     /// The graphics backend asked for; `None` is `auto`.
     pub backend: Option<String>,
     /// The user's keymap.toml, if there is one.
@@ -47,6 +50,23 @@ pub struct Settings {
     /// `[[host]]`: the other machines on the fleet screen.
     pub hosts: Vec<Host>,
     pub warnings: Vec<String>,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            interval: 1.0,
+            language: "en".into(),
+            app_language: None,
+            backend: None,
+            keymap: None,
+            dir: None,
+            allow: Vec::new(),
+            port: crate::remote::proto::PORT,
+            hosts: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
 }
 
 /// The `uchmk` folder (the same for every uchmk app; `tsumugi-i18n`).
@@ -143,17 +163,7 @@ fn hosts(v: &toml::Value, warn: &mut Vec<String>) -> Vec<Host> {
 pub fn load(base: Option<&Path>) -> Settings {
     let base = base.map(Path::to_path_buf).or_else(base_dir);
     let mut warn = Vec::new();
-    let mut s = Settings {
-        interval: 1.0,
-        language: "en".into(),
-        backend: None,
-        keymap: None,
-        dir: None,
-        allow: Vec::new(),
-        port: crate::remote::proto::PORT,
-        hosts: Vec::new(),
-        warnings: Vec::new(),
-    };
+    let mut s = Settings::default();
     let mut common_lang = None;
     let mut app_lang = None;
     if let Some(base) = &base {
@@ -186,6 +196,7 @@ pub fn load(base: Option<&Path>) -> Settings {
     }
     let os = tsumugi_i18n::os_language();
     s.language = crate::i18n::resolve_language(app_lang.as_deref(), common_lang.as_deref(), os.as_deref());
+    s.app_language = app_lang;
     s.warnings = warn;
     s
 }

@@ -6,7 +6,7 @@ use egui::{Rect, pos2, vec2};
 use super::{Cx, GAP, graph, kv_rows, panel, row_at};
 use crate::app::SortCol;
 use crate::collect::Proc;
-use crate::config::theme::{BLUE, CYAN, DIM, FG, GREEN, ROW, ramp};
+use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
 use crate::util::{fmt_bytes, fmt_epoch};
@@ -27,7 +27,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         }
         let row = row_at(body, y);
         cx.row_bg(Pane::Left, i, row);
-        cx.pen.pair(row, label, FG, &app.count_scope(mine).to_string(), DIM);
+        cx.pen.pair(row, label, theme::fg(), &app.count_scope(mine).to_string(), theme::dim());
         y += ROW;
     }
     y += GAP;
@@ -109,7 +109,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     // The header, the sort column lit.
     let head = row_at(body, body.top());
     for &(c, x, w, right) in &cols {
-        let color = if c == app.sort { CYAN } else { DIM };
+        let color = if c == app.sort { theme::cyan() } else { theme::dim() };
         let label = cx.pen.fit(c.label(), w);
         if right {
             cx.pen.text_r(pos2(x0 + x + w, head.center().y), &label, color);
@@ -119,7 +119,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     }
     let list = Rect::from_min_max(pos2(body.left(), head.bottom()), body.max);
     if app.rows.is_empty() {
-        cx.pen.text(pos2(body.left() + 6.0, list.top() + ROW / 2.0), tr("procs.empty"), DIM);
+        cx.pen.text(pos2(body.left() + 6.0, list.top() + ROW / 2.0), tr("procs.empty"), theme::dim());
         return;
     }
     cx.scroll_list(Pane::Mid, list, app.rows.len(), |cx, row, i| {
@@ -128,14 +128,14 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         for &(c, x, w, right) in &cols {
             let color = match c {
                 SortCol::Cpu => ramp(p.cpu.min(100.0)),
-                SortCol::Name => FG,
-                SortCol::Mem => GREEN,
-                _ => DIM,
+                SortCol::Name => theme::fg(),
+                SortCol::Mem => theme::green(),
+                _ => theme::dim(),
             };
             if c == SortCol::Name && app.tree {
                 let lines = branch(app.tree_lines.get(i).map_or("", String::as_str), w / 2.0, cx.pen.cw);
                 let lw = lines.chars().count() as f32 * cx.pen.cw;
-                cx.pen.text(pos2(x0 + x, cy), &lines, DIM);
+                cx.pen.text(pos2(x0 + x, cy), &lines, theme::dim());
                 let s = cx.pen.fit(&p.name, w - lw);
                 cx.pen.text(pos2(x0 + x + lw, cy), &s, color);
                 continue;
@@ -154,7 +154,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let Some(p) = app.selected_proc() else {
         let body = panel(&cx.pen, r, tr("procs.detail"), "", cx.focused(Pane::Right));
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("procs.none"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("procs.none"), theme::dim());
         return;
     };
     let body = panel(&cx.pen, r, &p.name, &format!("{:.1}%", p.cpu), cx.focused(Pane::Right));
@@ -179,15 +179,15 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         return;
     }
     let gh = (room - ROW * 2.0 - GAP) / 2.0;
-    cx.pen.pair(row_at(body, y), tr("procs.cpu_minute"), DIM, &format!("{:.1}%", p.cpu), ramp(p.cpu.min(100.0)));
+    cx.pen.pair(row_at(body, y), tr("procs.cpu_minute"), theme::dim(), &format!("{:.1}%", p.cpu), ramp(p.cpu.min(100.0)));
     y += ROW;
     let g = Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), gh));
-    graph::line(&cx.pen, g, cpu.iter(), cpu.max().max(100.0), BLUE);
+    graph::line(&cx.pen, g, cpu.iter(), cpu.max().max(100.0), theme::blue());
     y = g.bottom() + GAP;
-    cx.pen.pair(row_at(body, y), tr("procs.mem_minute"), DIM, &fmt_bytes(p.mem), GREEN);
+    cx.pen.pair(row_at(body, y), tr("procs.mem_minute"), theme::dim(), &fmt_bytes(p.mem), theme::green());
     y += ROW;
     let g = Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), gh));
-    graph::line(&cx.pen, g, mem.iter(), mem.max(), GREEN);
+    graph::line(&cx.pen, g, mem.iter(), mem.max(), theme::green());
 }
 
 #[cfg(test)]

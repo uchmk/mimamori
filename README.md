@@ -55,6 +55,8 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `F` | The fleet screen, and back (`Esc` or a screen key also leave it). On it, `h` `j` `k` `l` and the arrows move between cards, `gg` / `G` to the first and last. `x`, `S`, `R` on another machine's card say what its agent allows; acting on another machine comes later |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
+| `y` | Copy: on fleet's hint the sample `[[host]]` (three lines of TOML, pasted as they are), on another machine's card its address |
+| `Ctrl+,` (macOS `Cmd+,`) | The settings screen, and back. See [Settings screen](#settings-screen) |
 | `?` | Help: every key of the keymap |
 | `Esc` | Clear the filter, and on net the interface the sockets are narrowed to |
 | `q` | Quit |
@@ -74,11 +76,30 @@ Everything lives in one folder shared by uchmk's apps:
 macOS and `~/.config` on Linux. `UCHMK_CONFIG_DIR` moves the whole `uchmk`
 folder.
 
-`common.toml`:
+`common.toml` is shared: change it and every uchmk app (tsumugi, mimamori,
+and filer to come) follows within 2 s, with no restart:
 
 ```toml
-language = "auto"   # "auto" follows the OS; "en" or "ja"
+language = "auto"            # "auto" follows the OS; "en" or "ja"
+theme = "dark"               # a theme's name, or "dark" / "light" / "system"
+dark_theme = "tsumugi Dark"  # what "dark", and "system" on a dark OS, use
+light_theme = "tsumugi Light"
+
+[clock]                      # the date and time at the right of the status bar
+show = true
+hour24 = true
+date = true
+date_format = "YYYY/MM/DD"   # or "YYYY-MM-DD", "MM/DD", "DD/MM", "MM/DD/YYYY", "DD.MM.YYYY"
+weekday = true               # "(Sat)", or "(土)" in Japanese
 ```
+
+The 13 built-in themes are tsumugi's: tsumugi Dark and Light, Tokyo Night,
+Catppuccin Mocha and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized
+Dark and Light, One Dark and Rosé Pine. A theme of
+your own is a TOML file in `<config dir>/uchmk/themes/`, in the form of
+tsumugi's themes; it shows in every app's list. The rules every uchmk app
+keeps (where the files are, the settings screen, the clock) are tsumugi's
+[docs/common-spec.md](https://github.com/uchmk/tsumugi/blob/main/docs/common-spec.md).
 
 `config.toml`:
 
@@ -97,7 +118,7 @@ addr = "localhost:7314"   # host or host:port; the port defaults to 7313
 ```
 
 `keymap.toml` uses yazi's format, section by section (`[main]`, `[input]`,
-`[help]`, `[confirm]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
+`[help]`, `[confirm]`, `[settings]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
 add before and after it. `on_mac` gives a binding its own keys on macOS, and
 `<P-…>` is the primary modifier (Cmd on macOS, Ctrl elsewhere). The built-in
 keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml). The key
@@ -110,6 +131,26 @@ prepend_keymap = [
     { on = "<C-r>", run = "pause", desc = "Pause / resume sampling" },
 ]
 ```
+
+### Settings screen
+
+`Ctrl+,` (`Cmd+,` on macOS) fills the window with the settings, laid out as
+tsumugi's: on the left the search, the pages and **Open config.toml**; on the
+right the page, its cards and their rows. What is changed is written at once,
+keeping the comments in the file, and takes effect at once unless the row
+says otherwise.
+
+| Page | Rows |
+| ---- | ---- |
+| General | Language (common.toml), the update interval, the clock card (common.toml) |
+| Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with mimamori's own tiles, process rows and status bar (common.toml) |
+| Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); and the setup lines (`mimamori --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path), each with Copy |
+| Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
+
+Only the `[settings]` section's keys are taken (`Esc` and `Ctrl+,` close, a
+second `Esc` when a control has the keys; `Ctrl+Tab` / `Ctrl+PageDown` and
+`Ctrl+Shift+Tab` / `Ctrl+PageUp` turn the page; `Ctrl+f` searches); every other
+key goes to the controls (`Tab` between them, typing into a field).
 
 ## Commands
 
@@ -129,6 +170,9 @@ What `run` can say in a keymap:
 | `tree` | Procs as a tree, or a flat list |
 | `scope`, `scope all`, `scope mine` | Switch procs' scope, or set it |
 | `fleet` | The fleet screen, and back |
+| `copy` | Copy the sample `[[host]]` (fleet's hint) or the card's address |
+| `settings` | The settings screen, and back |
+| `page next`, `page prev`, `search` | The settings screen's keys (`[settings]`): turn the page, go to the search |
 | `help`, `escape`, `quit` | As the keys above |
 | `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended or a service is started, stopped or restarted (`[confirm]`) |
 
@@ -186,9 +230,9 @@ has the same keys, and any key it leaves out reads in English; its
 you wrote yourself reads as you wrote it). The language is picked from
 `config.toml`, then `common.toml`, then the OS (`ja-JP` is Japanese).
 The table and that choice come from `tsumugi-i18n`, a crate in
-[tsumugi](https://github.com/uchmk/tsumugi)'s workspace; tsumugi's Settings
-window (General → Language) writes `common.toml`, so setting it there
-changes mimamori's language from its next start.
+[tsumugi](https://github.com/uchmk/tsumugi)'s workspace; the settings screen's
+Language row (in mimamori or tsumugi) writes `common.toml`, and every running
+app changes language within 2 s.
 
 Japanese, and the CJK in process names, service descriptions and volume
 labels whatever the language, is drawn with a system font behind the

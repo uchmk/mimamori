@@ -12,18 +12,30 @@
 //! shared with tsumugi (whose Settings window writes common.toml).
 
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tsumugi_i18n::Table;
 
 /// The languages with a table, English first.
 pub const AVAILABLE: &[(&str, &str)] = &[("en", include_str!("lang/en.toml")), ("ja", include_str!("lang/ja.toml"))];
 
-static TABLE: OnceLock<Table> = OnceLock::new();
+/// One table per language in [`AVAILABLE`], built on first use and kept, so
+/// [`tr`] can hand out `&'static str` and the language can still change
+/// while mimamori runs (the settings screen, common.toml being edited).
+static TABLES: OnceLock<Vec<Table>> = OnceLock::new();
+/// Which of [`TABLES`] is in force.
+static CHOSEN: AtomicUsize = AtomicUsize::new(0);
 
-/// Pick the table once, before the first frame. A later call changes nothing
-/// (the language is read at startup, as filer reads its config).
+/// Use `code`'s table from the next lookup on; a code without a table is
+/// English.
 pub fn set_language(code: &str) {
-    let _ = TABLE.set(table(code));
+    let i = AVAILABLE.iter().position(|(l, _)| *l == code).unwrap_or(0);
+    CHOSEN.store(i, Ordering::Relaxed);
+}
+
+/// The code of the language in force (`en`, `ja`).
+pub fn current_language() -> &'static str {
+    AVAILABLE[CHOSEN.load(Ordering::Relaxed).min(AVAILABLE.len() - 1)].0
 }
 
 fn table(code: &str) -> Table {
@@ -35,7 +47,8 @@ fn table(code: &str) -> Table {
 }
 
 fn get() -> &'static Table {
-    TABLE.get_or_init(|| table("en"))
+    let all = TABLES.get_or_init(|| AVAILABLE.iter().map(|(l, _)| table(l)).collect());
+    &all[CHOSEN.load(Ordering::Relaxed).min(all.len() - 1)]
 }
 
 /// The text for `key` in the chosen language; the key itself when no table

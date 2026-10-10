@@ -18,6 +18,24 @@ use client::{Event, Why};
 use proto::{Hello, Summary};
 
 /// A round trip slower than this marks the card slow.
+/// The command that serves this machine to the fleet screens of others.
+pub const AGENT_LINE: &str = "mimamori --agent";
+
+/// How to reach a machine's agent through ssh.
+pub fn ssh_line() -> String {
+    format!("ssh -L {0}:localhost:{0} <host>", proto::PORT)
+}
+
+/// How to reach a machine's agent through Tailscale.
+pub fn tailscale_line() -> String {
+    format!("tailscale serve --bg --tcp {0} tcp://localhost:{0}", proto::PORT)
+}
+
+/// A `[[host]]` to paste into config.toml as it is.
+pub fn host_sample() -> String {
+    format!("[[host]]\nname = \"nas\"\naddr = \"localhost:{}\"\n", proto::PORT)
+}
+
 pub const SLOW: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Debug, PartialEq)]

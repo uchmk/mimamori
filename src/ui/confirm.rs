@@ -7,7 +7,7 @@ use super::{Pen, kv_rows, panel};
 use crate::app::{App, Ask};
 use crate::config::cmd::Act;
 use crate::config::keys::render_seq;
-use crate::config::theme::{DIM, RED, ROW, YELLOW};
+use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::kill;
 use crate::svcctl::{self, Action};
@@ -71,13 +71,13 @@ pub fn draw(pen: &Pen, app: &App, full: Rect) {
         }
     };
     let body = panel(pen, r, title, "", true);
-    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, RED.gamma_multiply(0.6)), StrokeKind::Outside);
+    pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, theme::red().gamma_multiply(0.6)), StrokeKind::Outside);
     let clip = pen.clipped(body);
     let mut y = kv_rows(&clip, body, body.top(), &rows) + ROW / 2.0;
     for line in &how {
-        clip.text(pos2(body.left() + 4.0, y + ROW / 2.0), &clip.fit(line, body.width() - 8.0), YELLOW);
+        clip.text(pos2(body.left() + 4.0, y + ROW / 2.0), &clip.fit(line, body.width() - 8.0), theme::yellow());
         y += ROW;
     }
     let hint = trf("confirm.hint", &[&keys_for(app, &Act::Confirm), &keys_for(app, &Act::Escape)]);
-    clip.text(pos2(body.left() + 4.0, body.bottom() - ROW / 2.0), &clip.fit(&hint, body.width() - 8.0), DIM);
+    clip.text(pos2(body.left() + 4.0, body.bottom() - ROW / 2.0), &clip.fit(&hint, body.width() - 8.0), theme::dim());
 }

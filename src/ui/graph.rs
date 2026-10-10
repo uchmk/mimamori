@@ -5,7 +5,7 @@ use egui::epaint::Mesh;
 use egui::{Color32, Rect, Shape, Stroke, StrokeKind, pos2, vec2};
 
 use super::Pen;
-use crate::config::theme::{BG, LINE, ramp};
+use crate::config::theme::{self, ramp};
 use crate::model::{HISTORY, Ring};
 
 /// Where sample `k` of the minute sits across `r`; the newest is at the
@@ -46,14 +46,14 @@ pub fn line(pen: &Pen, r: Rect, data: impl ExactSizeIterator<Item = f32>, max: f
     if r.width() < 4.0 || r.height() < 4.0 {
         return;
     }
-    pen.p.rect_filled(r, 3.0, BG);
+    pen.p.rect_filled(r, 3.0, theme::bg());
     for q in 1..4 {
         let y = r.bottom() - r.height() * q as f32 / 4.0;
-        pen.p.line_segment([pos2(r.left(), y), pos2(r.right(), y)], Stroke::new(1.0, LINE.gamma_multiply(0.6)));
+        pen.p.line_segment([pos2(r.left(), y), pos2(r.right(), y)], Stroke::new(1.0, theme::line().gamma_multiply(0.6)));
     }
     let inner = r.shrink(1.0);
     trace(pen, inner, &points(inner, data, max), color);
-    pen.p.rect_stroke(r, 3.0, Stroke::new(1.0, LINE), StrokeKind::Inside);
+    pen.p.rect_stroke(r, 3.0, Stroke::new(1.0, theme::line()), StrokeKind::Inside);
 }
 
 /// A small line without the grid, for a row.
@@ -66,7 +66,7 @@ pub fn spark(pen: &Pen, r: Rect, data: impl ExactSizeIterator<Item = f32>, max: 
 
 /// A horizontal bar filled to `pct`.
 pub fn bar(pen: &Pen, r: Rect, pct: f32, color: Color32) {
-    pen.p.rect_filled(r, 2.0, LINE.gamma_multiply(0.6));
+    pen.p.rect_filled(r, 2.0, theme::line().gamma_multiply(0.6));
     let w = r.width() * (pct / 100.0).clamp(0.0, 1.0);
     if w > 0.5 {
         pen.p.rect_filled(Rect::from_min_size(r.min, vec2(w, r.height())), 2.0, color);
@@ -79,7 +79,7 @@ pub fn heatmap(pen: &Pen, r: Rect, rows: &[Ring]) {
     if rows.is_empty() || r.width() < 4.0 || r.height() < 4.0 {
         return;
     }
-    pen.p.rect_filled(r, 3.0, BG);
+    pen.p.rect_filled(r, 3.0, theme::bg());
     let h = r.height() / rows.len() as f32;
     let w = r.width() / HISTORY as f32;
     let mut mesh = Mesh::default();
@@ -92,5 +92,5 @@ pub fn heatmap(pen: &Pen, r: Rect, rows: &[Ring]) {
         }
     }
     pen.p.add(Shape::mesh(mesh));
-    pen.p.rect_stroke(r, 3.0, Stroke::new(1.0, LINE), StrokeKind::Inside);
+    pen.p.rect_stroke(r, 3.0, Stroke::new(1.0, theme::line()), StrokeKind::Inside);
 }

@@ -6,7 +6,7 @@ use egui::{Rect, pos2, vec2};
 
 use super::{Cx, GAP, Pen, graph, kv_rows, panel, row_at};
 use crate::collect::gpu::{self, Device, Fan, Kind};
-use crate::config::theme::{BLUE, CYAN, DIM, FG, GREEN, MAGENTA, ROW, ramp};
+use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
 use crate::util::fmt_bytes;
@@ -130,7 +130,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     let info = if m.gpu_read { summary(&m.gpus) } else { String::new() };
     let body = panel(&cx.pen, r, tr("gpu.devices"), &info, cx.focused(Pane::Left));
     if !m.gpu_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     }
     let devs = &m.gpus;
@@ -138,12 +138,12 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     cx.scroll_list(Pane::Left, list, devs.len(), |cx, row, i| {
         let d = &devs[i];
         let cy = row.center().y;
-        let color = if d.kind == Kind::Npu { MAGENTA } else { CYAN };
+        let color = if d.kind == Kind::Npu { theme::magenta() } else { theme::cyan() };
         let t = cx.pen.text(pos2(row.left() + 6.0, cy), &tag(devs, i), color);
-        let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &pct(d.usage), d.usage.map_or(DIM, ramp));
+        let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &pct(d.usage), d.usage.map_or(theme::dim(), ramp));
         let room = rr.left() - t.right() - cx.pen.cw * 2.0;
         let name_w = (room * 0.65).max(cx.pen.cw * 6.0);
-        cx.pen.text(pos2(t.right() + cx.pen.cw, cy), &cx.pen.fit(&name(d), name_w), FG);
+        cx.pen.text(pos2(t.right() + cx.pen.cw, cy), &cx.pen.fit(&name(d), name_w), theme::fg());
         let sr = Rect::from_min_max(
             pos2(t.right() + cx.pen.cw * 2.0 + name_w, row.top() + 4.0),
             pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0),
@@ -160,7 +160,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
             continue;
         }
         cx.pen.section(row_at(body, y), tr(title));
-        y = para(&cx.pen, body, y + ROW, tr(why.key()), DIM) + GAP;
+        y = para(&cx.pen, body, y + ROW, tr(why.key()), theme::dim()) + GAP;
     }
 }
 
@@ -169,7 +169,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let Some(d) = app.selected_gpu() else {
         let body = panel(&cx.pen, r, tr("gpu.usage"), "", cx.focused(Pane::Mid));
         if app.model.gpu_read {
-            para(&cx.pen, body, body.top(), tr("gpu.none"), DIM);
+            para(&cx.pen, body, body.top(), tr("gpu.none"), theme::dim());
         }
         return;
     };
@@ -177,10 +177,10 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let (uh, vh) = app.model.gpu_hist.get(&d.id).map_or((None, None), |(u, v)| (Some(u), Some(v)));
     let mut y = body.top();
 
-    let color = if d.kind == Kind::Npu { MAGENTA } else { BLUE };
+    let color = if d.kind == Kind::Npu { theme::magenta() } else { theme::blue() };
     match d.usage {
-        Some(u) => cx.pen.pair(row_at(body, y), tr("gpu.usage"), DIM, &format!("{u:.1}%"), ramp(u)),
-        None => cx.pen.pair(row_at(body, y), tr("gpu.usage"), DIM, "—", DIM),
+        Some(u) => cx.pen.pair(row_at(body, y), tr("gpu.usage"), theme::dim(), &format!("{u:.1}%"), ramp(u)),
+        None => cx.pen.pair(row_at(body, y), tr("gpu.usage"), theme::dim(), "—", theme::dim()),
     }
     y += ROW;
     if let (Some(u), true) = (uh, d.usage.is_some()) {
@@ -203,8 +203,8 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
             }
             let row = row_at(body, y);
             let cy = row.center().y;
-            cx.pen.text(pos2(row.left() + 6.0, cy), &cx.pen.fit(e, lw - cx.pen.cw), FG);
-            cx.pen.text_r(pos2(row.right() - 6.0, cy), &format!("{v:.0}%"), DIM);
+            cx.pen.text(pos2(row.left() + 6.0, cy), &cx.pen.fit(e, lw - cx.pen.cw), theme::fg());
+            cx.pen.text_r(pos2(row.right() - 6.0, cy), &format!("{v:.0}%"), theme::dim());
             let bar = Rect::from_min_max(pos2(row.left() + 6.0 + lw, cy - 3.0), pos2(row.right() - 6.0 - cx.pen.cw * 5.0, cy + 3.0));
             if bar.width() > 8.0 {
                 graph::bar(&cx.pen, bar, *v, color);
@@ -219,9 +219,9 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     }
     cx.pen.section(row_at(body, y), tr("gpu.memory"));
     y += ROW;
-    let mut bars = vec![(tr("gpu.dedicated"), d.vram_used, d.vram_total, GREEN)];
+    let mut bars = vec![(tr("gpu.dedicated"), d.vram_used, d.vram_total, theme::green())];
     if d.shared_total.is_some() || d.shared_used.is_some() {
-        bars.push((tr("gpu.shared"), d.shared_used, d.shared_total, MAGENTA));
+        bars.push((tr("gpu.shared"), d.shared_used, d.shared_total, theme::magenta()));
     }
     for (label, used, total, c) in bars {
         if y + ROW > body.bottom() + 0.5 {
@@ -237,7 +237,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
             (None, Some(t)) => format!("— / {}", fmt_bytes(t)),
             (None, None) => "—".to_string(),
         };
-        cx.pen.pair(row_at(body, y), label, DIM, &s, p.map_or(DIM, ramp));
+        cx.pen.pair(row_at(body, y), label, theme::dim(), &s, p.map_or(theme::dim(), ramp));
         y += ROW;
         if let Some(p) = p {
             let bar = Rect::from_min_size(pos2(body.left() + 4.0, y), vec2(body.width() - 8.0, 8.0));
@@ -253,7 +253,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     {
         cx.pen.section(row_at(body, y + GAP), &trf("ovw.history", &[tr("gpu.vram")]));
         y += GAP + ROW;
-        graph::line(&cx.pen, Rect::from_min_max(pos2(body.left(), y), body.max), v.iter(), 100.0, GREEN);
+        graph::line(&cx.pen, Rect::from_min_max(pos2(body.left(), y), body.max), v.iter(), 100.0, theme::green());
     }
 }
 
@@ -295,7 +295,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         cx.pen.section(row_at(body, y), tr("gpu.unavailable"));
         y += ROW;
         for &(f, w) in &d.why {
-            y = para(&cx.pen, body, y, &format!("{}: {}", tr(f.key()), tr(w.key())), DIM);
+            y = para(&cx.pen, body, y, &format!("{}: {}", tr(f.key()), tr(w.key())), theme::dim());
         }
     }
 
@@ -315,7 +315,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
                 "iokit" => "gpu.procs_none_iokit",
                 _ => "gpu.procs_none",
             }),
-            DIM,
+            theme::dim(),
         );
         return;
     }
@@ -324,13 +324,13 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         let cy = row.center().y;
         let mem = g.mem.map_or_else(dash, fmt_bytes);
         // Fixed columns from the right: memory, then usage.
-        cx.pen.text_r(pos2(row.right() - 6.0, cy), &mem, GREEN);
+        cx.pen.text_r(pos2(row.right() - 6.0, cy), &mem, theme::green());
         let ux = row.right() - 6.0 - cx.pen.cw * 11.0;
-        cx.pen.text_r(pos2(ux, cy), &pct(g.usage), g.usage.map_or(DIM, ramp));
-        let pr = cx.pen.text(pos2(row.left() + 6.0, cy), &g.pid.to_string(), DIM);
+        cx.pen.text_r(pos2(ux, cy), &pct(g.usage), g.usage.map_or(theme::dim(), ramp));
+        let pr = cx.pen.text(pos2(row.left() + 6.0, cy), &g.pid.to_string(), theme::dim());
         let name = app.model.procs.iter().find(|p| p.pid == g.pid).map_or("?", |p| p.name.as_str());
         let x = (row.left() + 6.0 + cx.pen.cw * 8.0).max(pr.right() + cx.pen.cw);
-        cx.pen.text(pos2(x, cy), &cx.pen.fit(name, ux - cx.pen.cw * 6.0 - x), FG);
+        cx.pen.text(pos2(x, cy), &cx.pen.fit(name, ux - cx.pen.cw * 6.0 - x), theme::fg());
     });
 }
 

@@ -121,3 +121,12 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → アイコンはコードで描き（`src/icon.rs`、4 つのコアのタイル）、窓のアイコンにも使う。`.res` は `build.rs` が Rust で書いて（`src/winres.rs`）リンカーに渡す。rc.exe も C も要らない（v0.29.0）
 - [x] CI に Linux のスモーク（filer の `smoke` と同じく lavapipe で起動して撮る）。
   → mimamori は glow（OpenGL）なので lavapipe ではなく Mesa の llvmpipe。`scripts/smoke-linux.sh` が全画面を撮って確かめ、画像を成果物に残す（v0.29.1）
+
+## 6. 設定の画面・テーマ・時計（uchmk の共通仕様）
+
+- [x] 設定の画面（Ctrl+, / macOS は Cmd+,）を tsumugi と同じレイアウトで。テーマを足し、日付と時刻を tsumugi と同じ場所（ステータスバーの右端）に。
+  テーマと時計は common.toml で共通にする（このファイルを変えれば uchmk のアプリが一括で変わる）。fleet の手引きの行をコピーできるように。
+  → 共通仕様は tsumugi の `docs/common-spec.md`。共通のクレート `tsumugi-common`（common.toml の読み書き・見張り・時計）・`tsumugi-theme`（13 のテーマ・自分のテーマ）・
+  `tsumugi-prefs`（画面の枠と部品、Language の行・CLOCK のカード・テーマのページ）を tsumugi v0.81.0 で切り出し、mimamori はその上に General・Theme・Fleet・Advanced の 4 ページ。
+  色の定数をテーマを読む関数に換え、common.toml を 2 秒ごとに見て当て直す。`y` と、手引きの水色の行・設定の Copy でコピー（v0.32.0）
+- [ ] 設定の画面・テーマ・時計の実機の確認 `【実機】`（TESTING.md 5.9〜5.14）。

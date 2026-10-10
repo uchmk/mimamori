@@ -15,7 +15,8 @@ use crate::i18n::{tr, trf};
 use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
 use crate::persist::Saver;
-use crate::remote::{Peer, client::Event, proto};
+use crate::prefs::{Prefs, Reload};
+use crate::remote::{self, Peer, client::Event, proto};
 use crate::screen::{Pane, Screen};
 use crate::svcctl::{self, Action};
 
@@ -44,6 +45,8 @@ pub enum Mode {
     Help,
     /// The question before a process is ended.
     Confirm,
+    /// The settings screen (`Ctrl+,`), across the whole window.
+    Settings,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -104,6 +107,8 @@ pub struct Out {
     pub fleet_cols: Option<usize>,
     /// A fleet card clicked (0 is this machine), and whether twice.
     pub fleet_click: Option<(usize, bool)>,
+    /// A line of the fleet's hint clicked: what it copies.
+    pub copy: Option<String>,
 }
 
 pub struct App {
@@ -172,6 +177,10 @@ pub struct App {
     pub fleet_sel: usize,
     /// Cards in a row, as last drawn.
     pub fleet_cols: usize,
+    /// The settings files and the settings screen's state.
+    pub prefs: Prefs,
+    /// Words to put on the clipboard this frame.
+    pub copy: Option<String>,
 }
 
 impl App {
@@ -226,6 +235,8 @@ impl App {
             fleet_rx: None,
             fleet_sel: 0,
             fleet_cols: 1,
+            prefs: Prefs::empty(),
+            copy: None,
         }
     }
 
@@ -266,6 +277,76 @@ impl App {
 
     pub fn toast(&mut self, s: impl Into<String>) {
         self.toast = Some((s.into(), Instant::now()));
+    }
+
+    /// Put `text` on the clipboard (in the frame) and say so.
+    pub fn copy(&mut self, text: String) {
+        self.toast(trf("toast.copied", &[text.lines().next().unwrap_or("")]));
+        self.copy = Some(text);
+    }
+
+    /// Sample every `s` seconds from now on.
+    pub fn set_interval(&mut self, s: f32) {
+        self.interval = s;
+        let _ = self.ctl.send(Ctl::Interval(Duration::from_secs_f32(s)));
+    }
+
+    pub fn open_settings(&mut self) {
+        self.mode = Mode::Settings;
+        self.pending.clear();
+    }
+
+    pub fn close_settings(&mut self) {
+        self.mode = Mode::Normal;
+    }
+
+    /// What a key does on the settings screen, from its layer of the keymap.
+    pub fn settings_act(&self, k: Key) -> Option<Act> {
+        match resolve(&self.km.settings, &[k]) {
+            Match::Exact(b) => b.run.first().copied(),
+            _ => None,
+        }
+    }
+
+    /// The language as config.toml, common.toml and the OS pick it now.
+    fn relanguage(&self) {
+        let os = tsumugi_i18n::os_language();
+        let app = self.prefs.settings.app_language.as_deref();
+        crate::i18n::set_language(&crate::i18n::resolve_language(app, self.prefs.common.language.as_deref(), os.as_deref()));
+    }
+
+    /// Fold in a settings file read again.
+    fn reload(&mut self, r: Reload) {
+        match r {
+            Reload::Common(Ok((c, w))) => {
+                self.prefs.common = c;
+                self.prefs.common_warn = w;
+                self.relanguage();
+            }
+            Reload::Common(Err(e)) => {
+                self.toast(e.clone());
+                self.prefs.common_warn = vec![e];
+            }
+            Reload::Themes(themes, w) => {
+                self.prefs.themes = themes;
+                self.prefs.theme_warn = w;
+            }
+            Reload::Settings(s) => {
+                let old = std::mem::replace(&mut self.prefs.settings, *s);
+                let interval = self.prefs.settings.interval;
+                if interval != old.interval {
+                    self.set_interval(interval);
+                }
+                if self.prefs.settings.hosts != old.hosts {
+                    let hosts = self.prefs.settings.hosts.clone();
+                    let rx = remote::client::spawn(&hosts, self.wake.clone());
+                    self.set_fleet(hosts.iter().map(Peer::new).collect(), rx);
+                    self.fleet_sel = self.fleet_sel.min(self.peers.len());
+                }
+                self.relanguage();
+            }
+            Reload::Failed(e) => self.toast(trf("toast.save_failed", &[&e])),
+        }
     }
 
     /// Fold in what the sampler sent and bring the lists up to date.
@@ -317,6 +398,9 @@ impl App {
             if self.screen == Screen::Svc {
                 let _ = self.ctl.send(Ctl::Services(true));
             }
+        }
+        while let Ok(r) = self.prefs.rx.try_recv() {
+            self.reload(r);
         }
         if let Some(rx) = &self.fleet_rx {
             while let Ok((i, e)) = rx.try_recv() {
@@ -635,6 +719,9 @@ impl App {
         if out.fleet_tab {
             self.fleet = true;
         }
+        if let Some(text) = out.copy.take() {
+            self.copy(text);
+        }
         if let Some(c) = out.fleet_cols {
             self.fleet_cols = c.max(1);
         }
@@ -744,6 +831,13 @@ impl App {
                     for a in b.run.clone() {
                         self.run_confirm(a);
                     }
+                }
+            }
+            // The window takes the keys from egui itself (`main.rs`), since
+            // the controls want the rest; this is the keys alone.
+            Mode::Settings => {
+                if let Some(Act::Escape | Act::Settings) = self.settings_act(k) {
+                    self.close_settings();
                 }
             }
             Mode::Filter => match resolve(&self.km.input, &[k]) {
@@ -881,6 +975,14 @@ impl App {
                 self.toast(trf("toast.fleet_enter_later", &[&name]));
             }
             Act::Fleet | Act::Escape => self.fleet = false,
+            Act::Copy => match self.selected_peer() {
+                None if self.peers.is_empty() => self.copy(remote::host_sample()),
+                None => self.toast(tr("toast.copy_none")),
+                Some(p) => {
+                    let addr = p.addr.clone();
+                    self.copy(addr);
+                }
+            },
             Act::Kill | Act::Service(_) => {
                 let what = if a == Act::Kill { "kill" } else { "service" };
                 let t = match self.selected_peer() {
@@ -1012,14 +1114,15 @@ impl App {
             Act::Interval(d) => {
                 let cur = INTERVALS.iter().position(|&i| i >= self.interval).unwrap_or(INTERVALS.len() - 1) as i32;
                 let i = (cur + d).clamp(0, INTERVALS.len() as i32 - 1) as usize;
-                self.interval = INTERVALS[i];
-                let _ = self.ctl.send(Ctl::Interval(Duration::from_secs_f32(self.interval)));
+                self.set_interval(INTERVALS[i]);
                 self.toast(trf("toast.interval", &[&fmt_interval(self.interval)]));
             }
             Act::Help => {
                 self.mode = Mode::Help;
                 self.help_scroll = 0;
             }
+            Act::Settings => self.open_settings(),
+            Act::Copy => self.toast(tr("toast.copy_none")),
             Act::Quit => self.quit = true,
             Act::Escape => {
                 let nic = self.screen == Screen::Net && self.net_nic.take().is_some();
@@ -1176,6 +1279,9 @@ impl App {
             s += &format!("fleet: sel {} of {}; {}\n", self.fleet_sel, self.peers.len() + 1, hosts.join(" "));
         }
         s += &format!("mode: {:?}\n", self.mode);
+        if self.mode == Mode::Settings {
+            s += &format!("settings: page {}, theme {}\n", self.prefs.state.page, self.prefs.common.theme_choice(None).0);
+        }
         s += &format!("focus: {}\n", self.focus().name());
         s += &format!("sel: {:?}\n", v.sel);
         s += &format!("filter: {}\n", self.filter);
@@ -1406,6 +1512,45 @@ mod tests {
         keys(&mut a, "u t");
         assert!(!a.mine_only() && !a.tree && a.tree_lines.is_empty());
         assert_eq!(a.rows.len(), 5);
+    }
+
+    #[test]
+    fn the_settings_key_opens_the_screen_and_esc_closes_it() {
+        let (mut a, _tx, _ctl) = app();
+        // Ctrl+, (Cmd+, on macOS): whatever the keymap binds.
+        let open = a.keymap().main.iter().find(|b| b.run == [Act::Settings]).map(|b| b.on[0]).unwrap();
+        a.feed(open);
+        assert_eq!(a.mode, Mode::Settings);
+        // Only the settings layer is looked at: a screen key does nothing.
+        keys(&mut a, "3 q");
+        assert_eq!((a.mode, a.screen, a.quit), (Mode::Settings, Screen::Ovw, false));
+        keys(&mut a, "<Esc>");
+        assert_eq!(a.mode, Mode::Normal);
+        a.feed(open);
+        a.feed(open);
+        assert_eq!(a.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn y_copies_the_sample_or_the_cards_address() {
+        use crate::config::settings::Host;
+        let (mut a, _tx, _ctl) = app();
+        keys(&mut a, "y");
+        assert!(a.copy.is_none());
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.copy_none")));
+        // No [[host]] yet: the sample to paste into config.toml.
+        keys(&mut a, "F y");
+        assert_eq!(a.copy.take(), Some(remote::host_sample()));
+        let (_ftx, frx) = crossbeam_channel::unbounded();
+        a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into() })], frx);
+        keys(&mut a, "y");
+        assert!(a.copy.is_none());
+        keys(&mut a, "l y");
+        assert_eq!(a.copy.take().as_deref(), Some("localhost:7314"));
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.copied", &["localhost:7314"])));
+        // A line clicked in the fleet's hint.
+        a.apply_out(Out { copy: Some("mimamori --agent".into()), ..Out::default() }, &egui::Context::default());
+        assert_eq!(a.copy.as_deref(), Some("mimamori --agent"));
     }
 
     #[test]

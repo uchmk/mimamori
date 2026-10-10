@@ -7,7 +7,7 @@ use egui::{Color32, Rect, pos2, vec2};
 use super::tiles::{tiles, tiles_height};
 use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at};
 use crate::app::{App, OVW_TOP};
-use crate::config::theme::{BLUE, DIM, FG, GREEN, MAGENTA, ROW, ramp};
+use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::model::Ring;
 use crate::screen::Pane;
@@ -19,9 +19,9 @@ fn gauges(app: &App) -> [(&'static str, f32, Color32, &Ring); 3] {
     let m = &app.model;
     let swap = m.swap_hist.last().unwrap_or(0.0);
     [
-        (tr("ovw.cpu"), m.total, BLUE, &m.cpu_hist),
-        (tr("ovw.mem"), m.mem_pct(), GREEN, &m.mem_hist),
-        (tr("ovw.swap"), swap, MAGENTA, &m.swap_hist),
+        (tr("ovw.cpu"), m.total, theme::blue(), &m.cpu_hist),
+        (tr("ovw.mem"), m.mem_pct(), theme::green(), &m.mem_hist),
+        (tr("ovw.swap"), swap, theme::magenta(), &m.swap_hist),
     ]
 }
 
@@ -41,7 +41,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         let row = row_at(body, y);
         cx.row_bg(Pane::Left, i, row);
         let cy = row.center().y;
-        cx.pen.text(pos2(row.left() + 6.0, cy), label, FG);
+        cx.pen.text(pos2(row.left() + 6.0, cy), label, theme::fg());
         cx.pen.text_r(pos2(row.right() - 6.0, cy), &format!("{pct:.0}%"), ramp(pct));
         let bar = Rect::from_min_max(pos2(row.left() + 6.0 + lw, cy - 3.0), pos2(row.right() - 6.0 - cx.pen.cw * 5.0, cy + 3.0));
         if bar.width() > 8.0 {
@@ -100,7 +100,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         for (k, (label, pct, color, ring)) in others.into_iter().enumerate() {
             let x = body.left() + k as f32 * (w + GAP);
             let head = Rect::from_min_size(pos2(x, top), vec2(w, ROW));
-            cx.pen.pair(head, label, DIM, &format!("{pct:.0}%"), ramp(*pct));
+            cx.pen.pair(head, label, theme::dim(), &format!("{pct:.0}%"), ramp(*pct));
             let gr = Rect::from_min_max(pos2(x, head.bottom()), pos2(x + w, body.bottom()));
             graph::line(&cx.pen, gr, ring.iter(), 100.0, *color);
         }
@@ -130,9 +130,9 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         let row = row_at(body, y);
         cx.row_bg(Pane::Right, i, row);
         if i < n_cpu {
-            cx.pen.pair(row, &p.name, FG, &format!("{:.1}%", p.cpu), ramp(p.cpu));
+            cx.pen.pair(row, &p.name, theme::fg(), &format!("{:.1}%", p.cpu), ramp(p.cpu));
         } else {
-            cx.pen.pair(row, &p.name, FG, &fmt_bytes(p.mem), GREEN);
+            cx.pen.pair(row, &p.name, theme::fg(), &fmt_bytes(p.mem), theme::green());
         }
         y += ROW;
     }

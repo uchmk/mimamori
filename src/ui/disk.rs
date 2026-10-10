@@ -7,7 +7,7 @@ use egui::{Color32, Rect, pos2, vec2};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
 use crate::collect::disk::{Drive, Health, Smart, Temp, Volume};
-use crate::config::theme::{CYAN, DIM, FG, GREEN, MAGENTA, RED, ROW, YELLOW};
+use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
 use crate::util::fmt_bytes;
@@ -28,11 +28,11 @@ fn rate(b: f64) -> String {
 /// Green, then yellow over three quarters, red over nine tenths.
 fn fill_color(pct: f32) -> Color32 {
     if pct >= 90.0 {
-        RED
+        theme::red()
     } else if pct >= 75.0 {
-        YELLOW
+        theme::yellow()
     } else {
-        GREEN
+        theme::green()
     }
 }
 
@@ -43,7 +43,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     let info = if m.disk_read { trf("disk.drive_count", &[&d.drives.len().to_string()]) } else { String::new() };
     let body = panel(&cx.pen, r, tr("disk.drives"), &info, cx.focused(Pane::Left));
     if !m.disk_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     }
     let drives = &d.drives;
@@ -51,15 +51,15 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     cx.scroll_list(Pane::Left, list, drives.len(), |cx, row, i| {
         let x = &drives[i];
         let cy = row.center().y;
-        let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &rate(x.read_rate + x.write_rate), CYAN);
+        let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &rate(x.read_rate + x.write_rate), theme::cyan());
         let room = rr.left() - row.left() - 6.0 - cx.pen.cw * 2.0;
         let name = cx.pen.fit(&x.name, (room * 0.5).max(cx.pen.cw * 6.0));
-        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, if x.health == Some(Health::Failing) { RED } else { FG });
+        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, if x.health == Some(Health::Failing) { theme::red() } else { theme::fg() });
         let sr = Rect::from_min_max(pos2(t.right() + cx.pen.cw, row.top() + 4.0), pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0));
         if let Some((rd, wr, _)) = m.drive_hist.get(&x.id) {
             let max = rd.max().max(wr.max()).max(FLOOR);
-            graph::spark(&cx.pen, sr, wr.iter(), max, MAGENTA);
-            graph::spark(&cx.pen, sr, rd.iter(), max, CYAN);
+            graph::spark(&cx.pen, sr, wr.iter(), max, theme::magenta());
+            graph::spark(&cx.pen, sr, rd.iter(), max, theme::cyan());
         }
     });
     // The whole machine, and why the drive list may be short.
@@ -80,7 +80,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     ];
     y = kv_rows(&cx.pen, body, y, &rows) + GAP;
     if let Some(n) = d.note {
-        para(&cx.pen, body, y, tr(n.key()), if drives.is_empty() { YELLOW } else { DIM });
+        para(&cx.pen, body, y, tr(n.key()), if drives.is_empty() { theme::yellow() } else { theme::dim() });
     }
 }
 
@@ -152,15 +152,15 @@ fn head(c: Col) -> &'static str {
 
 fn cell(v: &Volume, col: Col) -> (String, Color32) {
     match col {
-        Col::Mount => (v.mount.clone(), FG),
-        Col::Name => (v.name.clone(), DIM),
-        Col::Fs => (v.fs.clone(), DIM),
-        Col::Size => (fmt_bytes(v.total), FG),
-        Col::Used => (fmt_bytes(v.used()), FG),
-        Col::Free => (fmt_bytes(v.avail), FG),
-        Col::Pct => v.use_pct().map_or(("—".to_string(), DIM), |p| (format!("{p:.0}%"), fill_color(p))),
-        Col::Read => (rate(v.read_rate), if v.read_rate > 0.0 { CYAN } else { DIM }),
-        Col::Write => (rate(v.write_rate), if v.write_rate > 0.0 { MAGENTA } else { DIM }),
+        Col::Mount => (v.mount.clone(), theme::fg()),
+        Col::Name => (v.name.clone(), theme::dim()),
+        Col::Fs => (v.fs.clone(), theme::dim()),
+        Col::Size => (fmt_bytes(v.total), theme::fg()),
+        Col::Used => (fmt_bytes(v.used()), theme::fg()),
+        Col::Free => (fmt_bytes(v.avail), theme::fg()),
+        Col::Pct => v.use_pct().map_or(("—".to_string(), theme::dim()), |p| (format!("{p:.0}%"), fill_color(p))),
+        Col::Read => (rate(v.read_rate), if v.read_rate > 0.0 { theme::cyan() } else { theme::dim() }),
+        Col::Write => (rate(v.write_rate), if v.write_rate > 0.0 { theme::magenta() } else { theme::dim() }),
     }
 }
 
@@ -171,7 +171,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let info = if m.disk_read { trf("disk.vol_count", &[&vols.len().to_string()]) } else { String::new() };
     let body = panel(&cx.pen, r, tr("disk.volumes"), &info, cx.focused(Pane::Mid));
     if !m.disk_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     }
     let cols = columns(body.width() - 12.0, cx.pen.cw);
@@ -180,14 +180,14 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     for &(c, x, w, right) in &cols {
         let label = cx.pen.fit(head(c), w);
         if right {
-            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, DIM);
+            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, theme::dim());
         } else {
-            cx.pen.text(pos2(x0 + x, h.center().y), &label, DIM);
+            cx.pen.text(pos2(x0 + x, h.center().y), &label, theme::dim());
         }
     }
     let list = Rect::from_min_max(pos2(body.left(), h.bottom()), body.max);
     if vols.is_empty() {
-        para(&cx.pen, list, list.top(), tr("disk.no_volume"), DIM);
+        para(&cx.pen, list, list.top(), tr("disk.no_volume"), theme::dim());
         return;
     }
     cx.scroll_list(Pane::Mid, list, vols.len(), |cx, row, i| {
@@ -208,9 +208,9 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
 /// The health row: what SMART says, or why it says nothing.
 fn health(d: &Drive) -> (String, Color32) {
     match (d.health, d.why) {
-        (Some(h), _) => (tr(h.key()).to_string(), if h == Health::Failing { RED } else { GREEN }),
-        (None, Some(w)) => (tr(w.key()).to_string(), DIM),
-        (None, None) => ("—".to_string(), DIM),
+        (Some(h), _) => (tr(h.key()).to_string(), if h == Health::Failing { theme::red() } else { theme::green() }),
+        (None, Some(w)) => (tr(w.key()).to_string(), theme::dim()),
+        (None, None) => ("—".to_string(), theme::dim()),
     }
 }
 
@@ -223,11 +223,11 @@ fn temp_row(t: &Temp) -> (String, Color32) {
         None => now,
     };
     let color = if t.crit.is_some_and(|c| t.value >= c) {
-        RED
+        theme::red()
     } else if t.high.is_some_and(|h| t.value >= h) {
-        YELLOW
+        theme::yellow()
     } else {
-        FG
+        theme::fg()
     };
     (text, color)
 }
@@ -252,29 +252,29 @@ fn smart_rows(s: &Smart) -> Vec<(&'static str, String, Color32)> {
     let mut rows = Vec::new();
     if let Some(p) = s.life_used {
         let color = if p >= 100 {
-            RED
+            theme::red()
         } else if p >= 80 {
-            YELLOW
+            theme::yellow()
         } else {
-            FG
+            theme::fg()
         };
         rows.push((tr("disk.life_used"), format!("{p}%"), color));
     }
     if let Some(h) = s.power_on_hours {
-        rows.push((tr("disk.power_on"), trf("disk.hours", &[&group(h), &group(h / 24)]), FG));
+        rows.push((tr("disk.power_on"), trf("disk.hours", &[&group(h), &group(h / 24)]), theme::fg()));
     }
     if let Some(b) = s.written {
-        rows.push((tr("disk.lifetime_writes"), fmt_bytes(b), FG));
+        rows.push((tr("disk.lifetime_writes"), fmt_bytes(b), theme::fg()));
     }
     for (key, n) in [("disk.remapped", s.remapped), ("disk.pending", s.pending), ("disk.media_errors", s.media_errors)] {
         if let Some(n) = n {
-            rows.push((tr(key), group(n), if n > 0 { YELLOW } else { FG }));
+            rows.push((tr(key), group(n), if n > 0 { theme::yellow() } else { theme::fg() }));
         }
     }
     if rows.is_empty()
         && let Some(w) = s.why
     {
-        rows.push((tr("disk.smart_counts"), tr(w.key()).to_string(), DIM));
+        rows.push((tr("disk.smart_counts"), tr(w.key()).to_string(), theme::dim()));
     }
     rows
 }
@@ -328,7 +328,7 @@ fn graphs(cx: &Cx, body: Rect, mut y: f32, list: &[(&str, String, &crate::model:
         if y + ROW + h > body.bottom() {
             break;
         }
-        cx.pen.pair(row_at(body, y), label, DIM, now, *color);
+        cx.pen.pair(row_at(body, y), label, theme::dim(), now, *color);
         y += ROW;
         graph::line(&cx.pen, Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), h)), ring.iter(), *max, *color);
         y += h + GAP;
@@ -348,31 +348,31 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         // Each way on its own scale, so quiet writes are not flattened by reads.
         if let Some((rd, wr, busy)) = m.drive_hist.get(&d.id) {
             let mut list = vec![
-                (tr("disk.read"), rate(d.read_rate), rd, rd.max().max(FLOOR), CYAN),
-                (tr("disk.write"), rate(d.write_rate), wr, wr.max().max(FLOOR), MAGENTA),
+                (tr("disk.read"), rate(d.read_rate), rd, rd.max().max(FLOOR), theme::cyan()),
+                (tr("disk.write"), rate(d.write_rate), wr, wr.max().max(FLOOR), theme::magenta()),
             ];
             if let Some(b) = d.busy {
-                list.push((tr("disk.busy"), format!("{b:.0}%"), busy, 100.0, YELLOW));
+                list.push((tr("disk.busy"), format!("{b:.0}%"), busy, 100.0, theme::yellow()));
             }
             y = graphs(cx, body, y, &list);
         }
         if y + ROW <= body.bottom() {
             let (text, color) = health(d);
-            cx.pen.pair(row_at(body, y), tr("disk.health_key"), DIM, &text, color);
+            cx.pen.pair(row_at(body, y), tr("disk.health_key"), theme::dim(), &text, color);
             y += ROW;
         }
         if let Some(t) = &d.temp
             && y + ROW <= body.bottom()
         {
             let (text, color) = temp_row(t);
-            cx.pen.pair(row_at(body, y), tr("disk.temp"), DIM, &text, color);
+            cx.pen.pair(row_at(body, y), tr("disk.temp"), theme::dim(), &text, color);
             y += ROW;
         }
         for (label, text, color) in smart_rows(&d.smart) {
             if y + ROW > body.bottom() {
                 break;
             }
-            cx.pen.pair(row_at(body, y), label, DIM, &text, color);
+            cx.pen.pair(row_at(body, y), label, theme::dim(), &text, color);
             y += ROW;
         }
         y = kv_rows(&cx.pen, body, y, &drive_rows(d)) + GAP;
@@ -382,15 +382,15 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         y = body.top();
         if let Some((rd, wr)) = m.vol_hist.get(&v.mount) {
             let list = [
-                (tr("disk.read"), rate(v.read_rate), rd, rd.max().max(FLOOR), CYAN),
-                (tr("disk.write"), rate(v.write_rate), wr, wr.max().max(FLOOR), MAGENTA),
+                (tr("disk.read"), rate(v.read_rate), rd, rd.max().max(FLOOR), theme::cyan()),
+                (tr("disk.write"), rate(v.write_rate), wr, wr.max().max(FLOOR), theme::magenta()),
             ];
             y = graphs(cx, body, y, &list);
         }
     } else {
         let body = panel(&cx.pen, r, tr("disk.detail"), "", cx.focused(Pane::Right));
         if m.disk_read {
-            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("disk.none"), DIM);
+            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("disk.none"), theme::dim());
         }
         return;
     }
@@ -433,14 +433,14 @@ mod tests {
     #[test]
     fn health_and_temperature_rows_say_how_worried_to_be() {
         let d = |health, why| Drive { health, why, ..Drive::default() };
-        assert_eq!(health(&d(Some(Health::Good), None)), (tr("disk.health.good").to_string(), GREEN));
-        assert_eq!(health(&d(Some(Health::Failing), None)).1, RED);
-        assert_eq!(health(&d(None, Some(crate::collect::disk::Why::NeedsRoot))), (tr("disk.why.needs_root").to_string(), DIM));
+        assert_eq!(health(&d(Some(Health::Good), None)), (tr("disk.health.good").to_string(), theme::green()));
+        assert_eq!(health(&d(Some(Health::Failing), None)).1, theme::red());
+        assert_eq!(health(&d(None, Some(crate::collect::disk::Why::NeedsRoot))), (tr("disk.why.needs_root").to_string(), theme::dim()));
         let t = |value, high, crit| Temp { value, high, crit, ..Temp::default() };
-        assert_eq!(temp_row(&t(38.0, None, None)), ("38°C".to_string(), FG));
-        assert_eq!(temp_row(&t(38.0, Some(70.0), Some(80.0))), (trf("disk.temp_mark", &["38°C", "70°C"]), FG));
-        assert_eq!(temp_row(&t(72.0, Some(70.0), Some(80.0))).1, YELLOW);
-        assert_eq!(temp_row(&t(85.0, None, Some(80.0))), (trf("disk.temp_mark", &["85°C", "80°C"]), RED));
+        assert_eq!(temp_row(&t(38.0, None, None)), ("38°C".to_string(), theme::fg()));
+        assert_eq!(temp_row(&t(38.0, Some(70.0), Some(80.0))), (trf("disk.temp_mark", &["38°C", "70°C"]), theme::fg()));
+        assert_eq!(temp_row(&t(72.0, Some(70.0), Some(80.0))).1, theme::yellow());
+        assert_eq!(temp_row(&t(85.0, None, Some(80.0))), (trf("disk.temp_mark", &["85°C", "80°C"]), theme::red()));
     }
 
     #[test]
@@ -450,22 +450,25 @@ mod tests {
         let s = Smart { life_used: Some(3), power_on_hours: Some(5678), written: Some(1 << 40), media_errors: Some(0), ..Smart::default() };
         let rows = smart_rows(&s);
         assert_eq!(rows.len(), 4);
-        assert_eq!(rows[0], (tr("disk.life_used"), "3%".to_string(), FG));
-        assert_eq!(rows[1], (tr("disk.power_on"), trf("disk.hours", &["5,678", "236"]), FG));
-        assert_eq!(rows[2], (tr("disk.lifetime_writes"), fmt_bytes(1 << 40), FG));
-        assert_eq!(rows[3], (tr("disk.media_errors"), "0".to_string(), FG));
+        assert_eq!(rows[0], (tr("disk.life_used"), "3%".to_string(), theme::fg()));
+        assert_eq!(rows[1], (tr("disk.power_on"), trf("disk.hours", &["5,678", "236"]), theme::fg()));
+        assert_eq!(rows[2], (tr("disk.lifetime_writes"), fmt_bytes(1 << 40), theme::fg()));
+        assert_eq!(rows[3], (tr("disk.media_errors"), "0".to_string(), theme::fg()));
         let worn = |p| smart_rows(&Smart { life_used: Some(p), ..Smart::default() })[0].2;
-        assert_eq!((worn(79), worn(80), worn(100), worn(255)), (FG, YELLOW, RED, RED));
+        assert_eq!((worn(79), worn(80), worn(100), worn(255)), (theme::fg(), theme::yellow(), theme::red(), theme::red()));
         let s = Smart { remapped: Some(8), pending: Some(1), ..Smart::default() };
-        assert_eq!(smart_rows(&s), [(tr("disk.remapped"), "8".to_string(), YELLOW), (tr("disk.pending"), "1".to_string(), YELLOW)]);
+        assert_eq!(
+            smart_rows(&s),
+            [(tr("disk.remapped"), "8".to_string(), theme::yellow()), (tr("disk.pending"), "1".to_string(), theme::yellow())]
+        );
         let s = Smart { why: Some(Why::NeedsAdmin), ..Smart::default() };
-        assert_eq!(smart_rows(&s), [(tr("disk.smart_counts"), tr("disk.why.needs_admin").to_string(), DIM)]);
+        assert_eq!(smart_rows(&s), [(tr("disk.smart_counts"), tr("disk.why.needs_admin").to_string(), theme::dim())]);
     }
 
     #[test]
     fn fuller_volumes_turn_yellow_then_red() {
-        assert_eq!(fill_color(10.0), GREEN);
-        assert_eq!(fill_color(80.0), YELLOW);
-        assert_eq!(fill_color(95.0), RED);
+        assert_eq!(fill_color(10.0), theme::green());
+        assert_eq!(fill_color(80.0), theme::yellow());
+        assert_eq!(fill_color(95.0), theme::red());
     }
 }

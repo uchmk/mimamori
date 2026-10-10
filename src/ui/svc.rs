@@ -9,7 +9,7 @@ use egui::{Color32, Rect, pos2};
 use super::{Cx, GAP, gpu::para, kv_rows, panel, row_at};
 use crate::app::App;
 use crate::collect::svc::{Service, Start, State};
-use crate::config::theme::{BLUE, CYAN, DIM, FG, GREEN, RED, ROW, YELLOW};
+use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
 
@@ -21,11 +21,11 @@ pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
 
 pub fn color(s: State) -> Color32 {
     match s {
-        State::Running => GREEN,
-        State::Starting | State::Stopping => YELLOW,
-        State::Paused => BLUE,
-        State::Failed => RED,
-        State::Stopped | State::Unknown => DIM,
+        State::Running => theme::green(),
+        State::Starting | State::Stopping => theme::yellow(),
+        State::Paused => theme::blue(),
+        State::Failed => theme::red(),
+        State::Stopped | State::Unknown => theme::dim(),
     }
 }
 
@@ -45,7 +45,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         let row = row_at(body, y);
         cx.row_bg(Pane::Left, i, row);
         let n = if m.svc_read { app.count_svc(st).to_string() } else { String::new() };
-        cx.pen.pair(row, show_label(st), st.map_or(FG, color), &n, DIM);
+        cx.pen.pair(row, show_label(st), st.map_or(theme::fg(), color), &n, theme::dim());
         y += ROW;
     }
     if !m.svc_read {
@@ -64,7 +64,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     ];
     y = kv_rows(&cx.pen, body, y, &rows) + GAP;
     if let Some(n) = m.services.note {
-        para(&cx.pen, body, y, tr(n.key()), YELLOW);
+        para(&cx.pen, body, y, tr(n.key()), theme::yellow());
     }
 }
 
@@ -112,9 +112,9 @@ fn head(c: Col) -> &'static str {
 fn cell(s: &Service, c: Col) -> (String, Color32) {
     match c {
         Col::State => (tr(s.state.key()).to_string(), color(s.state)),
-        Col::Name => (s.name.clone(), FG),
-        Col::Start => (tr(s.start.key()).to_string(), if s.start == Start::Disabled { DIM } else { CYAN }),
-        Col::Pid => (s.pid.map_or_else(String::new, |p| p.to_string()), DIM),
+        Col::Name => (s.name.clone(), theme::fg()),
+        Col::Start => (tr(s.start.key()).to_string(), if s.start == Start::Disabled { theme::dim() } else { theme::cyan() }),
+        Col::Pid => (s.pid.map_or_else(String::new, |p| p.to_string()), theme::dim()),
     }
 }
 
@@ -123,7 +123,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let info = if app.model.svc_read { trf("svc.count", &[&app.svc_rows.len().to_string()]) } else { String::new() };
     let body = panel(&cx.pen, r, tr("svc.title"), &info, cx.focused(Pane::Mid));
     if !app.model.svc_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     }
     let cols = columns(body.width() - 12.0, cx.pen.cw);
@@ -132,14 +132,14 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     for &(c, x, w, right) in &cols {
         let label = cx.pen.fit(head(c), w);
         if right {
-            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, DIM);
+            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, theme::dim());
         } else {
-            cx.pen.text(pos2(x0 + x, h.center().y), &label, DIM);
+            cx.pen.text(pos2(x0 + x, h.center().y), &label, theme::dim());
         }
     }
     let list = Rect::from_min_max(pos2(body.left(), h.bottom()), body.max);
     if app.svc_rows.is_empty() {
-        cx.pen.text(pos2(body.left() + 6.0, list.top() + ROW / 2.0), tr("svc.empty"), DIM);
+        cx.pen.text(pos2(body.left() + 6.0, list.top() + ROW / 2.0), tr("svc.empty"), theme::dim());
         return;
     }
     cx.scroll_list(Pane::Mid, list, app.svc_rows.len(), |cx, row, i| {
@@ -162,7 +162,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     let Some(s) = app.selected_svc() else {
         let body = panel(&cx.pen, r, tr("svc.detail"), "", cx.focused(Pane::Right));
         if app.model.svc_read {
-            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("svc.none"), DIM);
+            cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("svc.none"), theme::dim());
         }
         return;
     };
@@ -184,9 +184,9 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     ];
     let mut y = kv_rows(&cx.pen, body, body.top(), &rows) + GAP;
     if s.pid.is_some() {
-        y = para(&cx.pen, body, y, tr("svc.hint"), DIM);
+        y = para(&cx.pen, body, y, tr("svc.hint"), theme::dim());
     }
-    para(&cx.pen, body, y, tr("svc.control"), DIM);
+    para(&cx.pen, body, y, tr("svc.control"), theme::dim());
 }
 
 #[cfg(test)]

@@ -7,11 +7,11 @@
 //! every size, with no image decoder and no file to keep in step. `build.rs`
 //! includes this file as it is, so it uses nothing but `std`.
 
-/// The panel and its edge: the theme's `BG` and `LINE`.
+/// The panel and its edge: tsumugi Dark's `bg` and `border`.
 const BG: [u8; 3] = [0x16, 0x18, 0x1d];
 const EDGE: [u8; 3] = [0x2c, 0x30, 0x39];
-/// A tile's empty part: the theme's `BAR`.
-const EMPTY: [u8; 3] = [0x20, 0x23, 0x2b];
+/// A tile's empty part: `theme::bar_of` in tsumugi Dark.
+const EMPTY: [u8; 3] = [0x20, 0x23, 0x2a];
 
 /// The tiles, left to right and top to bottom: the load each is filled to
 /// and its colour on the ramp (cyan, blue, yellow, cyan).
@@ -100,11 +100,14 @@ mod tests {
 
     #[test]
     fn the_colours_are_the_themes() {
-        assert_eq!(BG, rgb(theme::BG));
-        assert_eq!(EDGE, rgb(theme::LINE));
-        assert_eq!(EMPTY, rgb(theme::BAR));
+        let dark = tsumugi_theme::builtin()[0].colors;
+        assert_eq!(BG, rgb(dark.bg));
+        assert_eq!(EDGE, rgb(dark.border));
+        assert_eq!(EMPTY, rgb(theme::bar_of(&dark)));
+        let ramp = [(0.0, dark.blue), (0.3, dark.run), (0.7, dark.wait), (0.9, dark.err)];
         for (load, fill) in TILES {
-            assert_eq!(fill, rgb(theme::ramp(load * 100.0)), "{load}");
+            let want = ramp.iter().rev().find(|(at, _)| load >= *at).unwrap().1;
+            assert_eq!(fill, rgb(want), "{load}");
         }
     }
 

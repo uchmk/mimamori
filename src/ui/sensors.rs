@@ -8,7 +8,7 @@ use egui::{Color32, Rect, Stroke, pos2, vec2};
 
 use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
 use crate::collect::sensors::{Kind, Sensor, Sensors};
-use crate::config::theme::{CYAN, DIM, FG, GREEN, RED, ROW, YELLOW};
+use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::model::Ring;
 use crate::screen::Pane;
@@ -27,11 +27,11 @@ pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
 fn heat(v: f32, high: Option<f32>, crit: Option<f32>) -> Color32 {
     let limit = high.or(crit).unwrap_or(HOT);
     if crit.is_some_and(|c| v >= c) || v >= limit {
-        RED
+        theme::red()
     } else if v >= limit - 10.0 {
-        YELLOW
+        theme::yellow()
     } else {
-        GREEN
+        theme::green()
     }
 }
 
@@ -40,9 +40,9 @@ fn heat(v: f32, high: Option<f32>, crit: Option<f32>) -> Color32 {
 fn color(s: &Sensor) -> Color32 {
     match s.kind {
         Kind::Temp => heat(s.value, s.high, s.crit),
-        _ if s.value <= 0.0 => DIM,
-        Kind::Fan if s.min.is_some_and(|m| s.value < m) => RED,
-        _ => CYAN,
+        _ if s.value <= 0.0 => theme::dim(),
+        Kind::Fan if s.min.is_some_and(|m| s.value < m) => theme::red(),
+        _ => theme::cyan(),
     }
 }
 
@@ -70,7 +70,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     let info = if m.sensor_read { trf("sensors.chip_count", &[&chips.len().to_string()]) } else { String::new() };
     let body = panel(&cx.pen, r, tr("sensors.chips"), &info, cx.focused(Pane::Left));
     if !m.sensor_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     }
     let list = Rect::from_min_size(body.min, vec2(body.width(), (chips.len() as f32 * ROW).min(body.height())));
@@ -81,7 +81,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &x.kind.show(x.value), color(x));
         let room = rr.left() - row.left() - 6.0 - cx.pen.cw * 2.0;
         let name = cx.pen.fit(c.name, (room * 0.6).max(cx.pen.cw * 6.0));
-        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, FG);
+        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, theme::fg());
         let sr = Rect::from_min_max(pos2(t.right() + cx.pen.cw, row.top() + 4.0), pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0));
         if let Some(ring) = m.sensor_hist.get(&x.id) {
             graph::spark(&cx.pen, sr, ring.iter(), scale(x, ring), color(x));
@@ -96,7 +96,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     y += ROW;
     y = kv_rows(&cx.pen, body, y, &summary(s)) + GAP;
     if let Some(n) = s.note {
-        para(&cx.pen, body, y, tr(n.key()), if s.list.is_empty() { YELLOW } else { DIM });
+        para(&cx.pen, body, y, tr(n.key()), if s.list.is_empty() { theme::yellow() } else { theme::dim() });
     }
 }
 
@@ -172,16 +172,16 @@ fn head(c: Col) -> &'static str {
 
 /// `first`: the first sensor of its chip, which alone names the chip.
 fn cell(s: &Sensor, ring: Option<&Ring>, first: bool, col: Col) -> (String, Color32) {
-    let dash = || ("—".to_string(), DIM);
+    let dash = || ("—".to_string(), theme::dim());
     let opt = |v: Option<f32>, c: Color32| v.map_or_else(dash, |v| (s.kind.show(v), c));
     match col {
-        Col::Chip => (if first { s.chip.clone() } else { String::new() }, DIM),
-        Col::Label => (s.label.clone(), FG),
+        Col::Chip => (if first { s.chip.clone() } else { String::new() }, theme::dim()),
+        Col::Label => (s.label.clone(), theme::fg()),
         Col::Now => (s.kind.show(s.value), color(s)),
-        Col::Low => opt(ring.map(Ring::min), DIM),
-        Col::High => opt(ring.map(Ring::max), DIM),
-        Col::Limit => opt(s.high, DIM),
-        Col::Crit => opt(s.crit, DIM),
+        Col::Low => opt(ring.map(Ring::min), theme::dim()),
+        Col::High => opt(ring.map(Ring::max), theme::dim()),
+        Col::Limit => opt(s.high, theme::dim()),
+        Col::Crit => opt(s.crit, theme::dim()),
     }
 }
 
@@ -192,7 +192,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let info = if m.sensor_read { trf("sensors.sensor_count", &[&list.len().to_string()]) } else { String::new() };
     let body = panel(&cx.pen, r, tr("sensors.sensors"), &info, cx.focused(Pane::Mid));
     if !m.sensor_read {
-        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), DIM);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), tr("misc.reading"), theme::dim());
         return;
     }
     let cols = columns(body.width() - 12.0, cx.pen.cw);
@@ -201,14 +201,14 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     for &(c, x, w, right) in &cols {
         let label = cx.pen.fit(head(c), w);
         if right {
-            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, DIM);
+            cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, theme::dim());
         } else {
-            cx.pen.text(pos2(x0 + x, h.center().y), &label, DIM);
+            cx.pen.text(pos2(x0 + x, h.center().y), &label, theme::dim());
         }
     }
     let rows = Rect::from_min_max(pos2(body.left(), h.bottom()), body.max);
     if list.is_empty() {
-        para(&cx.pen, rows, rows.top(), tr("sensors.empty"), DIM);
+        para(&cx.pen, rows, rows.top(), tr("sensors.empty"), theme::dim());
         return;
     }
     cx.scroll_list(Pane::Mid, rows, list.len(), |cx, row, i| {
@@ -263,9 +263,9 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     let Some(s) = app.selected_sensor() else {
         let body = panel(&cx.pen, r, tr("sensors.detail"), "", cx.focused(Pane::Right));
         if m.sensor_read {
-            let y = para(&cx.pen, body, body.top(), tr("sensors.none"), DIM) + GAP;
+            let y = para(&cx.pen, body, body.top(), tr("sensors.none"), theme::dim()) + GAP;
             if let Some(n) = m.sensors.note {
-                para(&cx.pen, body, y, tr(n.key()), YELLOW);
+                para(&cx.pen, body, y, tr(n.key()), theme::yellow());
             }
         }
         return;
@@ -276,16 +276,16 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     if let Some(ring) = ring {
         let h = (body.height() * 0.3).clamp(40.0, 160.0);
         if y + ROW + h <= body.bottom() {
-            cx.pen.pair(row_at(body, y), tr(s.kind.key()), DIM, &s.kind.show(s.value), color(s));
+            cx.pen.pair(row_at(body, y), tr(s.kind.key()), theme::dim(), &s.kind.show(s.value), color(s));
             y += ROW;
             let g = Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), h));
             let max = scale(s, ring);
             graph::line(&cx.pen, g, ring.iter(), max, color(s));
             if s.kind == Kind::Temp {
-                mark(cx, g, s.high, max, YELLOW);
-                mark(cx, g, s.crit, max, RED);
+                mark(cx, g, s.high, max, theme::yellow());
+                mark(cx, g, s.crit, max, theme::red());
             } else {
-                mark(cx, g, s.min, max, RED);
+                mark(cx, g, s.min, max, theme::red());
             }
             y += h + GAP;
         }
@@ -310,22 +310,22 @@ mod tests {
 
     #[test]
     fn temperatures_warm_towards_their_limit() {
-        assert_eq!(heat(50.0, None, None), GREEN);
-        assert_eq!(heat(82.0, None, None), YELLOW);
-        assert_eq!(heat(90.0, None, None), RED);
+        assert_eq!(heat(50.0, None, None), theme::green());
+        assert_eq!(heat(82.0, None, None), theme::yellow());
+        assert_eq!(heat(90.0, None, None), theme::red());
         // The chip's own marks: high first, then critical.
-        assert_eq!(heat(65.0, Some(70.0), Some(100.0)), YELLOW);
-        assert_eq!(heat(55.0, None, Some(60.0)), YELLOW);
-        assert_eq!(heat(101.0, Some(110.0), Some(100.0)), RED);
+        assert_eq!(heat(65.0, Some(70.0), Some(100.0)), theme::yellow());
+        assert_eq!(heat(55.0, None, Some(60.0)), theme::yellow());
+        assert_eq!(heat(101.0, Some(110.0), Some(100.0)), theme::red());
     }
 
     #[test]
     fn stopped_fans_dim_and_slow_ones_turn_red() {
         let fan = |v: f32, min| Sensor { kind: Kind::Fan, value: v, min, ..Sensor::default() };
-        assert_eq!(color(&fan(0.0, Some(300.0))), DIM);
-        assert_eq!(color(&fan(200.0, Some(300.0))), RED);
-        assert_eq!(color(&fan(1200.0, Some(300.0))), CYAN);
-        assert_eq!(color(&Sensor { kind: Kind::Duty, value: 40.0, ..Sensor::default() }), CYAN);
+        assert_eq!(color(&fan(0.0, Some(300.0))), theme::dim());
+        assert_eq!(color(&fan(200.0, Some(300.0))), theme::red());
+        assert_eq!(color(&fan(1200.0, Some(300.0))), theme::cyan());
+        assert_eq!(color(&Sensor { kind: Kind::Duty, value: 40.0, ..Sensor::default() }), theme::cyan());
     }
 
     #[test]
