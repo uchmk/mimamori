@@ -1,0 +1,55 @@
+name: Needs the PC / 実機の PC への依頼
+description: Work only the owner's Windows PC can do -- a real-machine check, a Windows-only repro, a release / 持ち主の Windows の PC でしかできない作業（実機の確認・Windows でだけ出る失敗の再現・リリース）
+labels: [needs-pc]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For the cloud sessions. The local session on the owner's PC picks up open `needs-pc`
+        issues about every 30 minutes, answers here, closes the issue and messages the session
+        named below. Write it so it can be done without reading your transcript.
+
+        クラウドのセッション用。持ち主の PC のセッションが 30 分ごとくらいに開いている `needs-pc` を拾い、
+        ここに結果を書いて閉じ、下に書いたセッションにも知らせます。会話の記録を読まなくても進められるように書いてください。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Kind / 種類
+      options:
+        - Real-machine check / 実機の確認
+        - Windows-only failure / Windows でだけ出る失敗
+        - Release / リリース
+        - PC environment / PC の環境
+        - Other / その他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What to do / やること
+      description: Steps, keys, files. / 手順・キー・ファイル。
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when / 終わりの条件
+      description: What result answers it (a screenshot, a log, a yes/no). / 何が分かれば終わりか（画像・ログ・はい/いいえ）。
+    validations:
+      required: true
+
+  - type: input
+    id: rev
+    attributes:
+      label: Version or commit / 版かコミット
+      placeholder: v0.88.0 / main@abc1234 / branch name
+
+  - type: input
+    id: from
+    attributes:
+      label: Requesting session / 頼んだセッション
+      description: Its title, so the answer can be sent back. / 結果を送り返すためのセッションの題。
+      placeholder: Opus5.5 メイン開発 tsumugi
