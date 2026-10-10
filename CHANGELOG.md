@@ -4,6 +4,14 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.28.0] - 2026-10-10
+
+### 追加
+
+- リリースの workflow（`release.yml`）。Actions タブから `tag` に `vX.Y.Z` を渡して回すと、Windows（`.zip`）・macOS・Linux（`.tar.gz`）の
+  x86_64 と ARM64 の 6 つを作ってリリースに付ける。ノートは前のタグからの `vX.Y.Z:` のコミットの最初の段落から作り、
+  最後に `release-sums.yml` が各ファイルと zip の中身の SHA-256 の表を足す。README に「Downloading」の節を足した。
+
 ## [0.27.1] - 2026-10-10
 
 ### 追加

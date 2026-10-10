@@ -140,6 +140,16 @@ MS Gothic, Yu Gothic and Meiryo on Windows; Hiragino on macOS; Noto Sans CJK
 or IPA Gothic on Linux). A wide character counts as two columns where text
 is cut to fit.
 
+## Downloading
+
+Each release on the
+[Releases page](https://github.com/uchmk/mimamori/releases) has six files:
+Windows (`.zip`), macOS and Linux (`.tar.gz`), each on x86_64 and ARM64,
+holding the executable and the licence files. The notes list every file's
+SHA-256. Nothing is code-signed: SmartScreen warns about an unknown
+publisher, and macOS's Gatekeeper wants the binary allowed by hand.
+Windows is where it is tested; the macOS builds are only compiled.
+
 ## Building
 
 ```sh

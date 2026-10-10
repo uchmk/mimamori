@@ -23,6 +23,13 @@
 - コミットの件名は `vX.Y.Z: …`、最初の段落は英語で単体で通じるように書く（後でリリースノートにする）。
 - **push の前は `scripts/verify.sh`**（build `--locked`・`fmt --check`・test・clippy を Linux・`x86_64-pc-windows-msvc`・`aarch64-apple-darwin` で。最後の行が `ALL OK: …` なら push してよい）。
 
+## リリース
+
+- `.github/workflows/release.yml` を Actions タブから `workflow_dispatch` で回し、`tag` に `vX.Y.Z` を渡す（タグが無ければ作られる。
+  クラウドのセッションからタグは push できない）。`Cargo.toml` の版と違えば落ちる。成果物は 6 つ（Windows は `.zip`、macOS と Linux は `.tar.gz`、
+  どれも実行ファイルとライセンスの 2 つのファイル）、最後に `release-sums.yml`（中身は `scripts/release-sums.sh`）が SHA-256 の表をノートに足す。
+- ノートは前のタグからの `vX.Y.Z:` のコミットの最初の段落から作る。前のリリースのタグができてから次を投げる。
+
 ## ビルド・検証
 
 - **filer / tsumugi と違い、`cargo fmt` を使ってよい**（`rustfmt.toml` で `max_width = 140`）。CI は `cargo fmt --check` を見る。
@@ -76,4 +83,4 @@
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
 | `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認） |
-| `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る） |
+| `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る）、`release-sums.sh`（リリースの SHA-256 の表） |

@@ -1,0 +1,224 @@
+name: Release
+
+# A build that keeps its name, does not expire, and downloads without an
+# account. Taken from tsumugi's and filer's release.yml; the reasons written
+# there hold here too.
+#
+# Started by hand from the Actions tab with the tag (`v0.28.0`), which is
+# created at the commit this runs on if it does not exist yet. A cloud session
+# cannot push a tag (403), so this is the way. Cut the next release only once
+# the last one has its tag: the notes start from the previous tag, and one not
+# made yet sends them back a release further, repeating it.
+#
+# Six files on two jobs: Windows builds both its architectures on the one x64
+# runner; macOS and Linux build where they run, after the Windows job has made
+# the release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, e.g. v0.28.0. It is created if it does not exist.'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Work out the tag
+        id: tag
+        shell: bash
+        run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      # A download whose name and `mimamori --version` disagree leaves nobody
+      # able to say which they have.
+      - name: Check the tag matches Cargo.toml
+        shell: bash
+        run: |
+          crate=$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)
+          tag="${{ steps.tag.outputs.name }}"
+          if [ "v$crate" != "$tag" ]; then
+            echo "::error::tag $tag does not match Cargo.toml's $crate"
+            exit 1
+          fi
+          echo "$tag matches Cargo.toml"
+
+      - name: Add the ARM64 target
+        run: rustup target add aarch64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+
+      # On x64 only: the runner cannot execute an ARM64 binary.
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build x64
+        run: cargo build --release --locked --target x86_64-pc-windows-msvc
+
+      - name: Build ARM64
+        run: cargo build --release --locked --target aarch64-pc-windows-msvc
+
+      # A zip of one folder: mimamori.exe and the two licence files.
+      - name: Package the binaries
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.name }}"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          foreach ($pair in @(@('x64', 'x86_64-pc-windows-msvc'), @('arm64', 'aarch64-pc-windows-msvc'))) {
+            $arch, $target = $pair
+            $name = "mimamori-$tag-windows-$arch"
+            $stage = "stage/$name"
+            New-Item -ItemType Directory -Force $stage | Out-Null
+            Copy-Item "target/$target/release/mimamori.exe", "LICENSE-MIT", "LICENSE-APACHE" $stage
+            Compress-Archive -Path $stage -DestinationPath "dist/$name.zip" -Force
+          }
+          Get-ChildItem dist
+
+      # The notes in English, from the first paragraph of each `vX.Y.Z:`
+      # commit since the previous tag (CHANGELOG.md is Japanese and is not
+      # used). The very first release has no previous tag and gets its own
+      # commit only.
+      - name: Write the notes from the commits
+        id: notes
+        shell: bash
+        run: |
+          tag="${{ steps.tag.outputs.name }}"
+          prev=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          range="${prev:+$prev..}HEAD"
+          [ -n "$prev" ] || range="HEAD~1..HEAD"
+          echo "notes from $range"
+          commits=$(git log --reverse --no-merges --format='%H %s' "$range" \
+                    | grep -E '^[0-9a-f]+ v[0-9]+\.[0-9]+\.[0-9]+' | cut -d' ' -f1)
+          [ -n "$commits" ] || commits=$(git log --reverse --no-merges --format=%H "$range")
+
+          : > notes.md
+          for sha in $commits; do
+            printf '## %s\n\n' "$(git log -1 --format=%s "$sha")" >> notes.md
+            git log -1 --format=%b "$sha" | awk '
+              /^(Co-Authored-By|Co-authored-by|Claude-Session|Signed-off-by):/ { next }
+              NF == 0 { if (seen) exit; next }
+              { print; seen = 1 }
+            ' >> notes.md
+            printf '\n' >> notes.md
+          done
+          if [ ! -s notes.md ]; then
+            printf 'No commits between %s and %s.\n\n' "${prev:-the start}" "$tag" > notes.md
+          fi
+
+          cat >> notes.md <<'NOTE'
+
+          ### Platforms
+
+          **Windows is the platform this is tested on**, and the checklist in TESTING.md is
+          worked through there. The Linux build runs the tests on every push but nobody
+          uses it day to day. **The macOS builds are only compiled and linked**: they are
+          here so that somebody can start them, not because they are known to work.
+
+          ### Signing
+
+          **Nothing here is code-signed.** Windows shows the publisher as unknown and
+          SmartScreen warns about a file with no download history; macOS's Gatekeeper
+          refuses the binaries until they are allowed through by hand. Every asset's
+          SHA-256 is in the table at the end of this page:
+
+          ```powershell
+          Get-FileHash .\mimamori-...-windows-x64.zip -Algorithm SHA256 | Format-List Hash
+          ```
+
+          The Windows downloads are `.zip` holding `mimamori.exe` and the licence files.
+          The macOS and Linux downloads are `.tar.gz`, which keeps the executable bit.
+          Some readings need more rights than a normal user has (other users' processes,
+          SMART, starting and stopping services); the screens say which and why.
+          NOTE
+
+          printf '\n---\n\n%s\n' \
+            "詳細は [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/$tag/CHANGELOG.md) にあります（日本語）。" \
+            >> notes.md
+          cat notes.md
+
+      # `target_commitish` pins the tag to the commit built, not to wherever
+      # main has moved during the run (filer's v0.32.2 and v0.33.7 lost that).
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.tag.outputs.name }}
+          body_path: notes.md
+          files: dist/*.zip
+          fail_on_unmatched_files: true
+
+  unix:
+    needs: windows
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+          # Cross-built on the ARM runner: Apple's SDK has both architectures.
+          - name: macos-x64
+            os: macos-14
+            target: x86_64-apple-darwin
+          - name: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Work out the tag
+        id: tag
+        run: echo "name=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Add the target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Pack
+        run: |
+          tag="${{ steps.tag.outputs.name }}"
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/mimamori" .
+          tar -czf "dist/mimamori-$tag-${{ matrix.name }}.tar.gz" mimamori LICENSE-MIT LICENSE-APACHE
+          ls -l dist
+
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          files: dist/*.tar.gz
+          fail_on_unmatched_files: true
+
+  # Every asset's SHA-256, and each Windows zip's files, onto the release
+  # page once all six are there (release-sums.yml; also runs by hand).
+  sums:
+    needs: [windows, unix]
+    if: always() && needs.windows.result == 'success'
+    uses: ./.github/workflows/release-sums.yml
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}

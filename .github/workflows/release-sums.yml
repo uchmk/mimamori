@@ -1,0 +1,49 @@
+name: Release checksums
+
+# The SHA-256 of every asset of a release, and of every file inside each
+# Windows zip, written onto the release page. `release.yml` calls this once all
+# six assets are attached; it can also be started by hand from the Actions tab
+# for a release that is already out (filer's v0.64.2 needed that).
+#
+# Re-running replaces the section rather than adding a second one.
+#
+# Everything is written under RUNNER_TEMP, never in the checkout: a folder of
+# the repository's own could share the name (filer's `assets` did).
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The release to write the checksums onto, e.g. v0.28.0.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sums:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Write the checksums onto the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          work=$(mktemp -d "$RUNNER_TEMP/sums.XXXXXX")
+          mkdir "$work/assets"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$work/assets"
+          (cd "$work/assets" && bash "$GITHUB_WORKSPACE/scripts/release-sums.sh") > "$work/sums.md"
+          # Up to the marker, without the blank lines before it, so that a
+          # re-run leaves the page exactly as the first run did.
+          body=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body \
+                 | sed '/^<!-- checksums -->$/,$d')
+          { printf '%s\n\n' "$body"; cat "$work/sums.md"; } > "$work/notes.md"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$work/notes.md"
+          cat "$work/sums.md"
