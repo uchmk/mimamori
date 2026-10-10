@@ -53,7 +53,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   NVIDIA の GPU は NVML の温度とファンを足し、amdgpu のように OS が並べているものは PCI のアドレスで重ねない（v0.9.0）。
 - [x] sensors: macOS のファンと、SMC のキーで読める温度の名前（`TC0P` などを「CPU proximity」に）。今は sysinfo の components の温度だけ。
   → `AppleSMC` を直に読み、名前の付いた温度とファン（最小・最大つき）を出す。Apple silicon の HID の温度にも名前（v0.17.0）
-- [ ] sensors: Windows のファンとコアの温度。メーカーのドライバーか、LibreHardwareMonitor のようなカーネルドライバーが要る（署名・管理者・同梱の是非を QUESTIONS で決めてから）。今は ACPI の熱ゾーンだけ。（要確認: Q2）
+- [x] sensors: Windows のファンとコアの温度。メーカーのドライバーか、LibreHardwareMonitor のようなカーネルドライバーが要る（署名・管理者・同梱の是非を QUESTIONS で決めてから）。今は ACPI の熱ゾーンだけ。
+  → Q2 の 1。HWiNFO の共有メモリと LibreHardwareMonitor（OpenHardwareMonitor）の WMI を、動いていれば読む。ドライバーは同梱しない (v0.30.0)
 - [ ] sensors の実機の確認 `【実機】`（TESTING.md 3e）。
 - [x] sys（`0`）: OS・BIOS・メモリのスロットなど、変わらない情報。
   Windows と Linux はファームウェアの SMBIOS の表を自分で読む（`smbios.rs`、純粋な関数）。Windows は `GetSystemFirmwareTable('RSMB')` で管理者が要らない。

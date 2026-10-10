@@ -552,7 +552,7 @@ duty = "ファン（最大比 %）"
 
 [sensors.note]
 empty = "読めるセンサーがありません（仮想マシン、コンテナ、またはチップのドライバーが無い）"
-zones_only = "Windows は ACPI の熱ゾーンしか出しません。ファンとコアにはメーカーのドライバーが要ります"
+zones_only = "Windows は ACPI の熱ゾーンしか出しません。ファンとコアは HWiNFO（共有メモリを有効に）か LibreHardwareMonitor を動かすと読めます"
 thermal_only = "温度を持つ hwmon のチップがありません。代わりに熱ゾーンを出します"
 
 [help]

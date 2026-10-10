@@ -4,6 +4,21 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.30.0] - 2026-10-10
+
+### 追加
+
+- sensors（Windows）: HWiNFO が共有メモリを有効にして動いていれば、`Global\HWiNFO_SENS_SM2` から全部のチップ（CPU・板・ファン・ドライブ・GPU）の
+  温度とファンを読む（`src/collect/sensors/hwinfo.rs`。読むたびに開いてコピーして閉じるので、HWiNFO を終えれば消える）。°F の値は °C に直す。
+- sensors（Windows）: HWiNFO が無く LibreHardwareMonitor（か OpenHardwareMonitor）が動いていれば、WMI の `root\LibreHardwareMonitor` の
+  `Sensor` と `Hardware` から読む（`src/collect/sensors/lhm.rs`。つながらなければ 10 秒ごとに探し直す）。どちらもドライバーは同梱せず、管理者も要らない。
+  出どころの行は `HWiNFO: …` / `LibreHardwareMonitor …`。
+- ツールが挙げた GPU とドライブは、D3DKMT・NVML・ディスクの読み値から重ねて足さない。
+
+### 変更
+
+- Windows の熱ゾーンだけのときの注意書きに、ファンとコアを読むには HWiNFO か LibreHardwareMonitor を動かす、と書く。
+
 ## [0.29.1] - 2026-10-10
 
 ### 追加

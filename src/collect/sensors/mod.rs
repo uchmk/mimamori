@@ -5,13 +5,18 @@
 //! falling back to `/sys/class/thermal` where no chip has a temperature.
 //! Windows reads the ACPI thermal zones from the `Thermal Zone Information`
 //! performance counters (PDH), which need no administrator; it has no common
-//! way to read fans. macOS reads the SMC itself (the named temperatures and
+//! way to read fans or the cores, so while HWiNFO (its shared memory) or
+//! LibreHardwareMonitor (its WMI classes) runs, their chips are read too. macOS reads the SMC itself (the named temperatures and
 //! the fans with their least and most) and the HID sensors on Apple silicon
 //! through sysinfo's components, with friendlier names. NVIDIA GPUs add their NVML temperature and fan, and the drives
 //! the temperature the disk reading found, where the OS does not list them
 //! already. The parsing is kept in pure functions so the
 //! tests run everywhere.
 
+#[cfg(any(windows, test))]
+pub mod hwinfo;
+#[cfg(any(windows, test))]
+pub mod lhm;
 #[cfg(any(target_os = "linux", test))]
 pub mod linux;
 #[cfg(any(target_os = "macos", test))]
@@ -65,8 +70,8 @@ pub enum Note {
     /// Nothing to read: a virtual machine, a container, or no driver for
     /// the chip.
     Empty,
-    /// Windows: only the ACPI thermal zones; fans and the cores need the
-    /// maker's driver.
+    /// Windows: only the ACPI thermal zones; fans and the cores need HWiNFO
+    /// or LibreHardwareMonitor running.
     #[cfg_attr(not(windows), allow(dead_code))]
     ZonesOnly,
     /// Linux: no hwmon chip has a temperature; the thermal zones instead.
@@ -160,7 +165,7 @@ fn add_gpus(list: &mut Vec<Sensor>, gpus: &[gpu::Device]) {
             continue;
         }
         let pci = d.bus.as_deref().map(str::to_ascii_lowercase);
-        if pci.is_some() && list.iter().any(|s| s.pci == pci) {
+        if pci.is_some() && list.iter().any(|s| s.pci == pci) || tool_lists(list, &d.name) {
             continue;
         }
         let base = Sensor {
@@ -191,7 +196,7 @@ fn add_gpus(list: &mut Vec<Sensor>, gpus: &[gpu::Device]) {
 fn add_drives(list: &mut Vec<Sensor>, drives: &[disk::Drive]) {
     for d in drives {
         let Some(t) = &d.temp else { continue };
-        if t.chip.as_ref().is_some_and(|c| list.iter().any(|s| &s.chip_id == c)) {
+        if t.chip.as_ref().is_some_and(|c| list.iter().any(|s| &s.chip_id == c)) || tool_lists(list, &d.model) {
             continue;
         }
         list.push(Sensor {
@@ -208,10 +213,21 @@ fn add_drives(list: &mut Vec<Sensor>, drives: &[disk::Drive]) {
     }
 }
 
+/// Whether HWiNFO or LibreHardwareMonitor already lists a chip by this name
+/// (a GPU's, a drive's model): they name their chips after the device,
+/// `GPU [#0]: NVIDIA GeForce RTX 4070`, `S.M.A.R.T.: Samsung SSD 980`.
+fn tool_lists(list: &[Sensor], name: &str) -> bool {
+    let name = name.trim().to_lowercase();
+    !name.is_empty()
+        && list.iter().any(|s| (s.chip_id.starts_with("hwinfo:") || s.chip_id.starts_with("lhm:")) && s.chip.to_lowercase().contains(&name))
+}
+
 /// Reads the sensors, keeping what each OS opens once.
 pub struct Reader {
     #[cfg(windows)]
     zones: Option<zones::Reader>,
+    #[cfg(windows)]
+    lhm: lhm::Reader,
     #[cfg(target_os = "macos")]
     comps: sysinfo::Components,
     #[cfg(target_os = "macos")]
@@ -223,6 +239,8 @@ impl Reader {
         Self {
             #[cfg(windows)]
             zones: zones::Reader::open(),
+            #[cfg(windows)]
+            lhm: lhm::Reader::new(),
             #[cfg(target_os = "macos")]
             comps: sysinfo::Components::new_with_refreshed_list(),
             #[cfg(target_os = "macos")]
@@ -244,9 +262,15 @@ impl Reader {
         linux::read(std::path::Path::new("/sys/class"))
     }
 
+    /// HWiNFO's chips where it runs, else LibreHardwareMonitor's, then the
+    /// thermal zones; the note only when neither tool gave anything.
     #[cfg(windows)]
     fn chips(&mut self) -> (Vec<Sensor>, Option<Note>) {
-        (self.zones.as_mut().map(zones::Reader::read).unwrap_or_default(), Some(Note::ZonesOnly))
+        let tool = hwinfo::read().filter(|l| !l.is_empty()).or_else(|| self.lhm.read()).unwrap_or_default();
+        let note = tool.is_empty().then_some(Note::ZonesOnly);
+        let mut list = tool;
+        list.extend(self.zones.as_mut().map(zones::Reader::read).unwrap_or_default());
+        (list, note)
     }
 
     #[cfg(target_os = "macos")]
@@ -378,5 +402,29 @@ mod tests {
         assert_eq!(ids, ["hwmon1/Composite", "disk:sda/temp", "disk:sdb/temp"]);
         assert_eq!((list[1].chip.as_str(), list[1].label.as_str(), list[1].high), ("WDC WD40EFRX", "sda", Some(70.0)));
         assert_eq!((list[2].chip.as_str(), list[2].source.as_str()), ("sdb", "smartctl"));
+    }
+
+    #[test]
+    fn what_a_tool_lists_is_not_added_again() {
+        let tool = |chip_id: &str, chip: &str| Sensor { chip_id: chip_id.into(), ..temp(chip, "t", 40.0) };
+        let mut list = vec![tool("hwinfo:1:0", "GPU [#0]: NVIDIA GeForce RTX 4070: "), tool("lhm:/nvme/0", "Samsung SSD 980 PRO 1TB")];
+        // A chip of the OS's own that only shares the name does not count.
+        list.push(temp("WDC WD40EFRX", "t", 30.0));
+        let gpus = [
+            gpu::Device { id: "a".into(), name: "NVIDIA GeForce RTX 4070".into(), temp: Some(50.0), ..gpu::Device::default() },
+            gpu::Device { id: "b".into(), name: "AMD Radeon(TM) Graphics".into(), temp: Some(45.0), ..gpu::Device::default() },
+        ];
+        add_gpus(&mut list, &gpus);
+        let t = |v| Some(disk::Temp { value: v, high: None, crit: None, source: "IOCTL".into(), chip: None });
+        let drive = |id: &str, model: &str, v| disk::Drive {
+            id: id.into(),
+            name: id.into(),
+            model: model.into(),
+            temp: t(v),
+            ..disk::Drive::default()
+        };
+        add_drives(&mut list, &[drive("0", "Samsung SSD 980 PRO 1TB", 38.0), drive("1", "WDC WD40EFRX", 33.0), drive("2", "", 31.0)]);
+        let ids: Vec<&str> = list.iter().skip(3).map(|s| s.id.as_str()).collect();
+        assert_eq!(ids, ["gpu:b/temp", "disk:1/temp", "disk:2/temp"]);
     }
 }

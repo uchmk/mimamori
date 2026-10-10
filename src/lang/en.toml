@@ -554,7 +554,7 @@ duty = "Fan (% of most)"
 
 [sensors.note]
 empty = "No sensor to read: a virtual machine, a container, or no driver for the chip"
-zones_only = "Windows shows only the ACPI thermal zones: fans and the cores need the maker's driver"
+zones_only = "Windows shows only the ACPI thermal zones: for fans and the cores, run HWiNFO (with Shared Memory Support on) or LibreHardwareMonitor"
 thermal_only = "No hwmon chip has a temperature: the thermal zones instead"
 
 [help]
