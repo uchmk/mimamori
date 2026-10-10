@@ -51,7 +51,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   sysinfo の `Components` は macOS だけで使う。Linux は sysinfo がファンを読まずチップでまとめないので `/sys/class/hwmon` を自分で読み（温度が無ければ `/sys/class/thermal`）、
   Windows は sysinfo が管理者の要る WMI（`MSAcpi_ThermalZoneTemperature`）を使うので、管理者の要らない `Thermal Zone Information` のパフォーマンスカウンター（PDH）を読む。
   NVIDIA の GPU は NVML の温度とファンを足し、amdgpu のように OS が並べているものは PCI のアドレスで重ねない（v0.9.0）。
-- [ ] sensors: macOS のファンと、SMC のキーで読める温度の名前（`TC0P` などを「CPU proximity」に）。今は sysinfo の components の温度だけ。
+- [x] sensors: macOS のファンと、SMC のキーで読める温度の名前（`TC0P` などを「CPU proximity」に）。今は sysinfo の components の温度だけ。
+  → `AppleSMC` を直に読み、名前の付いた温度とファン（最小・最大つき）を出す。Apple silicon の HID の温度にも名前（v0.17.0）
 - [ ] sensors: Windows のファンとコアの温度。メーカーのドライバーか、LibreHardwareMonitor のようなカーネルドライバーが要る（署名・管理者・同梱の是非を QUESTIONS で決めてから）。今は ACPI の熱ゾーンだけ。
 - [ ] sensors の実機の確認 `【実機】`（TESTING.md 3e）。
 - [x] sys（`0`）: OS・BIOS・メモリのスロットなど、変わらない情報。

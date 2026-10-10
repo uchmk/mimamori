@@ -5,14 +5,19 @@
 //! falling back to `/sys/class/thermal` where no chip has a temperature.
 //! Windows reads the ACPI thermal zones from the `Thermal Zone Information`
 //! performance counters (PDH), which need no administrator; it has no common
-//! way to read fans. macOS reads sysinfo's components (the SMC and the HID
-//! sensors). NVIDIA GPUs add their NVML temperature and fan, and the drives
+//! way to read fans. macOS reads the SMC itself (the named temperatures and
+//! the fans with their least and most) and the HID sensors on Apple silicon
+//! through sysinfo's components, with friendlier names. NVIDIA GPUs add their NVML temperature and fan, and the drives
 //! the temperature the disk reading found, where the OS does not list them
 //! already. The parsing is kept in pure functions so the
 //! tests run everywhere.
 
 #[cfg(any(target_os = "linux", test))]
 pub mod linux;
+#[cfg(any(target_os = "macos", test))]
+pub mod mac;
+#[cfg(target_os = "macos")]
+mod smc;
 #[cfg(any(windows, test))]
 pub mod windows;
 #[cfg(windows)]
@@ -209,6 +214,8 @@ pub struct Reader {
     zones: Option<zones::Reader>,
     #[cfg(target_os = "macos")]
     comps: sysinfo::Components,
+    #[cfg(target_os = "macos")]
+    smc: Option<smc::Smc>,
 }
 
 impl Reader {
@@ -218,6 +225,8 @@ impl Reader {
             zones: zones::Reader::open(),
             #[cfg(target_os = "macos")]
             comps: sysinfo::Components::new_with_refreshed_list(),
+            #[cfg(target_os = "macos")]
+            smc: smc::Smc::open(),
         }
     }
 
@@ -243,24 +252,31 @@ impl Reader {
     #[cfg(target_os = "macos")]
     fn chips(&mut self) -> (Vec<Sensor>, Option<Note>) {
         self.comps.refresh(true);
-        let list = self
-            .comps
-            .list()
-            .iter()
-            .filter_map(|c| {
-                let label = c.label().to_string();
-                Some(Sensor {
-                    id: c.id().unwrap_or(&label).to_string(),
-                    chip_id: "smc".into(),
-                    chip: "SMC".into(),
-                    value: c.temperature().filter(|t| t.is_finite())?,
-                    crit: c.critical(),
-                    source: "IOKit".into(),
-                    label,
-                    ..Sensor::default()
-                })
+        let mut list = self.smc.as_ref().map(smc::Smc::read_all).unwrap_or_default();
+        let smc = self.smc.as_ref();
+        list.extend(self.comps.list().iter().filter_map(|c| {
+            let raw = c.label();
+            let id = c.id().unwrap_or(raw);
+            // Intel: sysinfo's components are SMC keys the reader lists.
+            if smc.is_some_and(|s| s.has(id) || mac::is_smc_key(id)) {
+                return None;
+            }
+            let (chip_id, chip, label, source) = if mac::is_smc_key(id) {
+                ("smc", "SMC", raw.to_string(), format!("SMC {id}"))
+            } else {
+                ("hid", "HID sensors", mac::hid_name(raw)?, format!("IOHID {raw}"))
+            };
+            Some(Sensor {
+                id: format!("{chip_id}/{id}"),
+                chip_id: chip_id.into(),
+                chip: chip.into(),
+                value: c.temperature().filter(|t| t.is_finite())?,
+                crit: c.critical(),
+                source,
+                label,
+                ..Sensor::default()
             })
-            .collect();
+        }));
         (list, None)
     }
 

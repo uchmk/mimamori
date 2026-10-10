@@ -184,7 +184,7 @@ The sensors screen reads:
 | --- | --- |
 | Windows | The ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH), without administrator. Fans and the cores' own temperatures need the board maker's driver, so the screen says so; NVIDIA GPUs add their temperature and fan from NVML, and the drives theirs from the disk reading |
 | Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice. A drive with no hwmon chip (SATA without `drivetemp`) adds the temperature smartctl read |
-| macOS | sysinfo's components: the SMC and HID temperatures. Fans are not read yet |
+| macOS | The SMC itself, through the `AppleSMC` user client: the temperatures with a known key, named (`TC0P` is "CPU proximity" on Intel Macs; Apple silicon's `Tp…` / `Te…` / `Tg…` families are numbered "CPU 1", "GPU 1"…), and every fan with its least and most rpm. On Apple silicon also the HID temperatures sysinfo reads, under their own chip with friendlier names ("CPU die 3", "SSD", "Battery") |
 
 The sys screen reads:
 

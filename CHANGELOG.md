@@ -4,6 +4,22 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.17.0] - 2026-10-10
+
+### 追加
+
+- sensors の画面（macOS）: `AppleSMC` を直に読み、ファンを出す。
+  - 「Fan 1」… を rpm で出し、最小（`F0Mn`）と最大（`F0Mx`）も出す。最小を下回れば赤くなる。
+  - SMC の温度に名前を付ける。Intel の Mac は知られたキー（`TC0P` は「CPU proximity」、`TC1C` は「CPU core 1」など）、
+    Apple silicon は `Tp…`・`Te…`・`Tg…`・`TH…` の系列をキーの順に「CPU 1」「CPU efficiency 1」「GPU 1」「SSD 1」と数える。名前の無いキーと、0 や 130 °C 以上を読むキーは出さない。
+  - キーは起動のときに 1 回だけ並べ、毎回は残したキーだけを読む。読んだ所に SMC のキーを出す。
+
+### 変更
+
+- sensors の画面（macOS）: Apple silicon の HID の温度を「SMC」から分けて「HID sensors」のチップに置き、名前を読みやすくした
+  （「PMU tdie3」→「CPU die 3」、「PMU tdev1」→「SoC 1」、「NAND CH0 temp」→「SSD」、「gas gauge battery」→「Battery」）。温度ではない「PMU tcal」は出さない。
+  Intel の Mac では sysinfo が読む SMC の温度を SMC の読み値と重ねない。
+
 ## [0.16.0] - 2026-10-10
 
 ### 追加
