@@ -19,7 +19,8 @@ back to `[ ]`.
 - [ ] 2.1 Windows, Ryzen with two CCDs: two groups labelled `L3 #0` and `L3 #1`, each with its cores; every tile has two thread bars (SMT); `Topology from` says `win32`.
 - [ ] 2.2 Windows, hybrid Intel (12th gen or later): groups `P-cores` and `E-cores`; P-core tiles have two thread bars, E-core tiles one.
 - [ ] 2.3 Windows ARM64 (Snapdragon): note what groups and kinds are shown and whether they match the chip.
-- [ ] 2.4 macOS: one group `CPU` with one tile per logical CPU, `Topology from` says `fallback` (expected until TODO 2).
+- [ ] 2.4 macOS, Apple silicon: one group per cluster, `E-cores` / `P-cores` (with `· L2 #n` when a kind has more than one cluster, as on an M1 Pro / Max or M3 Pro), each tile one thread bar, the group header shows `L2` and its size (4 MiB / 12 or 16 MiB), and the summary's core count matches About This Mac; `Topology from` says `iokit`.
+- [ ] 2.7 macOS, Intel Mac with Hyper-Threading: one group `CPU` with half as many tiles as logical CPUs, two thread bars each, the header shows the L3's size; `Topology from` says `sysctl`.
 - [ ] 2.5 A tile's bars follow load: run a single-threaded busy loop pinned to one CPU and see that one bar (and that core's tile) turn yellow / red while the others stay blue.
 - [ ] 2.6 `h` `j` `k` `l` in the middle column move the highlighted tile; the right column follows with the core's group, kind, thread ids and clock.
 

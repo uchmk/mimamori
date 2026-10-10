@@ -68,7 +68,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 ## 2. 構成と OS
 
-- [ ] macOS のコアの構成: `sysctl hw.perflevelN.*`（P / E コアと L2 の塊）。今は 1 論理 CPU = 1 コアで描く。
+- [x] macOS のコアの構成: `sysctl hw.perflevelN.*`（P / E コアと L2 の塊）。今は 1 論理 CPU = 1 コアで描く。
+  → Apple silicon は IOKit のデバイスツリー（`cpus` の子の `cluster-type`・`cluster-id`）でクラスターごとの塊、L2 の大きさは sysctl。Intel の Mac は sysctl のコア数とスレッド数（v0.20.0）
 - [ ] Windows でプロセスのユーザー名が出るか確かめる `【実機】`（TESTING.md 3.x）。
 - [ ] Windows ARM64（Snapdragon）の構成: `EfficiencyClass` が P / E を分けるか `【実機】`。
 - [ ] AMD の GL ドライバーで落ちる件（filer の TODO と同じ `atio6axx.dll`）。filer で原因が分かったら同じ対策を入れる。今は `config.toml` の `backend = "dx12"` で避けられる。

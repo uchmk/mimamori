@@ -1,18 +1,21 @@
 //! How the logical CPUs sit on the chip: which share a core (SMT), which
-//! share an L3 cache, which are performance and which efficiency cores.
+//! share a cache (the L3; the L2 of a cluster on Apple silicon), which are
+//! performance and which efficiency cores.
 //! Read once at startup; the CPU screen draws its tiles from it.
 //!
 //! Logical CPUs are numbered by their position in sysinfo's list (the online
 //! CPUs in order), not by the OS's own numbers, so a tile's thread is the
 //! usage at the same index.
 
-// macOS draws `fallback` until it reads `hw.perflevelN` (see TODO.md).
-#![cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+// Other systems draw `fallback`.
+#![cfg_attr(not(any(target_os = "linux", target_os = "macos", windows)), allow(dead_code))]
 
 use crate::i18n::tr;
 
 #[cfg(any(target_os = "linux", test))]
 pub mod linux;
+#[cfg(any(target_os = "macos", test))]
+pub mod mac;
 #[cfg(any(windows, test))]
 pub mod windows;
 
@@ -29,7 +32,8 @@ pub struct CpuInfo {
     pub cpu: usize,
     /// The logical CPUs on the same core, itself included.
     pub siblings: Vec<usize>,
-    /// The CPUs sharing its L3 and the cache's size in KiB, when known.
+    /// The CPUs sharing its last cache (the L3, or the cluster's L2 where
+    /// there is no L3) and the cache's size in KiB, when known.
     pub l3: Option<(Vec<usize>, Option<u64>)>,
     pub kind: CoreKind,
 }
@@ -42,12 +46,15 @@ pub struct Core {
     pub kind: CoreKind,
 }
 
-/// Cores sharing an L3 cache (and of one kind): a CCD on Ryzen, the P- or
-/// E-cores on a hybrid Intel chip, the whole chip on most others.
+/// Cores sharing a cache (and of one kind): a CCD on Ryzen, the P- or
+/// E-cores on a hybrid Intel chip, a cluster on Apple silicon, the whole chip
+/// on most others.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Group {
     pub label: String,
-    pub l3_kb: Option<u64>,
+    /// The shared cache's level (3, or 2 on Apple silicon) and size.
+    pub cache: u8,
+    pub cache_kb: Option<u64>,
     pub kind: CoreKind,
     pub cores: Vec<Core>,
 }
@@ -56,7 +63,8 @@ pub struct Group {
 pub struct Topology {
     pub groups: Vec<Group>,
     pub logical: usize,
-    /// Where it came from: `sysfs`, `win32`, or `fallback` when the OS said
+    /// Where it came from: `sysfs`, `win32`, `iokit` or `sysctl` (macOS), or
+    /// `fallback` when the OS said
     /// nothing usable and each logical CPU is drawn as a core of its own.
     pub source: &'static str,
 }
@@ -85,11 +93,11 @@ impl Topology {
 type Placed = (Vec<usize>, CoreKind, Vec<usize>, Option<u64>);
 
 /// One core per logical CPU in one group: what is drawn when the OS says
-/// nothing (macOS for now) or says something that does not add up.
+/// nothing or says something that does not add up.
 pub fn fallback(logical: usize) -> Topology {
     let cores = (0..logical).map(|i| Core { id: i, threads: vec![i], kind: CoreKind::Unknown }).collect();
     Topology {
-        groups: vec![Group { label: tr("topo.cpu").into(), l3_kb: None, kind: CoreKind::Unknown, cores }],
+        groups: vec![Group { label: tr("topo.cpu").into(), cache: 3, cache_kb: None, kind: CoreKind::Unknown, cores }],
         logical,
         source: "fallback",
     }
@@ -97,7 +105,13 @@ pub fn fallback(logical: usize) -> Topology {
 
 /// Cores from the sibling sets, groups from the L3 sets and kinds. A CPU the
 /// OS skipped becomes a core of its own, so every usage has a tile.
+#[cfg(any(target_os = "linux", windows, test))]
 pub fn build(infos: &[CpuInfo], logical: usize, source: &'static str) -> Topology {
+    build_at(infos, logical, source, 3)
+}
+
+/// [`build`] with the sets shared at cache level `cache`.
+pub fn build_at(infos: &[CpuInfo], logical: usize, source: &'static str, cache: u8) -> Topology {
     if infos.is_empty() || logical == 0 {
         return fallback(logical);
     }
@@ -142,7 +156,7 @@ pub fn build(infos: &[CpuInfo], logical: usize, source: &'static str) -> Topolog
             Some(gi) => gi,
             None => {
                 keys.push(key);
-                groups.push(Group { label: String::new(), l3_kb: size, kind, cores: Vec::new() });
+                groups.push(Group { label: String::new(), cache, cache_kb: size, kind, cores: Vec::new() });
                 groups.len() - 1
             }
         };
@@ -167,7 +181,7 @@ pub fn build(infos: &[CpuInfo], logical: usize, source: &'static str) -> Topolog
         }
         if l3_sets.len() > 1 {
             let n = l3_sets.iter().position(|s| **s == key.0).unwrap_or(0);
-            parts.push(format!("L3 #{n}"));
+            parts.push(format!("L{cache} #{n}"));
         }
         g.label = if !several || parts.is_empty() { tr("topo.cpu").to_string() } else { parts.join(" · ") };
     }
@@ -204,7 +218,9 @@ pub fn read(logical: usize) -> Topology {
     let t = linux::read(std::path::Path::new("/sys/devices"), logical);
     #[cfg(windows)]
     let t = windows::read(logical);
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(target_os = "macos")]
+    let t = mac::read(logical);
+    #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
     let t = fallback(logical);
     t
 }

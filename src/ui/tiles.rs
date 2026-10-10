@@ -70,8 +70,8 @@ pub fn tiles(cx: &mut Cx, r: Rect, full: bool, sel: Option<usize>, click: Option
         }
         // The group's header: its label, its size, its cache.
         let mut head = trf("tiles.group", &[&g.label, &g.cores.len().to_string()]);
-        if let Some(kb) = g.l3_kb {
-            head += &format!(" · {}", trf("tiles.l3", &[&fmt_bytes(kb * 1024)]));
+        if let Some(kb) = g.cache_kb {
+            head += &format!(" · {}", trf("tiles.cache", &[&g.cache.to_string(), &fmt_bytes(kb * 1024)]));
         }
         cx.pen.text(pos2(r.left() + 2.0, y + 8.0), &cx.pen.fit(&head, r.width()), DIM);
         y += GROUP_HEAD;

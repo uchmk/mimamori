@@ -4,6 +4,16 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.20.0] - 2026-10-10
+
+### 追加
+
+- cpu の画面（macOS）: コアの構成を読むようにした。今までは 1 論理 CPU を 1 コアとして `CPU` の 1 つの塊に描いていた。
+  - Apple silicon は IOKit のデバイスツリー（`IODeviceTree:/cpus` の子の `cluster-type`・`cluster-id`・`logical-cpu-id`）から、
+    クラスター（L2 を共有する P コアか E コアの塊）ごとに塊を作る。L3 は無いので塊の見出しは L2 の大きさ（`sysctl hw.perflevelN.l2cachesize`）。
+  - Intel の Mac は `hw.physicalcpu` / `hw.logicalcpu` でスレッドを隣どうしに組み、`hw.l3cachesize` を見出しに出す。
+  - `Topology from` は `iokit` か `sysctl`。塊の見出しの文字の鍵は `tiles.l3` から `tiles.cache`（`L{0} {1}`）に変えた。
+
 ## [0.19.0] - 2026-10-10
 
 ### 追加

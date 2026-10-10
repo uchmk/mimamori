@@ -106,7 +106,7 @@ mod tests {
         assert_eq!(t.groups.len(), 2);
         assert_eq!(t.groups[0].label, "P-cores");
         assert_eq!(t.groups[0].cores[0].threads, vec![0, 1]);
-        assert_eq!(t.groups[0].l3_kb, Some(12288));
+        assert_eq!(t.groups[0].cache_kb, Some(12288));
         assert_eq!(t.groups[1].cores[0].threads, vec![2]);
         // A count that does not match the online list is not trusted.
         assert_eq!(read(&d, 4).source, "fallback");

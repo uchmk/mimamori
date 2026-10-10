@@ -46,7 +46,7 @@
 - **画面の文字はすべて `tr("key")` / `trf("key", &[..])` を通す。**英語の表は `src/lang/en.toml`。
   言語は `config.toml` → `common.toml`（uchmk のアプリで共通）→ OS の順で決まる。表に無いキーはテストが落とす。
 - **列の大きさは `tsumugi-layout`**（tsumugi の workspace のクレート、`Cargo.toml` の `rev` で固定）。直すときは tsumugi 側で直して `rev` を上げる。
-- **マルチ OS**: OS ごとの処理は `#[cfg(...)]` のモジュールに閉じ込める（例: `collect/topo/linux.rs` と `windows.rs`、macOS は `fallback`）。
+- **マルチ OS**: OS ごとの処理は `#[cfg(...)]` のモジュールに閉じ込める（例: `collect/topo/linux.rs`・`windows.rs`・`mac.rs`）。
   パースは純粋な関数にして、どの OS でもテストが回るようにする（`#[cfg(any(windows, test))]`）。
 - **マルチアーキテクチャ**: Pure Rust のクレートを優先し、C のライブラリを抱えるものは避ける。
 - 新しい画面を作るときは `Screen::built` に足し、`ui/` に描画を置き、keymap と README のキー表・画面の表・TESTING.md を更新する。
@@ -57,7 +57,7 @@
 | --- | --- |
 | `src/main.rs` | eframe の起動、`--keys` の受け付け、フレームごとの `pump` と描画 |
 | `src/app.rs` | アプリの状態と `Act` の実行（画面・フォーカス・選択・絞り込み・並べ替え・列の幅・トースト） |
-| `src/collect/` | 収集のスレッド（cpu / mem / proc / gpu / net のインターフェース / disk / sensors、svc と net のソケットは画面が出ている間だけ、hw は起動時に 1 回だけ専用のスレッドで）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32） |
+| `src/collect/` | 収集のスレッド（cpu / mem / proc / gpu / net のインターフェース / disk / sensors、svc と net のソケットは画面が出ている間だけ、hw は起動時に 1 回だけ専用のスレッドで）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32、macOS は IOKit のデバイスツリーと sysctl） |
 | `src/collect/gpu/` | GPU・NPU。`linux.rs`（drm と accel の sysfs）、`windows.rs`（PDH のカウンタを装置ごとにまとめる純粋な関数）と `pdh.rs`（PDH・DXGI の呼び出し）、`nvidia.rs`（NVML を実行時に読む）。取れない値は `Why` で理由を持つ |
 | `src/collect/svc/` | サービス。`linux.rs`（`systemctl` の出力のパース）、`windows.rs`（SCM の数値を状態に畳み、ドライバーを見分ける純粋な関数）と `scm.rs`（SCM の呼び出し、サービスとドライバー、設定は 1 分キャッシュ）、`mac.rs`（`launchctl list` と `print-disabled`、launchd の plist。plist はファイルの時刻でキャッシュ）。一覧が短い理由は `Note` |
 | `src/collect/net/` | ネットワーク。インターフェースは sysinfo の数え値に、`linux.rs`（sysfs の種類・速度・ドライバー）と `windows.rs`（IP ヘルパーの表から人が思うアダプターを選ぶ純粋な関数）と `iphlp.rs`（IP ヘルパーの呼び出し）、`mac.rs`（`networksetup` のハードウェアポートで種類、`netstat -anvW` のパースでソケット）。ソケットは Linux が `/proc/net` と `/proc/*/fd`、Windows が `GetExtendedTcpTable` / `GetExtendedUdpTable` |

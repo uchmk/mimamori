@@ -191,7 +191,7 @@ failed = "The firmware's tables could not be read."
 
 [tiles]
 group = "{0} · {1} cores"
-l3 = "L3 {0}"
+cache = "L{0} {1}"
 
 [cpu]
 kind_p = "Performance"

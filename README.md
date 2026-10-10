@@ -134,8 +134,11 @@ cargo build --release
 Pure Rust apart from the OS's own libraries; the six targets (Windows, macOS
 and Linux on x86_64 and ARM64) need no C toolchain beyond the platform's
 linker. The core layout comes from sysfs on Linux and
-`GetLogicalProcessorInformationEx` on Windows; macOS draws one tile per
-logical CPU for now.
+`GetLogicalProcessorInformationEx` on Windows. On Apple silicon it comes
+from the device tree's `cpus` node in IOKit: a group per cluster (P or E
+cores sharing one L2; there is no L3), with the L2's size from
+`sysctl hw.perflevelN.l2cachesize`. Intel Macs use `hw.physicalcpu` /
+`hw.logicalcpu` (threads side by side) and `hw.l3cachesize`.
 
 The gpu·npu screen reads, without linking anything at build time:
 
