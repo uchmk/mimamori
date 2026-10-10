@@ -6,6 +6,10 @@
 //! may ask polkit for a password on a desktop; macOS runs `launchctl` on the
 //! job in the user's domain, or the system's as root. How each OS words a
 //! refusal is read by a pure function, so the tests run everywhere.
+//!
+//! A launchd job that is not loaded is loaded from its plist first
+//! (`launchctl bootstrap`). A disabled one is left alone: enabling it changes
+//! the owner's settings, so the toast only says the command.
 
 use crossbeam_channel::Sender;
 
@@ -23,6 +27,9 @@ pub struct Target {
     pub action: Action,
     /// The unit, service or job label.
     pub name: String,
+    /// The plist of a launchd job that is not loaded, loaded before it is
+    /// started.
+    pub plist: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -64,11 +71,19 @@ pub fn how(t: &Target) -> String {
     #[cfg(target_os = "linux")]
     return format!("systemctl {}", linux::args(t.action, &t.name).join(" "));
     #[cfg(target_os = "macos")]
-    return format!("launchctl {}", mac::args(t.action, &mac::target(mac::root(), mac::uid(), &t.name)).join(" "));
+    return mac::how(&mac::steps(t, mac::root(), mac::uid()));
     #[cfg(windows)]
     return win::how(t.action, &t.name);
     #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     return t.name.clone();
+}
+
+/// The command that turns a disabled launchd job back on, for the toast.
+pub fn enable_line(name: &str) -> String {
+    #[cfg(target_os = "macos")]
+    return format!("launchctl enable {}", mac::target(mac::root(), mac::uid(), name));
+    #[cfg(not(target_os = "macos"))]
+    return format!("launchctl enable {name}");
 }
 
 /// The last line the command wrote to stderr, or its exit status.
@@ -100,7 +115,8 @@ fn run(t: &Target) -> Outcome {
 
 #[cfg(target_os = "macos")]
 fn run(t: &Target) -> Outcome {
-    command("launchctl", &mac::args(t.action, &mac::target(mac::root(), mac::uid(), &t.name)), mac::denied)
+    let steps = mac::steps(t, mac::root(), mac::uid());
+    mac::settle(steps.iter().map(|s| command("launchctl", s, mac::denied)).collect())
 }
 
 #[cfg(windows)]
@@ -135,10 +151,11 @@ mod linux {
 }
 
 /// launchd: `launchctl kickstart [-k]` and `launchctl kill SIGTERM` on the job
-/// in the domain `launchctl list` showed it from.
+/// in the domain `launchctl list` showed it from; `launchctl bootstrap` first
+/// for one that is not loaded.
 #[cfg(any(target_os = "macos", test))]
 mod mac {
-    use super::Action;
+    use super::{Action, Outcome, Target};
 
     #[cfg(target_os = "macos")]
     pub use crate::collect::svc::mac::{root, uid};
@@ -146,7 +163,39 @@ mod mac {
     /// The service target: the system domain as root, the user's GUI domain
     /// otherwise, as `launchctl list` lists them.
     pub fn target(root: bool, uid: u32, label: &str) -> String {
-        if root { format!("system/{label}") } else { format!("gui/{uid}/{label}") }
+        format!("{}/{label}", domain(root, uid))
+    }
+
+    pub fn domain(root: bool, uid: u32) -> String {
+        if root { "system".to_string() } else { format!("gui/{uid}") }
+    }
+
+    /// The `launchctl` runs for `t`: a job that is not loaded is loaded from
+    /// its plist and then kicked, whether it was asked to start or restart.
+    pub fn steps(t: &Target, root: bool, uid: u32) -> Vec<Vec<String>> {
+        let target = target(root, uid, &t.name);
+        match &t.plist {
+            Some(p) if t.action != Action::Stop => {
+                vec![vec!["bootstrap".to_string(), domain(root, uid), p.clone()], args(Action::Start, &target)]
+            }
+            _ => vec![args(t.action, &target)],
+        }
+    }
+
+    /// The steps as one shell line.
+    pub fn how(steps: &[Vec<String>]) -> String {
+        let quote = |a: &String| if a.contains([' ', '\'', '"']) { format!("'{}'", a.replace('\'', "'\\''")) } else { a.clone() };
+        steps.iter().map(|s| format!("launchctl {}", s.iter().map(quote).collect::<Vec<_>>().join(" "))).collect::<Vec<_>>().join(" && ")
+    }
+
+    /// One outcome for the steps: done when the last one is, else the first
+    /// that went wrong. A bootstrap that fails because another load won the
+    /// race still counts when the kick after it works.
+    pub fn settle(outcomes: Vec<Outcome>) -> Outcome {
+        if outcomes.last().is_none_or(|o| *o == Outcome::Done) {
+            return Outcome::Done;
+        }
+        outcomes.into_iter().find(|o| *o != Outcome::Done).unwrap_or(Outcome::Done)
     }
 
     pub fn args(action: Action, target: &str) -> Vec<String> {
@@ -316,6 +365,25 @@ mod tests {
         assert_eq!(mac::args(Action::Stop, "gui/501/x"), ["kill", "SIGTERM", "gui/501/x"]);
         assert!(mac::denied("Could not kickstart service \"x\": 1: Operation not permitted"));
         assert!(!mac::denied("Could not find service \"x\" in domain for user gui: 501"));
+    }
+
+    #[test]
+    fn a_job_that_is_not_loaded_is_bootstrapped_from_its_plist_then_kicked() {
+        let t = |action, plist: Option<&str>| Target { action, name: "com.example.sync".into(), plist: plist.map(String::from) };
+        let plist = "/Users/me/Library/LaunchAgents/My Sync.plist";
+        let steps = mac::steps(&t(Action::Restart, Some(plist)), false, 501);
+        assert_eq!(steps, [vec!["bootstrap", "gui/501", plist], vec!["kickstart", "gui/501/com.example.sync"]]);
+        assert_eq!(
+            mac::how(&steps),
+            "launchctl bootstrap gui/501 '/Users/me/Library/LaunchAgents/My Sync.plist' && launchctl kickstart gui/501/com.example.sync"
+        );
+        assert_eq!(mac::steps(&t(Action::Start, None), true, 0), [vec!["kickstart", "system/com.example.sync"]]);
+        assert_eq!(mac::steps(&t(Action::Stop, Some(plist)), false, 501), [vec!["kill", "SIGTERM", "gui/501/com.example.sync"]]);
+        let failed = || Outcome::Failed("Bootstrap failed: 5: Input/output error".into());
+        assert_eq!(mac::settle(vec![failed(), Outcome::Done]), Outcome::Done);
+        assert_eq!(mac::settle(vec![failed(), Outcome::Failed("not found".into())]), failed());
+        assert_eq!(mac::settle(vec![Outcome::Done, Outcome::Denied]), Outcome::Denied);
+        assert_eq!(mac::settle(vec![Outcome::Done]), Outcome::Done);
     }
 
     #[test]

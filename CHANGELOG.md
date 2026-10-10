@@ -4,6 +4,14 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.7.2] - 2026-10-10
+
+### 修正
+
+- macOS の svc の画面で、読み込まれていないジョブ（`stopped (not loaded)` と出る）の開始・再起動が `launchctl kickstart` の「見つからない」で失敗していた。
+  有効なジョブは plist を `launchctl bootstrap <ドメイン> <plist>` で読み込んでから `kickstart` するようにした。確かめる窓にも 2 つのコマンドを並べて出す。
+- 無効のジョブは、無効を解くと持ち主の設定を変えてしまうので触らない。`S` / `R` を押すと、元に戻すコマンド（`launchctl enable gui/<uid>/<label>`）をトーストで言うだけにした。
+
 ## [0.7.1] - 2026-10-10
 
 ### 追加

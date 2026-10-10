@@ -200,7 +200,7 @@ pub fn parse_disabled(s: &str) -> HashMap<String, bool> {
 }
 
 /// The loaded jobs with what their plists add, then the plists' jobs that
-/// are not loaded, as stopped. The first plist of a label wins (the user's
+/// are not loaded, as stopped and `unloaded`. The first plist of a label wins (the user's
 /// folder comes first). Daemons without `UserName` run as root.
 pub fn merge(mut list: Vec<Service>, jobs: &[(String, Job)], disabled: &HashMap<String, bool>, daemons: bool) -> Vec<Service> {
     let mut at: HashMap<String, usize> = list.iter().enumerate().map(|(i, s)| (s.name.clone(), i)).collect();
@@ -213,7 +213,8 @@ pub fn merge(mut list: Vec<Service>, jobs: &[(String, Job)], disabled: &HashMap<
         let (start, start_raw) = if off { (Start::Disabled, "disabled") } else { (job.start, job.start_raw) };
         let user = job.user.clone().or_else(|| daemons.then(|| "root".to_string()));
         let i = *at.entry(job.label.clone()).or_insert_with(|| {
-            list.push(Service { name: job.label.clone(), state: State::Stopped, ..Service::default() });
+            let sub = "not loaded".to_string();
+            list.push(Service { name: job.label.clone(), state: State::Stopped, sub, unloaded: true, ..Service::default() });
             list.len() - 1
         });
         let s = &mut list[i];
@@ -346,6 +347,8 @@ mod tests {
             ]
         );
         assert_eq!(v[0].cmd.as_deref(), Some("/bin/a"));
+        let unloaded: Vec<(&str, &str)> = v.iter().filter(|s| s.unloaded).map(|s| (s.name.as_str(), s.sub.as_str())).collect();
+        assert_eq!(unloaded, [("off", "not loaded"), ("on", "not loaded")]);
         // An agent runs as whoever logged in: no account is made up.
         assert_eq!(merge(Vec::new(), &jobs[..1], &HashMap::new(), false)[0].user, None);
     }

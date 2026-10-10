@@ -49,7 +49,12 @@ pub fn draw(pen: &Pen, app: &App, full: Rect) {
             let rows = vec![
                 (tr("confirm.name"), t.name.clone()),
                 (tr("svc.display"), s.map(|s| s.display.clone()).filter(|d| !d.is_empty()).unwrap_or_else(dash)),
-                (tr("svc.state_row"), s.map_or_else(dash, |s| tr(s.state.key()).to_string())),
+                (
+                    tr("svc.state_row"),
+                    s.map_or_else(dash, |s| {
+                        if s.sub.is_empty() { tr(s.state.key()).to_string() } else { format!("{} ({})", tr(s.state.key()), s.sub) }
+                    }),
+                ),
                 (tr("svc.start_row"), s.map_or_else(dash, |s| tr(s.start.key()).to_string())),
                 (tr("svc.pid"), s.and_then(|s| s.pid).map_or_else(dash, |p| p.to_string())),
             ];

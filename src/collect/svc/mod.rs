@@ -94,6 +94,9 @@ pub struct Service {
     pub cmd: Option<String>,
     /// The unit file or the plist.
     pub file: Option<String>,
+    /// A launchd job known only from its plist: starting it loads the plist
+    /// first (`launchctl bootstrap`).
+    pub unloaded: bool,
 }
 
 /// Why the list is short or empty.

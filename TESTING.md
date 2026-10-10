@@ -63,6 +63,7 @@ back to `[ ]`.
 - [ ] 3b.10 Linux with systemd: as an ordinary user on a desktop, `R` and `y` on a system unit brings up the polkit password window; cancelling it gives the "needs root or polkit" toast. Run with `sudo`, `x`, `S` and `R` work and the list follows.
 - [ ] 3b.11 macOS: without `sudo`, `R` on one of the user's own jobs (gui domain) restarts it (the PID changes); with `sudo`, `x` on a system job stops it, and the question says a KeepAlive job starts again by itself.
 - [ ] 3b.12 Every OS: `S` on a running service and `x` on a stopped one only show a toast (no question); `n` / `Esc` / `q` at the question leave the service as it was; `x` on procs still ends a process.
+- [ ] 3b.13 macOS: a job listed as `stopped (not loaded)` (for example after `launchctl bootout gui/$UID/<label>`): `S` asks with `launchctl bootstrap gui/<uid> <plist> && launchctl kickstart gui/<uid>/<label>` on the question, and `y` loads and starts it (it gets a PID; `launchctl list` shows it again). On one that is also `disabled` (`launchctl disable gui/$UID/<label>`), `S` only shows a toast with the `launchctl enable …` line, and `launchctl print-disabled gui/$UID` still says it is disabled.
 
 ## 3c. Network (`7`)
 

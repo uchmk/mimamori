@@ -738,7 +738,17 @@ impl App {
             self.toast(trf(key, &[&name]));
             return;
         }
-        self.confirm = Some(Ask::Svc(svcctl::Target { action, name }));
+        // A launchd job that is not loaded: loaded from its plist, unless it
+        // is disabled, which is the owner's to undo.
+        let mut plist = None;
+        if s.unloaded && action != Action::Stop {
+            if s.start == svc::Start::Disabled {
+                self.toast(trf("toast.svc_disabled", &[&name, &svcctl::enable_line(&name)]));
+                return;
+            }
+            plist = s.file.clone();
+        }
+        self.confirm = Some(Ask::Svc(svcctl::Target { action, name, plist }));
         self.mode = Mode::Confirm;
     }
 
@@ -1245,17 +1255,40 @@ mod tests {
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.svc_already_running", &["cron"]))));
         keys(&mut a, "x");
         assert_eq!(a.mode, Mode::Confirm);
-        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Stop, name: "cron".into() })));
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Stop, name: "cron".into(), plist: None })));
         keys(&mut a, "<Esc>");
         assert_eq!((a.mode, a.confirm.clone()), (Mode::Normal, None));
         keys(&mut a, "l j x");
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.svc_not_running", &["dead"]))));
         keys(&mut a, "R");
-        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "dead".into() })));
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "dead".into(), plist: None })));
         keys(&mut a, "n S");
-        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Start, name: "dead".into() })));
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Start, name: "dead".into(), plist: None })));
         keys(&mut a, "q 5 S");
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.as_str())), (Mode::Normal, Some(tr("toast.svc_elsewhere"))));
+    }
+
+    #[test]
+    fn a_job_not_loaded_is_started_from_its_plist_unless_it_is_disabled() {
+        let (mut a, tx, _ctl) = app();
+        let job = |name: &str, start| svc::Service {
+            name: name.into(),
+            state: svc::State::Stopped,
+            start,
+            file: Some(format!("/Library/LaunchAgents/{name}.plist")),
+            unloaded: true,
+            ..svc::Service::default()
+        };
+        let list = vec![job("off", svc::Start::Disabled), job("on", svc::Start::Manual)];
+        tx.send(Msg::Svc(svc::Services { list, source: "launchctl", note: None })).unwrap();
+        keys(&mut a, "6");
+        a.pump();
+        keys(&mut a, "l S");
+        let hint = trf("toast.svc_disabled", &["off", &svcctl::enable_line("off")]);
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(hint)));
+        keys(&mut a, "j R");
+        let plist = Some("/Library/LaunchAgents/on.plist".to_string());
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "on".into(), plist })));
     }
 
     #[test]
