@@ -21,12 +21,12 @@
 - **版の繰り上げと [CHANGELOG.md](CHANGELOG.md) への追記はセット。**`version` を書き換える → `cargo build` で `Cargo.lock` も更新
   （忘れると CI の `--locked` が落ちる）→ CHANGELOG の先頭に節（Keep a Changelog、日本語、**日付は JST**: `TZ=Asia/Tokyo date +%F`）→ コードと一緒にコミット。
 - コミットの件名は `vX.Y.Z: …`、最初の段落は英語で単体で通じるように書く（後でリリースノートにする）。
-- **push の前は `scripts/verify.sh`**（build `--locked`・`fmt --check`・test・clippy を Linux と `x86_64-pc-windows-msvc` で。最後の行が `ALL OK: …` なら push してよい）。
+- **push の前は `scripts/verify.sh`**（build `--locked`・`fmt --check`・test・clippy を Linux・`x86_64-pc-windows-msvc`・`aarch64-apple-darwin` で。最後の行が `ALL OK: …` なら push してよい）。
 
 ## ビルド・検証
 
 - **filer / tsumugi と違い、`cargo fmt` を使ってよい**（`rustfmt.toml` で `max_width = 140`）。CI は `cargo fmt --check` を見る。
-- clippy は `--all-targets -- -D warnings` で警告ゼロ。Linux では `#[cfg(windows)]` のコードがコンパイルされないので、Windows ターゲットの clippy も回す。
+- clippy は `--all-targets -- -D warnings` で警告ゼロ。Linux では `#[cfg(windows)]` のコードがコンパイルされないので、Windows と macOS のターゲットの clippy も回す（macOS だけで使われないコードの警告も、Linux からはここでしか出ない）。
 - テストは機械の設定ファイルに左右されてはいけない。一時ディレクトリは `util::test_dir("ラベル")`、設定は `settings::load(Some(dir))` に渡す。
 - **画面は Xvfb で確かめる**: `scripts/xrun.sh OUTDIR --keys '<Wait:2000>2<Shot:cpu><State:a>'`。
   - `<Shot:名前>` は PNG、`<State:名前>` は画面・フォーカス・選択・列の幅などの文字を OUTDIR に書く。

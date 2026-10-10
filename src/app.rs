@@ -713,10 +713,11 @@ mod tests {
     fn keys_move_a_divider_and_say_when_there_is_none() {
         let (mut a, _tx, _ctl) = app();
         keys(&mut a, "2");
+        let (right, up) = if cfg!(target_os = "macos") { ("<D-C-Right>", "<D-C-Up>") } else { ("<A-S-Right>", "<A-S-Up>") };
         let before = a.layouts[&Screen::Cpu].clone();
-        keys(&mut a, "<A-S-Right>");
+        keys(&mut a, right);
         assert_ne!(a.layouts[&Screen::Cpu], before);
-        keys(&mut a, "<A-S-Up>");
+        keys(&mut a, up);
         assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.no_divider")));
         let ctrl = if cfg!(target_os = "macos") { "<D-S-e>" } else { "<C-S-e>" };
         keys(&mut a, ctrl);

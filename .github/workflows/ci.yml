@@ -39,10 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: rustup component add rustfmt clippy
-      - run: rustup target add x86_64-pc-windows-msvc
+      - run: rustup target add x86_64-pc-windows-msvc aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo clippy --locked --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+      - run: cargo clippy --locked --all-targets --target aarch64-apple-darwin -- -D warnings

@@ -4,14 +4,15 @@
 #
 #   scripts/verify.sh
 #
-# The same steps as filer's. The Windows clippy is a type check only -- it
-# never runs Windows code.
+# The same steps as filer's, plus a macOS clippy. The Windows and macOS
+# clippy runs are type checks only -- they never run that code.
 
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-rustup target list --installed 2>/dev/null | grep -qx x86_64-pc-windows-msvc \
-    || rustup target add x86_64-pc-windows-msvc >/dev/null 2>&1
+for t in x86_64-pc-windows-msvc aarch64-apple-darwin; do
+    rustup target list --installed 2>/dev/null | grep -qx "$t" || rustup target add "$t" >/dev/null 2>&1
+done
 
 run() {
     local out rc
@@ -34,4 +35,5 @@ run cargo test -q
 tests=$(echo "$last" | grep -m1 'test result')
 run cargo +stable clippy -q --all-targets -- -D warnings
 run cargo +stable clippy -q --all-targets --target x86_64-pc-windows-msvc -- -D warnings
+run cargo +stable clippy -q --all-targets --target aarch64-apple-darwin -- -D warnings
 echo "ALL OK: $tests"

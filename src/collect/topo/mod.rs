@@ -6,6 +6,9 @@
 //! CPUs in order), not by the OS's own numbers, so a tile's thread is the
 //! usage at the same index.
 
+// macOS draws `fallback` until it reads `hw.perflevelN` (see TODO.md).
+#![cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+
 use crate::i18n::tr;
 
 #[cfg(any(target_os = "linux", test))]
