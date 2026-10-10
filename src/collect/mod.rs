@@ -2,10 +2,12 @@
 //! schedule (CPU, memory, GPUs, network interfaces, disks and sensors every interval, processes every other) and sends
 //! each reading to the UI, waking it. The UI steers it with [`Ctl`]: the
 //! interval, pause, whether services or sockets are wanted. Dropping the
-//! receiver ends the thread.
+//! receiver ends the thread. The hardware (`hw`) is read once on a thread of
+//! its own.
 
 pub mod disk;
 pub mod gpu;
+pub mod hw;
 pub mod net;
 #[cfg(windows)]
 mod pdh;
@@ -92,6 +94,8 @@ pub enum Msg {
     Sensors(sensors::Sensors),
     /// Only while the net screen wants them.
     Conns(net::Conns),
+    /// Once, from its own thread.
+    Hardware(Box<hw::Hardware>),
 }
 
 #[derive(Debug)]
@@ -116,6 +120,7 @@ pub const NET_EVERY: Duration = Duration::from_secs(2);
 pub fn spawn(wake: egui::Context, interval: Duration) -> (Receiver<Msg>, Sender<Ctl>) {
     let (tx, rx) = unbounded();
     let (ctl_tx, ctl_rx) = unbounded();
+    hw::spawn(tx.clone(), wake.clone());
     std::thread::Builder::new()
         .name("mimamori-sampler".into())
         .spawn(move || run(&tx, &ctl_rx, &wake, interval))

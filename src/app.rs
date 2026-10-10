@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use tsumugi_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc, disk, gpu, net, sensors, svc};
+use crate::collect::{Ctl, Msg, Proc, disk, gpu, hw, net, sensors, svc};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -170,7 +170,8 @@ impl App {
             screen: Screen::Ovw,
             layouts,
             drag: None,
-            views: HashMap::new(),
+            // Sys opens on its slots; its left column is a page to scroll.
+            views: HashMap::from([(Screen::Sys, View { focus: Pane::Mid.index(), ..View::default() })]),
             visible: [1; 3],
             mode: Mode::Normal,
             pending: Vec::new(),
@@ -410,6 +411,11 @@ impl App {
         self.model.sensors.list.get(self.view_of(Screen::Sensors).sel[1])
     }
 
+    /// The memory slot the sys screen has selected.
+    pub fn selected_slot(&self) -> Option<&hw::Slot> {
+        self.model.hw.as_ref()?.slots.get(self.view_of(Screen::Sys).sel[1])
+    }
+
     /// The name of the process with `pid`, if it is in the process list.
     pub fn proc_name(&self, pid: Option<u32>) -> Option<&str> {
         let pid = pid?;
@@ -551,6 +557,8 @@ impl App {
             (Screen::Disk, Pane::Mid) => self.model.disks.volumes.len(),
             (Screen::Sensors, Pane::Left) => self.model.sensors.chips().len(),
             (Screen::Sensors, Pane::Mid) => self.model.sensors.list.len(),
+            (Screen::Sys, Pane::Left) => crate::ui::sys::lines(self).len(),
+            (Screen::Sys, Pane::Mid) => self.model.hw.as_ref().map_or(0, |h| h.slots.len()),
             _ => 0,
         }
     }
@@ -1102,6 +1110,10 @@ impl App {
             let (t, f) = (m.count(sensors::Kind::Temp), m.count(sensors::Kind::Fan) + m.count(sensors::Kind::Duty));
             s += &format!("sensors: {} (temps {t}, fans {f}; chips {})\n", m.list.len(), m.chips().len());
         }
+        if let Some(h) = &self.model.hw {
+            let note = h.note.map(|n| format!("; note {n:?}")).unwrap_or_default();
+            s += &format!("hw: {} ({}); slots {} of {}{note}\n", crate::ui::sys::machine(self), h.source, h.used(), h.slots_total());
+        }
         if let Some(st) = &self.model.st {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
         }
@@ -1235,7 +1247,7 @@ mod tests {
     }
 
     #[test]
-    fn tab_skips_screens_not_built_and_enter_opens_a_process() {
+    fn tab_cycles_every_screen_and_enter_opens_a_process() {
         let (mut a, tx, _ctl) = app();
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Cpu);
@@ -1253,6 +1265,8 @@ mod tests {
         assert_eq!(a.screen, Screen::Disk);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Sensors);
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Sys);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Ovw);
         tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
@@ -1558,6 +1572,47 @@ mod tests {
         keys(&mut a, "j k k <Enter>");
         assert_eq!((a.focus(), a.selected_chip().map(|c| c.name)), (Pane::Left, Some("coretemp")));
         assert!(a.report().contains("sensors: 4 (temps 4, fans 0; chips 2)"));
+    }
+
+    #[test]
+    fn sys_opens_on_its_slots_and_the_left_column_skips_blank_facts() {
+        let (mut a, tx, _ctl) = app();
+        keys(&mut a, "0");
+        assert_eq!((a.screen, a.focus(), a.count(Screen::Sys, Pane::Mid)), (Screen::Sys, Pane::Mid, 0));
+        let slot = |locator: &str, size| hw::Slot {
+            locator: locator.into(),
+            present: size > 0,
+            size: (size > 0).then_some(size),
+            ..hw::Slot::default()
+        };
+        let h = hw::Hardware {
+            system: hw::Part { vendor: "ASUS".into(), name: "ROG STRIX B650E-F".into(), ..hw::Part::default() },
+            slots: vec![slot("DIMM_A1", 0), slot("DIMM_A2", 16 << 30), slot("DIMM_B1", 0), slot("DIMM_B2", 16 << 30)],
+            source: "SMBIOS 3.5 (test)".into(),
+            ..hw::Hardware::default()
+        };
+        tx.send(Msg::Hardware(Box::new(h))).unwrap();
+        a.pump();
+        keys(&mut a, "j");
+        assert_eq!(a.selected_slot().map(|s| s.locator.as_str()), Some("DIMM_A2"));
+        use crate::ui::sys::{Line, lines};
+        let l = lines(&a);
+        // No board facts: no such section, and no blank rows.
+        assert!(!l.contains(&Line::Head(tr("sys.board"))));
+        assert!(!l.contains(&Line::Kv(tr("sys.version"), String::new())));
+        assert!(l.contains(&Line::Kv(tr("sys.slots"), trf("sys.slots_used", &["2", "4"]))));
+        assert!(l.contains(&Line::Kv(tr("sys.installed"), "32.0 GiB".into())));
+        assert_eq!(a.count(Screen::Sys, Pane::Left), l.len());
+        assert!(a.report().contains("hw: ASUS ROG STRIX B650E-F (SMBIOS 3.5 (test)); slots 2 of 4\n"), "{}", a.report());
+        // A self-built PC: the system is left blank and the board names it.
+        let h = hw::Hardware {
+            system: hw::Part { vendor: "ASUS".into(), version: "1.0".into(), ..hw::Part::default() },
+            board: hw::Part { vendor: "ASUSTeK COMPUTER INC.".into(), name: "PRIME B650M-A".into(), ..hw::Part::default() },
+            ..hw::Hardware::default()
+        };
+        tx.send(Msg::Hardware(Box::new(h))).unwrap();
+        a.pump();
+        assert_eq!(crate::ui::sys::machine(&a), "ASUSTeK COMPUTER INC. PRIME B650M-A");
     }
 
     #[test]

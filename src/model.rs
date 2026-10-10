@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, disk, gpu, net, sensors, svc};
+use crate::collect::{Mem, Msg, Proc, Static, disk, gpu, hw, net, sensors, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -93,6 +93,8 @@ pub struct Model {
     /// Each live sensor's values, by its id.
     pub sensor_hist: HashMap<String, Ring>,
     pub sensor_read: bool,
+    /// Read once; `None` until its thread is done.
+    pub hw: Option<hw::Hardware>,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -197,6 +199,7 @@ impl Model {
                 self.sensors = s;
                 self.sensor_read = true;
             }
+            Msg::Hardware(h) => self.hw = Some(*h),
         }
     }
 

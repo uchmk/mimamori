@@ -98,6 +98,16 @@ back to `[ ]`.
 - [ ] 3e.5 macOS: the SMC and HID temperatures show under one `SMC` chip and match a tool such as `stats` or `iStat Menus`; with no sensors (a virtual machine) the screen says there is nothing to read.
 - [ ] 3e.6 `Enter` on a chip selects its first sensor in the middle; `Enter` on a sensor selects its chip on the left. A temperature within 10 °C of its high mark is yellow and past it red; a stopped fan is dim; a narrow window drops the chip, low, critical and high columns in that order.
 
+## 3f. Sys (`0`)
+
+- [ ] 3f.1 Windows: as a normal user, the system, firmware and board match `msinfo32` (System Manufacturer / Model, BIOS Version/Date, BaseBoard), `Boot` matches its BIOS Mode (UEFI / Legacy); the slots match Task Manager's Memory page (`Slots used: 2 of 4`, speed) and `Get-CimInstance Win32_PhysicalMemory` (bank, maker, part number, configured speed). The crumb reads `… · 32.0 GiB in 2 of 4 slots · SMBIOS 3.x (GetSystemFirmwareTable)`.
+- [ ] 3f.2 Windows: on a self-built PC whose system says `System Product Name`, the machine is named by its board (`ASUSTeK COMPUTER INC. ROG STRIX …`); on a laptop by its maker and model. A Hyper-V or VirtualBox guest shows `Virtual machine: yes` under Firmware.
+- [ ] 3f.3 Linux: as a normal user, the left column matches `cat /sys/class/dmi/id/{sys_vendor,product_name,bios_version,board_name}`, the middle says the slots need root, and nothing is blank. Run with `sudo`, the slots match `sudo dmidecode -t memory` (locator, size, type, speed, manufacturer, part number, rank, configured voltage) and the error checking matches `dmidecode -t 16`.
+- [ ] 3f.4 Linux: on a Raspberry Pi or another device-tree board, the machine is the `/proc/device-tree/model` (`Raspberry Pi 5 Model B Rev 1.0`) and the middle says there is no SMBIOS table.
+- [ ] 3f.5 macOS (Apple silicon): the machine and model match About This Mac and `system_profiler SPHardwareDataType`; the middle shows one row in the package (`LPDDR5`, the size, the maker) with the note that the memory is in the chip's package; no serial number appears anywhere.
+- [ ] 3f.6 macOS (Intel): the slots match `system_profiler SPMemoryDataType` (`BANK 0/ChannelA-DIMM0`, size, speed, maker); an empty slot is dim and says `empty`.
+- [ ] 3f.7 The screen opens on the slots; `j`/`k` move through them and the right column follows; `h` to the left column scrolls its facts. A narrow window drops the maker, then the type columns.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

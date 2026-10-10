@@ -15,6 +15,7 @@ mod overview;
 mod procs;
 mod sensors;
 mod svc;
+pub mod sys;
 mod tiles;
 
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -256,7 +257,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Net => net::draw(&mut cx, rects),
                     Screen::Disk => disk::draw(&mut cx, rects),
                     Screen::Sensors => sensors::draw(&mut cx, rects),
-                    _ => {}
+                    Screen::Sys => sys::draw(&mut cx, rects),
                 }
             }
             for (i, r) in rects.into_iter().enumerate() {
@@ -363,7 +364,20 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
             let fans = (s.count(Kind::Fan) + s.count(Kind::Duty)).to_string();
             trf("crumb.sensors", &[&s.list.len().to_string(), &hottest, &fans])
         }
-        _ => tr("misc.not_yet").to_string(),
+        Screen::Sys => match &m.hw {
+            None => tr("misc.reading").to_string(),
+            Some(hw) => {
+                let mem = match hw.installed().or((m.mem.total > 0).then_some(m.mem.total)) {
+                    Some(b) if !hw.unified && hw.slots_total() > 0 => {
+                        trf("crumb.sys_slots", &[&fmt_bytes(b), &hw.used().to_string(), &hw.slots_total().to_string()])
+                    }
+                    Some(b) => fmt_bytes(b),
+                    None => "—".to_string(),
+                };
+                let source = if hw.source.is_empty() { "—" } else { hw.source.as_str() };
+                trf("crumb.sys", &[&sys::machine(app), &mem, source])
+            }
+        },
     };
     let s = format!("{} › {detail}", tr(app.screen.label_key()));
     pen.text(pos2(r.left() + 12.0, r.center().y), &pen.fit(&s, r.width() - 24.0), DIM);

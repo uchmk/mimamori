@@ -11,9 +11,8 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.9** has nine screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk and sensors. The last tab
-> is there with its final number, so the keys will not move, and says
-> "Not yet". See [TODO.md](TODO.md).
+> **v0.10** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
+> What is still missing on each OS is in [TODO.md](TODO.md).
 
 ## Screens
 
@@ -28,7 +27,7 @@ inside each tile.
 | `7` | net      | The network interfaces, each with its traffic over the last minute, and counts of the sockets; every TCP and UDP socket (protocol, local and remote address, state, PID, process; filter with `/`, only the listening ones with `u`; `Enter` on an interface keeps only the sockets on its addresses and those bound to any address, until `Esc`); the selected interface's received and sent graphs, adapter, kind, link speed, addresses, MAC, MTU and totals, and the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
 | `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
-| `0` | sys      | Not yet |
+| `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, CPU, uptime and boot time, the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking); every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`.
@@ -177,6 +176,14 @@ The sensors screen reads:
 | Windows | The ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH), without administrator. Fans and the cores' own temperatures need the board maker's driver, so the screen says so; NVIDIA GPUs add their temperature and fan from NVML |
 | Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice |
 | macOS | sysinfo's components: the SMC and HID temperatures. Fans are not read yet |
+
+The sys screen reads:
+
+| OS | Machine and memory slots |
+| --- | --- |
+| Windows | The firmware's SMBIOS table from `GetSystemFirmwareTable('RSMB')`, which needs no administrator, and the boot mode from `GetFirmwareType` |
+| Linux | The SMBIOS table from `/sys/firmware/dmi/tables/DMI`, which only root may read. As a normal user, the world-readable `/sys/class/dmi/id` files give the system, board and firmware but no slots, and the screen says to run as root for them; boards without SMBIOS (many ARM boards) give the device tree's `model`. UEFI boot from `/sys/firmware/efi` |
+| macOS | `system_profiler -xml SPHardwareDataType SPMemoryDataType`: an Intel Mac lists its slots; Apple silicon has one block of unified memory in the chip's package. Serial numbers are not shown |
 
 On Windows and Linux, NVIDIA cards are read through NVML, loaded from the
 driver at run time (`nvml.dll` / `libnvidia-ml.so.1`); without it they are
