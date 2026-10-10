@@ -17,7 +17,7 @@ pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
     draw_right(cx, right);
 }
 
-fn kind_label(k: Kind) -> &'static str {
+pub(super) fn kind_label(k: Kind) -> &'static str {
     tr(if k == Kind::Npu { "gpu.kind_npu" } else { "gpu.kind_gpu" })
 }
 

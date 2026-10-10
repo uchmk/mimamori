@@ -1618,6 +1618,28 @@ mod tests {
             ]
         );
         assert!(!l.iter().any(|x| matches!(x, Line::Kv(k, _) if *k == tr("sys.l1"))));
+        // No GPUs or drives read yet: no such sections.
+        assert!(!l.contains(&Line::Head(tr("sys.graphics"))));
+        assert!(!l.contains(&Line::Head(tr("sys.drives"))));
+        let gpu = gpu::Device { name: "Radeon RX 7800 XT".into(), vram_total: Some(16 << 30), ..gpu::Device::default() };
+        let npu = gpu::Device { kind: gpu::Kind::Npu, vendor: Some("Intel"), ..gpu::Device::default() };
+        tx.send(Msg::Gpu(vec![gpu, npu])).unwrap();
+        let drive = disk::Drive { name: "nvme0n1".into(), size: Some(2_000_398_934_016), kind: disk::Kind::Ssd, ..disk::Drive::default() };
+        tx.send(Msg::Disks(disk::Disks { drives: vec![drive], ..disk::Disks::default() })).unwrap();
+        a.pump();
+        let l = lines(&a);
+        let at = l.iter().position(|x| *x == Line::Head(tr("sys.graphics"))).unwrap();
+        assert_eq!(
+            l[at + 1..at + 7],
+            [
+                Line::Kv(tr("gpu.kind_gpu"), "Radeon RX 7800 XT · 16.0 GiB".into()),
+                Line::Kv(tr("gpu.kind_npu"), trf("gpu.unnamed", &["Intel", tr("gpu.kind_npu")])),
+                Line::Kv(tr("sys.details"), trf("sys.press", &["4"])),
+                Line::Head(tr("sys.drives")),
+                Line::Kv(tr("disk.kind.ssd"), "nvme0n1 · 1.8 TiB".into()),
+                Line::Kv(tr("sys.details"), trf("sys.press", &["8"])),
+            ]
+        );
         assert_eq!(a.count(Screen::Sys, Pane::Left), l.len());
         assert!(a.report().contains("hw: ASUS ROG STRIX B650E-F (SMBIOS 3.5 (test)); slots 2 of 4\n"), "{}", a.report());
         // A self-built PC: the system is left blank and the board names it.

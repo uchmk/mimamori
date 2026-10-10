@@ -120,6 +120,7 @@ back to `[ ]`.
 - [ ] 3f.6 macOS (Intel): the slots match `system_profiler SPMemoryDataType` (`BANK 0/ChannelA-DIMM0`, size, speed, maker); an empty slot is dim and says `empty`.
 - [ ] 3f.8 Windows and Linux (with `sudo`): the Processor section's socket, maker, cores, threads, top speed and L1 / L2 / L3 match CPU-Z's or `sudo dmidecode -t 4` and `-t 7` (the L1 and L2 may be the whole chip's or one core's, as the firmware adds them up); a two-socket server says `2 × <socket>` and the cores of both. As a normal user on Linux, the section shows only the model, cores and threads.
 - [ ] 3f.9 macOS: the Processor section names the chip (`Apple M2 Pro`) or the CPU (`Quad-Core Intel Core i7`) and its cores match About This Mac; an Intel Mac shows its L3.
+- [ ] 3f.10 The Graphics section lists each GPU and NPU the gpu·npu screen lists (with its VRAM where known) and the Drives section each drive the disk screen lists (model and size); each ends with `Details  Press 4` / `Press 8`, and those keys open those screens. Rebinding the screen in `keymap.toml` changes the key shown.
 - [ ] 3f.7 The screen opens on the slots; `j`/`k` move through them and the right column follows; `h` to the left column scrolls its facts. A narrow window drops the maker, then the type columns.
 
 ## 4. Resizing the columns

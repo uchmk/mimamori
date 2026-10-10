@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.19.0] - 2026-10-10
+
+### 追加
+
+- sys の画面: 左の列に「Graphics」（GPU と NPU の名前と VRAM）と「Drives」（ドライブの型番か名前と大きさ）の節を足した。
+  それぞれの末尾に、その画面（gpu·npu・disk）を開くキーを keymap から引いて「Press 4」のように出す。新しいキーは足していない。
+
 ## [0.18.0] - 2026-10-10
 
 ### 追加

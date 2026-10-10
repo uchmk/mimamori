@@ -1,16 +1,20 @@
 //! Sys (0): what does not change while running. The machine, its processor,
-//! firmware, board and memory on the left; the memory slots in the middle; the
+//! firmware, board and memory on the left, with the GPUs and drives and the
+//! keys of their screens; the memory slots in the middle; the
 //! selected slot's module on the right. Read once at startup, on a thread of
 //! its own (`collect/hw`).
 
 use egui::{Color32, Rect, pos2, vec2};
 
-use super::{Cx, GAP, gpu::para, kv_rows, now_secs, panel, row_at};
+use super::{Cx, GAP, gpu, gpu::para, kv_rows, now_secs, panel, row_at};
 use crate::app::App;
+use crate::collect::disk::{Drive, Kind};
 use crate::collect::hw::{Hardware, Slot};
+use crate::config::cmd::{Act, Goto};
+use crate::config::keys::render_seq;
 use crate::config::theme::{CYAN, DIM, FG, ROW, YELLOW};
 use crate::i18n::{tr, trf};
-use crate::screen::Pane;
+use crate::screen::{Pane, Screen};
 use crate::util::{fmt_bytes, fmt_epoch, fmt_uptime};
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
@@ -105,7 +109,44 @@ pub fn lines(app: &App) -> Vec<Line> {
             (tr("sys.error_check"), hw.ecc.map(|e| tr(e.key()).to_string()).unwrap_or_default()),
         ],
     );
+    let jump = |to: Screen| (tr("sys.details"), screen_keys(app, to).map(|k| trf("sys.press", &[&k])).unwrap_or_default());
+    let with = |name: String, size: Option<u64>| match size {
+        Some(b) if b > 0 => format!("{name} · {}", fmt_bytes(b)),
+        _ => name,
+    };
+    let mut graphics: Vec<_> = m.gpus.iter().map(|d| (gpu::kind_label(d.kind), with(gpu::name(d), d.vram_total))).collect();
+    if !graphics.is_empty() {
+        graphics.push(jump(Screen::Gpu));
+    }
+    section(tr("sys.graphics"), graphics);
+    let mut drives: Vec<_> = m
+        .disks
+        .drives
+        .iter()
+        .map(|d| (drive_kind(d), with(if d.model.is_empty() { d.name.clone() } else { d.model.clone() }, d.size)))
+        .collect();
+    if !drives.is_empty() {
+        drives.push(jump(Screen::Disk));
+    }
+    section(tr("sys.drives"), drives);
     out
+}
+
+/// SSD or HDD, else the bus it hangs on, else just a drive.
+fn drive_kind(d: &Drive) -> &'static str {
+    match (d.kind, d.bus) {
+        (Kind::Unknown, Some(bus)) => bus,
+        (Kind::Unknown, None) => tr("sys.drive"),
+        (k, _) => tr(k.key()),
+    }
+}
+
+/// The main keys that open `to`, the way help joins them; none when unbound.
+fn screen_keys(app: &App, to: Screen) -> Option<String> {
+    let act = Act::Screen(Goto::To(to));
+    let keys: Vec<String> =
+        app.keymap().main.iter().filter(|b| b.run.as_slice() == std::slice::from_ref(&act)).map(|b| render_seq(&b.on)).collect();
+    (!keys.is_empty()).then(|| keys.join(" / "))
 }
 
 /// The processor's rows: the model as the OS names it, the rest from the
