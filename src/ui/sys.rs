@@ -1,5 +1,5 @@
-//! Sys (0): what does not change while running. The machine, its firmware,
-//! board and memory on the left; the memory slots in the middle; the
+//! Sys (0): what does not change while running. The machine, its processor,
+//! firmware, board and memory on the left; the memory slots in the middle; the
 //! selected slot's module on the right. Read once at startup, on a thread of
 //! its own (`collect/hw`).
 
@@ -53,12 +53,12 @@ pub fn lines(app: &App) -> Vec<Line> {
             (tr("sys.os"), st.os.clone()),
             (tr("sys.kernel"), st.kernel.clone()),
             (tr("sys.arch"), st.arch.clone()),
-            (tr("sys.cpu"), st.brand.clone()),
             (tr("sys.uptime"), fmt_uptime(now_secs().saturating_sub(st.boot_time))),
             (tr("sys.booted"), trf("sys.utc", &[&fmt_epoch(st.boot_time)])),
         ]);
     }
     section(tr("sys.system"), system);
+    section(tr("sys.processor"), processor(app, hw));
     if m.hw.is_none() {
         out.push(Line::Head(tr("misc.reading")));
         return out;
@@ -106,6 +106,43 @@ pub fn lines(app: &App) -> Vec<Line> {
         ],
     );
     out
+}
+
+/// The processor's rows: the model as the OS names it, the rest from the
+/// firmware, the counts from the topology where the firmware says none.
+fn processor(app: &App, hw: &Hardware) -> Vec<(&'static str, String)> {
+    let st = app.model.st.as_ref();
+    let first = hw.cpus.first();
+    let name = st.map(|st| st.brand.clone()).filter(|b| !b.is_empty()).or_else(|| first.map(|c| c.name.clone())).unwrap_or_default();
+    let socket = first.map(|c| c.socket.clone()).unwrap_or_default();
+    let socket = match hw.cpus.len() {
+        n if n > 1 && socket.is_empty() => n.to_string(),
+        n if n > 1 => trf("sys.sockets", &[&n.to_string(), &socket]),
+        _ => socket,
+    };
+    let (mut cores, mut threads) = hw.cpu_counts();
+    // A topology made up of one core per logical CPU says nothing of cores.
+    if let Some(t) = st.map(|st| &st.topo) {
+        if cores == 0 && t.source != "fallback" {
+            cores = t.core_count() as u32;
+        }
+        if threads == 0 {
+            threads = t.logical as u32;
+        }
+    }
+    let n = |v: u32| if v > 0 { v.to_string() } else { String::new() };
+    let cache = |i: usize| first.map(|c| c.cache[i]).filter(|&b| b > 0).map(fmt_bytes).unwrap_or_default();
+    vec![
+        (tr("sys.model"), name),
+        (tr("sys.maker"), first.map(|c| c.vendor.clone()).unwrap_or_default()),
+        (tr("sys.socket"), socket),
+        (tr("sys.cores"), n(cores)),
+        (tr("sys.threads"), n(threads)),
+        (tr("sys.max_speed"), first.map(|c| c.max_mhz).filter(|&m| m > 0).map(|m| trf("sys.mhz", &[&m.to_string()])).unwrap_or_default()),
+        (tr("sys.l1"), cache(0)),
+        (tr("sys.l2"), cache(1)),
+        (tr("sys.l3"), cache(2)),
+    ]
 }
 
 /// The machine in a few words: its maker and model, else the host's name.

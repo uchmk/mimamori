@@ -1,8 +1,11 @@
 //! The SMBIOS structure table, the firmware's own description of the
-//! machine: the BIOS (type 0), the system (1), the board (2), the memory
-//! arrays (16) and each memory slot (17). Pure, so the tests run everywhere.
+//! machine: the BIOS (type 0), the system (1), the board (2), each processor
+//! (4) and its caches (7), the memory arrays (16) and each memory slot (17).
+//! Pure, so the tests run everywhere.
 
-use super::{Ecc, Hardware, Slot, clean, maker};
+use std::collections::HashMap;
+
+use super::{Cpu, Ecc, Hardware, Slot, clean, maker};
 
 /// One structure: its formatted bytes (the header included, so offsets read
 /// as the specification gives them) and its strings.
@@ -170,6 +173,46 @@ fn slot(e: &Entry) -> Slot {
     }
 }
 
+/// A cache's installed size in bytes (type 7): a word whose top bit means
+/// 64 KiB units, else KiB; `0xFFFF` points to a dword further on, whose top
+/// bit says the same.
+fn cache_size(e: &Entry) -> u64 {
+    match e.word(0x09) {
+        Some(0xFFFF) => match e.dword(0x17) {
+            Some(d) if d & 0x8000_0000 != 0 => u64::from(d & 0x7FFF_FFFF) << 16,
+            Some(d) => u64::from(d) << 10,
+            None => 0,
+        },
+        Some(w) if w & 0x8000 != 0 => u64::from(w & 0x7FFF) << 16,
+        Some(w) => u64::from(w) << 10,
+        None => 0,
+    }
+}
+
+/// A count byte that points to a word further on when it is `0xFF`.
+fn count(e: &Entry, off: usize, ext: usize) -> u32 {
+    match e.byte(off) {
+        Some(0xFF) => u32::from(e.word(ext).unwrap_or(0)),
+        Some(b) => u32::from(b),
+        None => 0,
+    }
+}
+
+/// A processor (type 4); `caches` maps each cache's handle to its size.
+fn cpu(e: &Entry, caches: &HashMap<u16, u64>) -> Cpu {
+    let cache = |off: usize| e.word(off).and_then(|h| caches.get(&h)).copied().unwrap_or(0);
+    Cpu {
+        socket: e.string(0x04),
+        vendor: e.string(0x07),
+        name: e.string(0x10),
+        cores: count(e, 0x23, 0x2A),
+        enabled: count(e, 0x24, 0x2C),
+        threads: count(e, 0x25, 0x2E),
+        max_mhz: u32::from(e.word(0x14).unwrap_or(0)),
+        cache: [cache(0x1A), cache(0x1C), cache(0x1E)],
+    }
+}
+
 fn ecc(b: u8) -> Option<Ecc> {
     match b {
         3 => Some(Ecc::None),
@@ -197,6 +240,8 @@ pub fn parse(table: &[u8]) -> Hardware {
         };
         hw.ecc = hw.ecc.or(e.byte(0x06).and_then(ecc));
     }
+    let caches: HashMap<u16, u64> =
+        list.iter().filter(|e| e.kind == 7).filter_map(|e| Some((e.word(0x02)?, cache_size(e)))).filter(|&(_, b)| b > 0).collect();
     for e in &list {
         match e.kind {
             0 => {
@@ -224,6 +269,8 @@ pub fn parse(table: &[u8]) -> Hardware {
                 let p = &mut hw.board;
                 (p.vendor, p.name, p.version) = (e.string(0x04), e.string(0x05), e.string(0x06));
             }
+            // A central processor in a filled socket.
+            4 if e.byte(0x05) == Some(3) && e.byte(0x18).is_some_and(|b| b & 0x40 != 0) => hw.cpus.push(cpu(e, &caches)),
             17 if e.data.len() >= 0x15 => {
                 let array = e.word(0x04).unwrap_or(0);
                 if arrays.is_empty() || arrays.contains(&array) {
@@ -324,6 +371,41 @@ pub mod tests {
         t.extend(dimm(0x42, 0x30, 16 << 10, 0, 5600, 0, &["DIMM_B1", "BANK 2", "Kingston", "KF556C40-16"]));
         t.extend(dimm(0x43, 0x30, 0, 0, 0, 0, &["DIMM_B2", "BANK 3"]));
         t.extend(dimm(0x44, 0x31, 1, 0, 0, 0, &["CACHE"]));
+        // The processor and its caches: 1 MiB of L1, 16 MiB of L2 in 64K
+        // units, 64 MiB of L3 through the extended size.
+        let cache = |handle: u16, level: u8, size: u16, ext: u32| {
+            entry(
+                7,
+                handle,
+                &body(0x1B, &[(0x05, &[0x80 | (level - 1), 0x01]), (0x09, &size.to_le_bytes()), (0x17, &ext.to_le_bytes())]),
+                &[],
+            )
+        };
+        t.extend(cache(0x50, 1, 1024, 0));
+        t.extend(cache(0x51, 2, 0x8000 | 256, 0));
+        t.extend(cache(0x52, 3, 0xFFFF, 0x8000_0000 | 1024));
+        let handles: Vec<u8> = [0x50u16, 0x51, 0x52].iter().flat_map(|h| h.to_le_bytes()).collect();
+        t.extend(entry(
+            4,
+            0x60,
+            &body(
+                0x30,
+                &[
+                    (0x04, &[1]),
+                    (0x05, &[3]),
+                    (0x07, &[2]),
+                    (0x10, &[3]),
+                    (0x14, &5700u16.to_le_bytes()),
+                    (0x16, &4500u16.to_le_bytes()),
+                    (0x18, &[0x41]),
+                    (0x1A, &handles),
+                    (0x23, &[16, 16, 32]),
+                ],
+            ),
+            &["AM5", "Advanced Micro Devices, Inc.", "AMD Ryzen 9 7950X 16-Core Processor            "],
+        ));
+        // An empty second socket.
+        t.extend(entry(4, 0x61, &body(0x30, &[(0x04, &[1]), (0x05, &[3]), (0x18, &[0x00])]), &["CPU 2"]));
         t.extend(entry(127, 0xFFFF, &[], &[]));
         t
     }
@@ -350,6 +432,37 @@ pub mod tests {
         assert_eq!(hw.slots[2].size, Some(16 << 30));
         assert_eq!(hw.slots[2].speed, 5600);
         assert_eq!((hw.used(), hw.installed()), (2, Some(48 << 30)));
+    }
+
+    #[test]
+    fn processors_read_their_counts_and_caches() {
+        let hw = parse(&table());
+        assert_eq!(hw.cpus.len(), 1);
+        let c = &hw.cpus[0];
+        assert_eq!(
+            (c.socket.as_str(), c.vendor.as_str(), c.name.as_str()),
+            ("AM5", "Advanced Micro Devices, Inc.", "AMD Ryzen 9 7950X 16-Core Processor")
+        );
+        assert_eq!((c.cores, c.enabled, c.threads, c.max_mhz), (16, 16, 32, 5700));
+        assert_eq!(c.cache, [1 << 20, 16 << 20, 64 << 20]);
+    }
+
+    #[test]
+    fn big_counts_and_short_processors() {
+        // More than 255 cores: the byte says 0xFF and the word holds them.
+        let mut put: Vec<(usize, &[u8])> = vec![(0x05, &[3]), (0x18, &[0x40]), (0x1A, &[0xFF; 6]), (0x23, &[0xFF, 0xFF, 0xFF])];
+        let words: Vec<u8> = [288u16, 288, 576].iter().flat_map(|n| n.to_le_bytes()).collect();
+        put.push((0x2A, &words));
+        let mut t = entry(4, 1, &body(0x30, &put), &[]);
+        // SMBIOS 2.0: no caches, no counts.
+        t.extend(entry(4, 2, &body(0x1A, &[(0x05, &[3]), (0x18, &[0x41]), (0x14, &3000u16.to_le_bytes())]), &[]));
+        // Not a central processor.
+        t.extend(entry(4, 3, &body(0x30, &[(0x05, &[4]), (0x18, &[0x41])]), &[]));
+        t.extend(entry(127, 4, &[], &[]));
+        let cpus = parse(&t).cpus;
+        assert_eq!(cpus.len(), 2);
+        assert_eq!((cpus[0].cores, cpus[0].enabled, cpus[0].threads, cpus[0].cache), (288, 288, 576, [0; 3]));
+        assert_eq!((cpus[1].cores, cpus[1].threads, cpus[1].max_mhz), (0, 0, 3000));
     }
 
     #[test]

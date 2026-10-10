@@ -60,7 +60,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   Linux は `/sys/firmware/dmi/tables/DMI` が root だけなので、ふだんは `/sys/class/dmi/id`（スロットなし、そう言う）、SMBIOS の無い ARM の板はデバイスツリーの `model`。
   macOS は `system_profiler -xml`（Apple シリコンはパッケージの中の 1 塊）。WMI（`Win32_PhysicalMemory`）は COM が重く遅いので使わない。
   起動時に 1 回、専用のスレッドで読む。シリアル番号は読んでも出さない（画面の写しを人に見せることがあるため）（v0.10.0）。
-- [ ] sys: CPU の型番・コア数・キャッシュ・ソケットを SMBIOS の type 4 と 7 から足す（今は sysinfo の CPU の名前だけ）。
+- [x] sys: CPU の型番・コア数・キャッシュ・ソケットを SMBIOS の type 4 と 7 から足す（今は sysinfo の CPU の名前だけ）。
+  → 左の列に「Processor」の節。埋まったソケットの中央処理装置だけを読み、キャッシュはハンドルで type 7 を引く。macOS は system_profiler のチップ名とコア数（v0.18.0）
 - [ ] sys: GPU とドライブの一覧への近道（gpu·npu・disk の画面へ飛ぶ）を置くか決める。
 - [ ] sys の実機の確認 `【実機】`（TESTING.md 3f）。
 

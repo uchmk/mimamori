@@ -1585,8 +1585,11 @@ mod tests {
             size: (size > 0).then_some(size),
             ..hw::Slot::default()
         };
+        let cpu =
+            hw::Cpu { socket: "AM5".into(), name: "AMD Ryzen 7 7700".into(), cores: 8, threads: 16, max_mhz: 5300, ..hw::Cpu::default() };
         let h = hw::Hardware {
             system: hw::Part { vendor: "ASUS".into(), name: "ROG STRIX B650E-F".into(), ..hw::Part::default() },
+            cpus: vec![cpu.clone(), cpu],
             slots: vec![slot("DIMM_A1", 0), slot("DIMM_A2", 16 << 30), slot("DIMM_B1", 0), slot("DIMM_B2", 16 << 30)],
             source: "SMBIOS 3.5 (test)".into(),
             ..hw::Hardware::default()
@@ -1602,6 +1605,19 @@ mod tests {
         assert!(!l.contains(&Line::Kv(tr("sys.version"), String::new())));
         assert!(l.contains(&Line::Kv(tr("sys.slots"), trf("sys.slots_used", &["2", "4"]))));
         assert!(l.contains(&Line::Kv(tr("sys.installed"), "32.0 GiB".into())));
+        // Two sockets add up; the caches the firmware leaves out are left out.
+        let at = l.iter().position(|x| *x == Line::Head(tr("sys.processor"))).unwrap();
+        assert_eq!(
+            l[at + 1..at + 6],
+            [
+                Line::Kv(tr("sys.model"), "AMD Ryzen 7 7700".into()),
+                Line::Kv(tr("sys.socket"), trf("sys.sockets", &["2", "AM5"])),
+                Line::Kv(tr("sys.cores"), "16".into()),
+                Line::Kv(tr("sys.threads"), "32".into()),
+                Line::Kv(tr("sys.max_speed"), trf("sys.mhz", &["5300"])),
+            ]
+        );
+        assert!(!l.iter().any(|x| matches!(x, Line::Kv(k, _) if *k == tr("sys.l1"))));
         assert_eq!(a.count(Screen::Sys, Pane::Left), l.len());
         assert!(a.report().contains("hw: ASUS ROG STRIX B650E-F (SMBIOS 3.5 (test)); slots 2 of 4\n"), "{}", a.report());
         // A self-built PC: the system is left blank and the board names it.

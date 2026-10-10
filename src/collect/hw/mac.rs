@@ -4,7 +4,7 @@
 
 use plist::{Dictionary, Value};
 
-use super::{Bios, Ecc, Hardware, Note, Part, Slot, clean, maker};
+use super::{Bios, Cpu, Ecc, Hardware, Note, Part, Slot, clean, maker};
 
 #[cfg(target_os = "macos")]
 pub fn read() -> Hardware {
@@ -50,6 +50,34 @@ fn unhex(s: &str) -> String {
     }
 }
 
+/// The processors: Apple silicon names its chip and counts its cores as
+/// `proc 12:8:4` (all, performance, efficiency); an Intel Mac names its CPU,
+/// counts every package's cores as a number and says each one's L3.
+fn cpus(d: &Dictionary) -> Vec<Cpu> {
+    let Some(name) = [text(d, "chip_type"), text(d, "cpu_type")].into_iter().find(|s| !s.is_empty()) else { return Vec::new() };
+    let cores = match d.get("number_processors") {
+        Some(Value::Integer(n)) => n.as_unsigned().unwrap_or(0) as u32,
+        Some(Value::String(s)) => s.trim_start_matches("proc ").split(':').next().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
+        _ => 0,
+    };
+    let packages = d.get("packages").and_then(Value::as_unsigned_integer).unwrap_or(1).clamp(1, 8) as u32;
+    let vendor = if name.starts_with("Apple") {
+        "Apple"
+    } else if name.contains("Intel") {
+        "Intel"
+    } else {
+        ""
+    };
+    let cpu = Cpu {
+        vendor: vendor.into(),
+        name,
+        cores: cores / packages,
+        cache: [0, 0, bytes(&text(d, "l3_cache")).unwrap_or(0)],
+        ..Cpu::default()
+    };
+    vec![cpu; packages as usize]
+}
+
 /// One `_items` entry of the memory data type that is a slot.
 fn slot(d: &Dictionary) -> Slot {
     // `empty` reads as nothing (see `clean`).
@@ -89,6 +117,7 @@ pub fn parse(xml: &[u8]) -> Hardware {
                     ..Part::default()
                 };
                 hw.bios = Bios { vendor: "Apple".into(), version: text(d, "boot_rom_version"), ..Bios::default() };
+                hw.cpus = cpus(d);
             }
             Some("SPMemoryDataType") => {
                 for d in items {
@@ -135,6 +164,7 @@ mod tests {
                 <key>model_number</key><string>MPHE3J/A</string>
                 <key>chip_type</key><string>Apple M2 Pro</string>
                 <key>boot_rom_version</key><string>11881.1.1</string>
+                <key>number_processors</key><string>proc 12:8:4</string>
                 <key>serial_number</key><string>SECRET</string>
               </dict></array></dict>
               <dict><key>_dataType</key><string>SPMemoryDataType</string><key>_items</key><array><dict>
@@ -151,6 +181,7 @@ mod tests {
         let s = &hw.slots[0];
         assert_eq!((s.present, s.size, s.kind.as_str(), s.vendor.as_str()), (true, Some(16 << 30), "LPDDR5", "Hynix"));
         assert_eq!((hw.installed(), hw.source.as_str(), hw.note), (Some(16 << 30), "system_profiler", None));
+        assert_eq!(hw.cpus, [Cpu { vendor: "Apple".into(), name: "Apple M2 Pro".into(), cores: 12, ..Cpu::default() }]);
     }
 
     #[test]
@@ -177,6 +208,24 @@ mod tests {
         assert_eq!((s.vendor.as_str(), s.part.as_str()), ("Samsung", "M471A1K43DB1"));
         let e = &hw.slots[1];
         assert_eq!((e.present, e.size, e.kind.as_str()), (false, None, ""));
+    }
+
+    #[test]
+    fn an_intel_mac_pro_has_a_processor_per_package() {
+        let xml = plist(
+            r#"<dict><key>_dataType</key><string>SPHardwareDataType</string><key>_items</key><array><dict>
+                <key>cpu_type</key><string>6-Core Intel Xeon</string>
+                <key>number_processors</key><integer>12</integer>
+                <key>packages</key><integer>2</integer>
+                <key>l3_cache</key><string>12 MB</string>
+              </dict></array></dict>"#,
+        );
+        let cpus = parse(&xml).cpus;
+        assert_eq!(cpus.len(), 2);
+        assert_eq!(
+            (cpus[1].vendor.as_str(), cpus[1].name.as_str(), cpus[1].cores, cpus[1].cache),
+            ("Intel", "6-Core Intel Xeon", 6, [0, 0, 12 << 20])
+        );
     }
 
     #[test]

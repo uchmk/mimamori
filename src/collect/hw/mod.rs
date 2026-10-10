@@ -1,5 +1,5 @@
 //! The hardware that does not change while running: the system's maker and
-//! model, the firmware, the board and each memory slot. Read once, on a
+//! model, the firmware, the board, the processors and each memory slot. Read once, on a
 //! thread of its own so the first CPU reading never waits for it (macOS
 //! spawns `system_profiler`, which takes a second or so).
 //!
@@ -75,6 +75,25 @@ impl Ecc {
     }
 }
 
+/// A processor socket, filled, as the firmware describes it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Cpu {
+    /// Where it sits on the board: `AM5`, `CPU 1`.
+    pub socket: String,
+    pub vendor: String,
+    /// The model as the firmware writes it.
+    pub name: String,
+    /// 0 when not said, as are the rest.
+    pub cores: u32,
+    pub enabled: u32,
+    pub threads: u32,
+    /// The fastest the board lets it run, in MHz.
+    pub max_mhz: u32,
+    /// The caches by level (L1, L2, L3) in bytes, as the firmware adds them
+    /// up: some count every core's, some one core's.
+    pub cache: [u64; 3],
+}
+
 /// A memory slot, filled or not.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Slot {
@@ -133,6 +152,8 @@ pub struct Hardware {
     pub system: Part,
     pub board: Part,
     pub bios: Bios,
+    /// The filled processor sockets; empty where not said.
+    pub cpus: Vec<Cpu>,
     pub slots: Vec<Slot>,
     /// The slots the board has, as its memory arrays say; 0 when not said.
     pub slot_count: u32,
@@ -155,6 +176,12 @@ impl Hardware {
     /// What the filled slots add up to, where every size is known.
     pub fn installed(&self) -> Option<u64> {
         self.slots.iter().filter(|s| s.present).map(|s| s.size).sum::<Option<u64>>().filter(|&b| b > 0)
+    }
+
+    /// The cores and threads of every socket added up; 0 where any is not said.
+    pub fn cpu_counts(&self) -> (u32, u32) {
+        let sum = |f: fn(&Cpu) -> u32| self.cpus.iter().map(|c| Some(f(c)).filter(|&n| n > 0)).sum::<Option<u32>>().unwrap_or(0);
+        (sum(|c| c.cores), sum(|c| c.threads))
     }
 
     /// The slots the board has: the arrays' count, else the slots listed.
@@ -287,5 +314,15 @@ mod tests {
         hw.slots.push(slot(None));
         hw.slot_count = 4;
         assert_eq!((hw.installed(), hw.slots_total()), (None, 4));
+    }
+
+    #[test]
+    fn sockets_add_up_only_when_each_is_known() {
+        let cpu = |cores, threads| Cpu { cores, threads, ..Cpu::default() };
+        let mut hw = Hardware { cpus: vec![cpu(16, 32), cpu(16, 32)], ..Hardware::default() };
+        assert_eq!(hw.cpu_counts(), (32, 64));
+        hw.cpus.push(cpu(0, 8));
+        assert_eq!(hw.cpu_counts(), (0, 72));
+        assert_eq!(Hardware::default().cpu_counts(), (0, 0));
     }
 }
