@@ -4,6 +4,21 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.11.0] - 2026-10-10
+
+### 追加
+
+- disk の画面: macOS でもドライブを読むようにした。IOKit の `IOBlockStorageDriver` ごとに、`Statistics` の読み書きのバイト数（起動からの合計と毎秒）、
+  上の装置の型番・SSD か HDD か・バス（Apple Fabric・PCIe・USB・Thunderbolt など）、下のディスク全体の BSD 名（`disk0`）と大きさを出す。
+  マウントしたディスクイメージと空のカードリーダーは出さない。macOS は忙しさを数えないので、忙しさのグラフは出ない。
+- ボリュームは `statfs` でマウント元の装置を取り、IOKit を親へたどってドライブに結ぶ（APFS はコンテナを通って物理のパーティションへ）。
+  結び先は装置ごとに 1 回だけ聞き、ドライブの顔ぶれが変わったら聞き直す。
+- 新しいクレートは足していない（IOKit と CoreFoundation のバインディングは sysinfo がすでに使っている `objc2-io-kit` / `objc2-core-foundation`）。
+
+### 変更
+
+- ドライブを読まない OS の注記を「この OS ではドライブを読まない」に改めた。
+
 ## [0.10.0] - 2026-10-10
 
 ### 追加

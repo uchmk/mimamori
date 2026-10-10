@@ -5,13 +5,17 @@
 //! The volumes come from sysinfo on every OS. The drives come from
 //! `/proc/diskstats` and `/sys/block` on Linux, and from the `PhysicalDisk`
 //! performance counters (PDH) on Windows with each drive's model, bus and
-//! kind asked of it once. macOS lists no drives yet. The parsing is kept in
-//! pure functions so the tests run everywhere.
+//! kind asked of it once, and from IOKit's block storage drivers on macOS.
+//! The parsing is kept in pure functions so the tests run everywhere.
 
 #[cfg(windows)]
 mod ioctl;
+#[cfg(target_os = "macos")]
+mod iokit;
 #[cfg(any(target_os = "linux", test))]
 pub mod linux;
+#[cfg(any(target_os = "macos", test))]
+pub mod mac;
 #[cfg(any(windows, test))]
 pub mod windows;
 
@@ -54,9 +58,9 @@ impl Kind {
 /// Why the drive list is empty or short.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Note {
-    /// macOS: the drives are not read yet; each volume shows its disk's
+    /// Another OS: the drives are not read; each volume shows its own
     /// traffic.
-    #[cfg_attr(any(windows, target_os = "linux"), allow(dead_code))]
+    #[cfg_attr(any(windows, target_os = "linux", target_os = "macos"), allow(dead_code))]
     NotRead,
     /// Windows: the `PhysicalDisk` counters are not there (disabled).
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -64,17 +68,21 @@ pub enum Note {
     /// Linux: `/proc/diskstats` could not be read.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     NoDiskstats,
+    /// macOS: IOKit could not list the block storage drivers.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    NoIoKit,
 }
 
 impl Note {
     #[cfg(test)]
-    pub const ALL: [Note; 3] = [Self::NotRead, Self::CountersOff, Self::NoDiskstats];
+    pub const ALL: [Note; 4] = [Self::NotRead, Self::CountersOff, Self::NoDiskstats, Self::NoIoKit];
 
     pub fn key(self) -> &'static str {
         match self {
             Self::NotRead => "disk.note.not_read",
             Self::CountersOff => "disk.note.counters_off",
             Self::NoDiskstats => "disk.note.no_diskstats",
+            Self::NoIoKit => "disk.note.no_iokit",
         }
     }
 }
@@ -173,6 +181,8 @@ pub struct Reader {
     linux: linux::Reader,
     #[cfg(windows)]
     win: Option<ioctl::Reader>,
+    #[cfg(target_os = "macos")]
+    mac: iokit::Reader,
 }
 
 impl Reader {
@@ -185,6 +195,8 @@ impl Reader {
             linux: linux::Reader::default(),
             #[cfg(windows)]
             win: ioctl::Reader::open(),
+            #[cfg(target_os = "macos")]
+            mac: iokit::Reader::default(),
         }
     }
 
@@ -192,7 +204,7 @@ impl Reader {
         let (mut drives, note) = self.drives();
         let mut volumes = self.volumes();
         for v in &mut volumes {
-            v.drive = drive_of(v, &drives);
+            v.drive = self.drive_of(v, &drives);
         }
         link(&mut drives, &volumes);
         Disks { drives, volumes, note }
@@ -248,32 +260,44 @@ impl Reader {
         }
     }
 
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(target_os = "macos")]
+    fn drives(&mut self) -> (Vec<Drive>, Option<Note>) {
+        self.mac.read()
+    }
+
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     fn drives(&mut self) -> (Vec<Drive>, Option<Note>) {
         (Vec::new(), Some(Note::NotRead))
     }
-}
 
-/// Which drive a volume is on: by the device it was mounted from on Linux,
-/// by its drive letter on Windows.
-#[cfg(target_os = "linux")]
-fn drive_of(v: &Volume, drives: &[Drive]) -> Option<String> {
-    // `/dev/disk/by-uuid/…` and `/dev/mapper/…` are links to the real node.
-    let dev = std::fs::canonicalize(&v.name).ok()?;
-    let name = dev.strip_prefix("/dev").ok()?.to_str()?;
-    let ids: Vec<&str> = drives.iter().map(|d| d.id.as_str()).collect();
-    linux::owner(name, &ids).map(str::to_string)
-}
+    /// Which drive a volume is on: by the device it was mounted from on
+    /// Linux, by its drive letter on Windows, by walking IOKit up from its
+    /// device on macOS.
+    #[cfg(target_os = "linux")]
+    fn drive_of(&mut self, v: &Volume, drives: &[Drive]) -> Option<String> {
+        // `/dev/disk/by-uuid/…` and `/dev/mapper/…` are links to the real node.
+        let dev = std::fs::canonicalize(&v.name).ok()?;
+        let name = dev.strip_prefix("/dev").ok()?.to_str()?;
+        let ids: Vec<&str> = drives.iter().map(|d| d.id.as_str()).collect();
+        linux::owner(name, &ids).map(str::to_string)
+    }
 
-#[cfg(windows)]
-fn drive_of(v: &Volume, drives: &[Drive]) -> Option<String> {
-    let letter = windows::letter(&v.mount)?;
-    drives.iter().find(|d| d.volumes.iter().any(|l| l.eq_ignore_ascii_case(&letter))).map(|d| d.id.clone())
-}
+    #[cfg(windows)]
+    fn drive_of(&mut self, v: &Volume, drives: &[Drive]) -> Option<String> {
+        let letter = windows::letter(&v.mount)?;
+        drives.iter().find(|d| d.volumes.iter().any(|l| l.eq_ignore_ascii_case(&letter))).map(|d| d.id.clone())
+    }
 
-#[cfg(not(any(target_os = "linux", windows)))]
-fn drive_of(_: &Volume, _: &[Drive]) -> Option<String> {
-    None
+    #[cfg(target_os = "macos")]
+    fn drive_of(&mut self, v: &Volume, drives: &[Drive]) -> Option<String> {
+        // The drive must still be listed: one unplugged since keeps no volumes.
+        self.mac.drive_of(&v.mount).filter(|id| drives.iter().any(|d| &d.id == id))
+    }
+
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+    fn drive_of(&mut self, _: &Volume, _: &[Drive]) -> Option<String> {
+        None
+    }
 }
 
 #[cfg(test)]

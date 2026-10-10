@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.10** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
+> **v0.11** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
 > What is still missing on each OS is in [TODO.md](TODO.md).
 
 ## Screens
@@ -167,7 +167,7 @@ The disk screen reads:
 | --- | --- | --- |
 | Windows | The `PhysicalDisk` performance counters (PDH) for the traffic and busy time; `IOCTL_STORAGE_QUERY_PROPERTY` and `IOCTL_DISK_GET_DRIVE_GEOMETRY_EX` on `\\.\PhysicalDriveN` for the model, bus, SSD / HDD and size, asked once per drive without administrator. Volumes are linked by their drive letters. If the counters are off (`diskperf -n`), the screen says so and shows the volumes alone | sysinfo |
 | Linux | `/proc/diskstats` for the traffic, totals and busy time; `/sys/block` for the whole drives (not `loop`, `ram`, `zram` or partitions), their size, model, bus and `rotational`. Volumes are linked through the device they were mounted from | sysinfo |
-| macOS | Not read yet: the screen says so, and each volume shows its own traffic in the right column | sysinfo |
+| macOS | IOKit: each `IOBlockStorageDriver`'s `Statistics` for the traffic and totals since boot, the device above it for the model, SSD / HDD and bus, the whole disk below it for the BSD name (`disk0`) and size. Disk images are left out; macOS keeps no busy time, so there is no busy graph. Volumes are linked by walking up from the device they were mounted from (an APFS volume through its container to the partition it lives on) | sysinfo |
 
 The sensors screen reads:
 

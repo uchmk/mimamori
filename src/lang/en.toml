@@ -467,7 +467,8 @@ hdd = "HDD"
 unknown = "unknown"
 
 [disk.note]
-not_read = "Drives are not read on macOS yet: each volume shows its own traffic"
+not_read = "Drives are not read on this system: each volume shows its own traffic"
+no_iokit = "IOKit lists no block storage drivers: each volume shows its own traffic"
 counters_off = "The PhysicalDisk performance counters are off (turn them on with diskperf -y or lodctr /E:PerfDisk)"
 no_diskstats = "/proc/diskstats could not be read"
 

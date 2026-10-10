@@ -1819,13 +1819,16 @@ dependencies = [
 
 [[package]]
 name = "mimamori"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "crossbeam-channel",
  "dirs",
  "eframe",
  "egui",
+ "libc",
  "nvml-wrapper",
+ "objc2-core-foundation",
+ "objc2-io-kit",
  "plist",
  "png",
  "serde",

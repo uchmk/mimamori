@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -29,10 +29,15 @@ nvml-wrapper = { version = "0.13", default-features = false }
 
 # launchd's plists, XML or binary: pure Rust. The tests read plists on every
 # OS, so it is a dev-dependency too. sysinfo's components are the SMC and HID
-# temperatures; Linux and Windows read their sensors themselves.
+# temperatures; Linux and Windows read their sensors themselves. The drives
+# are read from IOKit through the bindings sysinfo already uses, and a
+# volume's device from `statfs`.
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = { version = "1.8", default-features = false }
 sysinfo = { version = "0.39", default-features = false, features = ["component"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFDictionary", "CFNumber", "CFString"] }
+objc2-io-kit = { version = "0.3", default-features = false, features = ["std", "libc"] }
+libc = "0.2"
 
 [dev-dependencies]
 plist = { version = "1.8", default-features = false }

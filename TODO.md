@@ -27,7 +27,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
   → 左がドライブ（1 分の読み書き）、真ん中がマウントされたボリューム（容量・使用率・読み書き）、右が選んだドライブのグラフ（読み・書き・ビジー）と型番・種類・バス・容量。
   Windows は PhysicalDisk のパフォーマンスカウンター（PDH）と `IOCTL_STORAGE_QUERY_PROPERTY`（管理者は要らない）、Linux は `/proc/diskstats` と `/sys/block`、ボリュームはどの OS も sysinfo（v0.8.0）。
-- [ ] disk: macOS のドライブ（IOKit の `IOBlockStorageDriver` の `Statistics`）。今はボリュームだけで、ボリュームごとの読み書きを右に出す。
+- [x] disk: macOS のドライブ（IOKit の `IOBlockStorageDriver` の `Statistics`）。型番・SSD / HDD・バス・BSD 名と大きさ、ボリュームは `statfs` の装置から IOKit を上って結ぶ。忙しさは macOS に無いので出さない（v0.11.0）。
 - [ ] disk: SMART の状態と温度（Windows は `MSFT_PhysicalDisk` / `StorageReliabilityCounter`、Linux は NVMe の `hwmon` と `smartctl`）。sensors の画面と合わせて決める。
   Linux の NVMe の温度は v0.9.0 から sensors の画面に出る（hwmon の `nvme`）。残るのは SATA の温度（`drivetemp` が無いとき）と、Windows・macOS の温度、SMART の健康状態。
 - [ ] disk の実機の確認 `【実機】`（TESTING.md 3d）。

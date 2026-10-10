@@ -86,7 +86,7 @@ back to `[ ]`.
 - [ ] 3d.3 Windows: the volumes are the drive letters with the size, free space and file system of Explorer's This PC; a USB stick plugged in appears within a second or two (as a removable drive and volume) and goes when ejected.
 - [ ] 3d.4 Linux: the drives match `lsblk -d` without the `loop` devices; an NVMe drive reads `NVMe` and `SSD`, a spinning one `HDD`; the totals since boot match `/proc/diskstats`; `dd if=/dev/zero of=big bs=1M count=2000 oflag=direct` shows in `Written` and `Busy` (compare `iostat -x 1`).
 - [ ] 3d.5 Linux: the volumes match `df -h` for the real file systems; `/` and `/home` on LVM or LUKS (`/dev/mapper/…`) are linked to the drive under them (`Drive` in the volume rows, `Enter` goes there).
-- [ ] 3d.6 macOS: the left column says the drives are not read yet; the volumes match `df -h` / Disk Utility, and selecting one shows its read and written graphs, which move while a large file is copied.
+- [ ] 3d.6 macOS: the drives match `diskutil list physical` (`disk0` and any external drive, no disk images from a mounted `.dmg`); the internal one reads its model (`APPLE SSD …`), `SSD` and `Apple Fabric` (or `PCIe` on an Intel Mac), a USB stick `USB` and removable; there is no busy graph; copying a large file moves `Read` / `Written` and the totals since boot grow; `/` and `/System/Volumes/Data` are linked to `disk0` (`Drive` in the volume rows, `Enter` goes there), and the volumes still match `df -h` / Disk Utility.
 - [ ] 3d.7 `Enter` on a drive selects its first volume in the middle; `Enter` on a volume selects its drive on the left. A volume over 90 % full shows its `USE%` in red and a red bar on the right; a narrow window drops the device and file system columns first.
 
 ## 3e. Sensors (`9`)
