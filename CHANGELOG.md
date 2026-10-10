@@ -4,6 +4,20 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.16.0] - 2026-10-10
+
+### 追加
+
+- disk の画面（Windows）: SATA のドライブの SMART の中身を出す。
+  - `SMART_RCV_DRIVE_DATA`（SMART READ DATA）で属性の表を読み、右の列に「Powered on」「Remapped sectors」「Pending sectors」と、SSD なら「Life used」を出す。
+    `StorageDeviceTemperatureProperty` が温度を返さないドライブは属性 194 の温度を使う。読むだけで、SMART を有効にする・自己診断を走らせることはしない。
+  - Windows はこの問い合わせに管理者にしか答えない。管理者でないときは「SMART counts: needs administrator」の 1 行を薄く出す
+    （健康状態の行がすでに管理者が要ると言っていれば出さない）。
+
+### 修正
+
+- CI の新しい clippy（`chunks_exact_to_as_chunks`）で v0.15.0 の lint が落ちていたのを直した。
+
 ## [0.15.0] - 2026-10-10
 
 ### 追加

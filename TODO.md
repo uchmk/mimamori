@@ -43,7 +43,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → 右の列の温度の下に「Life used」（80% から黄、100% で赤）・「Powered on」・「Lifetime writes」・「Remapped / Pending sectors」・「Media errors」（1 から黄）を、ドライブが答えた分だけ出す。
   Linux は `-j` ではなく今の `smartctl -H -A` の文字を読む（JSON を読むために serde_json を足さないため）。止まったドライブは前の値を残す。
   Windows は NVMe の SMART / health ログ（ページ 2）を読み、critical warning も故障の印にする。512 バイトのパースは OS に依らない `disk::nvme_log`（v0.13.0）。
-- [ ] disk: Windows の SATA の SMART の中身（`SMART_RCV_DRIVE_DATA` の属性。管理者が要る）。管理者でないときに何を出すかと合わせて決める。
+- [x] disk: Windows の SATA の SMART の中身（`SMART_RCV_DRIVE_DATA` の属性。管理者が要る）。管理者でないときに何を出すかと合わせて決める。
+  → 管理者なら属性を読み、そうでなければ「SMART counts: needs administrator」の 1 行を薄く出す（健康状態の行がすでに管理者が要ると言っていれば出さない）（v0.16.0）。
 - [ ] disk の実機の確認 `【実機】`（TESTING.md 3d）。
 - [x] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
   → 左がチップ（チップごとの一番熱い温度の 1 分のグラフ）、真ん中が温度とファンの一覧（今・1 分の最低と最高・高温の目安・限界）、右が選んだセンサーのグラフと目安の線。

@@ -3,21 +3,22 @@
 //! drive is, asked once per drive, and how hot a solid-state one is, asked every few
 //! seconds. The health check asks `IOCTL_STORAGE_PREDICT_FAILURE` once a
 //! minute, after making sure the drive is not spun down, and an NVMe drive's
-//! SMART / health log too (the wear, the hours, the writes, the errors). The
-//! folding is in `windows.rs`.
+//! SMART / health log too (the wear, the hours, the writes, the errors), or
+//! a SATA drive's SMART data (which wants an administrator). The folding is
+//! in `windows.rs`.
 
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::time::{Duration, Instant};
 
-use ::windows::Win32::Foundation::{CloseHandle, HANDLE};
+use ::windows::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, HANDLE};
 use ::windows::Win32::Storage::FileSystem::{CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
 use ::windows::Win32::System::IO::DeviceIoControl;
 use ::windows::Win32::System::Ioctl::{
     DEVICE_SEEK_PENALTY_DESCRIPTOR, DISK_GEOMETRY_EX, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, IOCTL_STORAGE_PREDICT_FAILURE,
-    IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, STORAGE_PREDICT_FAILURE, STORAGE_PROPERTY_ID, STORAGE_PROPERTY_QUERY,
-    StorageDeviceProperty, StorageDeviceSeekPenaltyProperty, StorageDeviceTemperatureProperty,
+    IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, SMART_RCV_DRIVE_DATA, STORAGE_PREDICT_FAILURE, STORAGE_PROPERTY_ID,
+    STORAGE_PROPERTY_QUERY, StorageDeviceProperty, StorageDeviceSeekPenaltyProperty, StorageDeviceTemperatureProperty,
 };
 use ::windows::Win32::System::Performance::{
     PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhOpenQueryW,
@@ -26,8 +27,10 @@ use ::windows::Win32::System::Power::GetDevicePowerState;
 use ::windows::core::{BOOL, HRESULT, HSTRING, PCWSTR, w};
 
 use super::health::{Ask, Check};
-use super::windows::{Info, describe, fold, nvme_query, nvme_reply, parse_instance, predict, temperature, why_of};
-use super::{Drive, Health, Kind, Smart, Temp, Why, nvme_log};
+use super::windows::{
+    ATA_DATA_LEN, Info, describe, fold, nvme_query, nvme_reply, parse_instance, predict, smart_query, smart_reply, temperature, why_of,
+};
+use super::{Drive, Health, Kind, Smart, Temp, Why, ata_attrs, nvme_log};
 use crate::collect::pdh::array;
 
 /// How often a solid-state drive's temperature is asked.
@@ -126,11 +129,22 @@ struct Disk(HANDLE);
 
 impl Disk {
     fn open(index: u32) -> Option<Self> {
+        Self::open_with(index, 0).ok()
+    }
+
+    /// Opened to read and write, as ATA commands need: only an
+    /// administrator may. The error is the Win32 one.
+    fn open_rw(index: u32) -> Result<Self, u32> {
+        Self::open_with(index, GENERIC_READ.0 | GENERIC_WRITE.0)
+    }
+
+    fn open_with(index: u32, access: u32) -> Result<Self, u32> {
         let path = HSTRING::from(format!("\\\\.\\PhysicalDrive{index}"));
         // SAFETY: a plain open; the handle is closed in Drop.
-        let h =
-            unsafe { CreateFileW(&path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None) };
-        h.ok().map(Self)
+        let h = unsafe {
+            CreateFileW(&path, access, FILE_SHARE_READ | FILE_SHARE_WRITE, None, OPEN_EXISTING, FILE_FLAGS_AND_ATTRIBUTES(0), None)
+        };
+        h.map(Self).map_err(|e| win32(e.code()))
     }
 }
 
@@ -237,7 +251,44 @@ fn check_one(id: &str, bus: Option<&str>) -> Check {
     {
         c.add_log(log, "NVMe health log");
     }
+    if matches!(bus, Some("SATA" | "ATA")) {
+        match id.parse().map_err(|_| Why::Unsupported).and_then(ata_smart) {
+            Ok(data) => {
+                if let Some((temp, smart)) = ata_attrs(&data) {
+                    c.add_counts(temp, smart, "ATA SMART");
+                }
+            }
+            // The health row says so already when it is the same reason.
+            Err(Why::NeedsAdmin) if c.why != Some(Why::NeedsAdmin) => c.smart.why = Some(Why::NeedsAdmin),
+            Err(_) => {}
+        }
+    }
     c
+}
+
+/// A SATA drive's SMART data through `SMART_RCV_DRIVE_DATA`, on a handle
+/// opened to read and write: without an administrator, `NeedsAdmin`.
+fn ata_smart(index: u32) -> Result<Vec<u8>, Why> {
+    let disk = Disk::open_rw(index).map_err(why_of)?;
+    let query = smart_query();
+    let mut out = vec![0u8; 16 + ATA_DATA_LEN];
+    let mut got = 0u32;
+    // SAFETY: the packed query and the answer's buffer outlive the call; their
+    // sizes are given.
+    unsafe {
+        DeviceIoControl(
+            disk.0,
+            SMART_RCV_DRIVE_DATA,
+            Some(query.as_ptr().cast::<c_void>()),
+            query.len() as u32,
+            Some(out.as_mut_ptr().cast::<c_void>()),
+            out.len() as u32,
+            Some(&mut got),
+            None,
+        )
+    }
+    .map_err(|e| why_of(win32(e.code())))?;
+    smart_reply(out.get(..got as usize).ok_or(Why::Unsupported)?).map(<[u8]>::to_vec).ok_or(Why::Unsupported)
 }
 
 /// An NVMe drive's SMART / health log, through the protocol-specific

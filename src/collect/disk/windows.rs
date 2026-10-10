@@ -147,6 +147,33 @@ pub fn nvme_reply(buf: &[u8]) -> Option<&[u8]> {
     buf.get(8 + off..8 + off + NVME_LOG_LEN)
 }
 
+/// The length of an ATA drive's SMART data.
+pub const ATA_DATA_LEN: usize = 512;
+
+/// A `SENDCMDINPARAMS` (packed, without its one-byte buffer) asking for SMART
+/// READ DATA through `SMART_RCV_DRIVE_DATA`: the buffer size, then the IDE
+/// registers at 4 (feature `READ_ATTRIBUTES`, one sector, the SMART cylinder
+/// signature 0x4F / 0xC2, the master drive, command `SMART_CMD`), then the
+/// drive number and reserved bytes.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn smart_query() -> [u8; 32] {
+    let mut b = [0u8; 32];
+    b[..4].copy_from_slice(&(ATA_DATA_LEN as u32).to_le_bytes());
+    b[4..12].copy_from_slice(&[0xD0, 1, 1, 0x4F, 0xC2, 0xA0, 0xB0, 0]);
+    b
+}
+
+/// The data out of a `SENDCMDOUTPARAMS` (packed): the buffer size, the
+/// driver's status at 4 (its error first), the data at 16. `None` when the
+/// driver says it failed or the data is short.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn smart_reply(buf: &[u8]) -> Option<&[u8]> {
+    if *buf.get(4)? != 0 {
+        return None;
+    }
+    buf.get(16..16 + ATA_DATA_LEN)
+}
+
 /// The drives from the three counters (by instance), with what each said
 /// about itself. `volumes` holds the drive letters until they are linked to
 /// the volumes.
@@ -298,11 +325,34 @@ mod tests {
     #[test]
     fn the_protocol_structs_have_the_sizes_the_bytes_assume() {
         use ::windows::Win32::System::Ioctl::{
-            STORAGE_PROTOCOL_DATA_DESCRIPTOR, STORAGE_PROTOCOL_SPECIFIC_DATA, StorageDeviceProtocolSpecificProperty,
+            READ_ATTRIBUTES, SENDCMDINPARAMS, SENDCMDOUTPARAMS, SMART_CMD, SMART_CYL_HI, SMART_CYL_LOW, STORAGE_PROTOCOL_DATA_DESCRIPTOR,
+            STORAGE_PROTOCOL_SPECIFIC_DATA, StorageDeviceProtocolSpecificProperty,
         };
         assert_eq!(size_of::<STORAGE_PROTOCOL_SPECIFIC_DATA>(), 40);
         assert_eq!(size_of::<STORAGE_PROTOCOL_DATA_DESCRIPTOR>(), 48);
         assert_eq!(StorageDeviceProtocolSpecificProperty.0, 50);
+        assert_eq!((size_of::<SENDCMDINPARAMS>() - 1, size_of::<SENDCMDOUTPARAMS>() - 1), (32, 16));
+        let q = smart_query();
+        assert_eq!(
+            (u32::from(q[4]), u32::from(q[7]), u32::from(q[8]), u32::from(q[10])),
+            (READ_ATTRIBUTES, SMART_CYL_LOW, SMART_CYL_HI, SMART_CMD)
+        );
+    }
+
+    #[test]
+    fn smart_read_data_is_asked_and_unwrapped_from_the_packed_structs() {
+        let q = smart_query();
+        assert_eq!(&q[..4], &512u32.to_le_bytes());
+        assert_eq!(&q[4..12], &[0xD0, 1, 1, 0x4F, 0xC2, 0xA0, 0xB0, 0]);
+        assert!(q[12..].iter().all(|&b| b == 0));
+        let mut r = vec![0u8; 16 + 512];
+        r[16] = 0x10;
+        r[16 + 511] = 0x2A;
+        let data = smart_reply(&r).unwrap();
+        assert_eq!((data.len(), data[0], data[511]), (512, 0x10, 0x2A));
+        r[4] = 1; // the driver's error
+        assert_eq!(smart_reply(&r), None);
+        assert_eq!(smart_reply(&[0u8; 100]), None);
     }
 
     #[test]

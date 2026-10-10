@@ -43,10 +43,18 @@ impl Check {
     /// drive even where the OS's own check said nothing.
     #[cfg_attr(not(any(windows, target_os = "macos", test)), allow(dead_code))]
     pub fn add_log(&mut self, (health, value, smart): (Health, Option<f32>, Smart), source: &str) {
-        self.smart = smart;
         if health == Health::Failing || self.health.is_none() {
             (self.health, self.why) = (Some(health), None);
         }
+        self.add_counts(value, smart, source);
+    }
+
+    /// Add a drive's counts, and its temperature where the drive had none,
+    /// without a word on its health (Windows' ATA data, whose health is the
+    /// OS's own check).
+    #[cfg_attr(not(any(windows, target_os = "macos", test)), allow(dead_code))]
+    pub fn add_counts(&mut self, value: Option<f32>, smart: Smart, source: &str) {
+        self.smart = smart;
         if self.temp.is_none() {
             self.temp = value.map(|value| Temp { value, high: None, crit: None, source: source.into(), chip: None });
         }

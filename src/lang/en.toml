@@ -459,6 +459,7 @@ lifetime_writes = "Lifetime writes"
 remapped = "Remapped sectors"
 pending = "Pending sectors"
 media_errors = "Media errors"
+smart_counts = "SMART counts"
 
 [disk.col]
 mount = "MOUNT"

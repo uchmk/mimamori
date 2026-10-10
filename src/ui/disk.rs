@@ -271,6 +271,11 @@ fn smart_rows(s: &Smart) -> Vec<(&'static str, String, Color32)> {
             rows.push((tr(key), group(n), if n > 0 { YELLOW } else { FG }));
         }
     }
+    if rows.is_empty()
+        && let Some(w) = s.why
+    {
+        rows.push((tr("disk.smart_counts"), tr(w.key()).to_string(), DIM));
+    }
     rows
 }
 
@@ -412,6 +417,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::collect::disk::Why;
 
     #[test]
     fn narrow_lists_drop_the_device_fs_used_and_traffic() {
@@ -452,6 +458,8 @@ mod tests {
         assert_eq!((worn(79), worn(80), worn(100), worn(255)), (FG, YELLOW, RED, RED));
         let s = Smart { remapped: Some(8), pending: Some(1), ..Smart::default() };
         assert_eq!(smart_rows(&s), [(tr("disk.remapped"), "8".to_string(), YELLOW), (tr("disk.pending"), "1".to_string(), YELLOW)]);
+        let s = Smart { why: Some(Why::NeedsAdmin), ..Smart::default() };
+        assert_eq!(smart_rows(&s), [(tr("disk.smart_counts"), tr("disk.why.needs_admin").to_string(), DIM)]);
     }
 
     #[test]

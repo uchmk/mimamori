@@ -184,6 +184,9 @@ pub struct Smart {
     pub pending: Option<u64>,
     /// NVMe: unrecovered data integrity errors.
     pub media_errors: Option<u64>,
+    /// Why there are no counts where the drive keeps them (Windows: a SATA
+    /// drive answers only an administrator).
+    pub why: Option<Why>,
 }
 
 /// The SMART / health information log of an NVMe drive (log page 2, 512
@@ -225,10 +228,10 @@ const ATA_LIFE_LEFT: [u8; 5] = [231, 233, 177, 202, 169];
 /// (remapped), 9 (hours) and 197 (pending), and the life used comes from the
 /// first of `ATA_LIFE_LEFT` the drive has. Names are not in the data, so the
 /// IDs are read as smartctl's default names for them.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 pub fn ata_attrs(buf: &[u8]) -> Option<(Option<f32>, Smart)> {
     let table = buf.get(2..2 + 30 * 12)?;
-    let attrs: Vec<&[u8]> = table.chunks_exact(12).filter(|a| a[0] != 0).collect();
+    let attrs: Vec<&[u8; 12]> = table.as_chunks::<12>().0.iter().filter(|a| a[0] != 0).collect();
     if attrs.is_empty() {
         return None;
     }
