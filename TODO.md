@@ -108,4 +108,5 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → tsumugi の形をそのまま（ConPTY は無し、zip と tar.gz にライセンスを同梱）。Actions タブから `tag` を渡して回す（v0.28.0）
 - [x] Windows のアイコンと版の情報（`winres` は C を要らない形で）。
   → アイコンはコードで描き（`src/icon.rs`、4 つのコアのタイル）、窓のアイコンにも使う。`.res` は `build.rs` が Rust で書いて（`src/winres.rs`）リンカーに渡す。rc.exe も C も要らない（v0.29.0）
-- [ ] CI に Linux のスモーク（filer の `smoke` と同じく lavapipe で起動して撮る）。
+- [x] CI に Linux のスモーク（filer の `smoke` と同じく lavapipe で起動して撮る）。
+  → mimamori は glow（OpenGL）なので lavapipe ではなく Mesa の llvmpipe。`scripts/smoke-linux.sh` が全画面を撮って確かめ、画像を成果物に残す（v0.29.1）

@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.29.1] - 2026-10-10
+
+### 追加
+
+- CI に Linux のスモーク（`smoke` のジョブ、`scripts/smoke-linux.sh`）。Xvfb と Mesa のソフトウェア OpenGL で起動し、1〜0 の画面を順に撮って、
+  panic・状態が別の画面・何も描かれていない画像のどれかで落ちる。画像と状態とログは成果物 `linux-smoke` に残る。
+
 ## [0.29.0] - 2026-10-10
 
 ### 追加

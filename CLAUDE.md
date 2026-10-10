@@ -41,6 +41,8 @@
   - 設定は OUTDIR/config から読む（`UCHMK_CONFIG_DIR`）。前の回の列の幅は持ち越さない。
   - `XRUN_IDLE=10` で、最後の 10 秒の CPU 使用率を `cpu.txt` に書く。Xvfb は llvmpipe（ソフトウェア描画）なので、
     再描画 1 回が重く、1 秒ごとのサンプリングで 1 コアの 10% 前後に見える。mimamori 自身（収集 0.1%・UI 0.7% ほど）とは分けて読む。
+- CI の `smoke` は `scripts/smoke-linux.sh`（xrun.sh で 1〜0 の画面を順に撮り、panic・別の画面・真っ平らな画像で落ちる）。画像は成果物 `linux-smoke` に残る。
+  画面を足したら、このスクリプトの `screens` にも足す。
 
 ## 設計の約束事
 
@@ -85,4 +87,4 @@
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
 | `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認） |
-| `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る）、`release-sums.sh`（リリースの SHA-256 の表） |
+| `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る）、`smoke-linux.sh`（CI のスモーク）、`release-sums.sh`（リリースの SHA-256 の表） |

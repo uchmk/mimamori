@@ -234,7 +234,9 @@ D3DKMT gives (temperature, fan and clock, no power).
 
 `mimamori --keys SCRIPT` presses keys once the window is up (as filer's
 `--keys`), and `scripts/xrun.sh` runs it on a virtual X display and keeps the
-screenshots: that is how changes are checked without a screen.
+screenshots: that is how changes are checked without a screen. CI does the
+same on every push (`scripts/smoke-linux.sh`): it visits every screen on
+Mesa's software OpenGL and fails when one panics or draws nothing.
 
 ## License
 

@@ -47,3 +47,33 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo clippy --locked --all-targets --target x86_64-pc-windows-msvc -- -D warnings
       - run: cargo clippy --locked --all-targets --target aarch64-apple-darwin -- -D warnings
+
+  # Start it on a virtual display, visit every screen and check each drew
+  # (scripts/smoke-linux.sh). A runner has no GPU, so Mesa's llvmpipe draws
+  # the OpenGL: slow, and correct, which is all this asks.
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: smoke
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install a display and a software GL
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool imagemagick \
+            libgl1-mesa-dri libegl1 libxkbcommon-x11-0 libxcursor1 libxrandr2 libxi6
+      - run: cargo build --locked
+      - name: Start it and photograph every screen
+        run: scripts/smoke-linux.sh target/smoke
+      # Kept whether or not the step passed: a failure is a picture of
+      # something, and the picture is the report.
+      - name: Keep the screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-smoke
+          path: target/smoke
+          if-no-files-found: warn
