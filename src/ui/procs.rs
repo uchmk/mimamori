@@ -34,6 +34,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     let filter = if app.filter.is_empty() { "—".to_string() } else { format!("/{}", app.filter) };
     let rows = [
         (tr("procs.sort"), app.sort.label().to_string()),
+        (tr("procs.view"), tr(if app.tree { "procs.tree" } else { "procs.flat" }).to_string()),
         (tr("procs.filter"), filter),
         (tr("procs.user"), app.my_user().unwrap_or("—").to_string()),
     ];
@@ -84,6 +85,19 @@ fn cell(p: &Proc, c: SortCol) -> String {
     }
 }
 
+/// A row's branch lines in at most `w` pixels: a deep one keeps its end,
+/// next to the name, behind an ellipsis.
+fn branch(lines: &str, w: f32, cw: f32) -> String {
+    let n = lines.chars().count();
+    let max = (w / cw) as usize;
+    if n <= max {
+        return lines.to_string();
+    }
+    let keep = max.saturating_sub(1);
+    let tail: String = lines.chars().skip(n - keep).collect();
+    format!("…{tail}")
+}
+
 fn draw_mid(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let info = trf("procs.count", &[&app.rows.len().to_string()]);
@@ -118,6 +132,14 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
                 SortCol::Mem => GREEN,
                 _ => DIM,
             };
+            if c == SortCol::Name && app.tree {
+                let lines = branch(app.tree_lines.get(i).map_or("", String::as_str), w / 2.0, cx.pen.cw);
+                let lw = lines.chars().count() as f32 * cx.pen.cw;
+                cx.pen.text(pos2(x0 + x, cy), &lines, DIM);
+                let s = cx.pen.fit(&p.name, w - lw);
+                cx.pen.text(pos2(x0 + x + lw, cy), &s, color);
+                continue;
+            }
             let s = cx.pen.fit(&cell(p, c), w);
             if right {
                 cx.pen.text_r(pos2(x0 + x + w, cy), &s, color);

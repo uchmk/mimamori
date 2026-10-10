@@ -48,6 +48,8 @@ keymap = [
     { on = "<Enter>", run = "enter", desc = "Open the selection" },
     { on = "/", run = "filter", desc = "Filter processes" },
     { on = "s", run = "sort", desc = "Next sort column" },
+    { on = "t", run = "tree", desc = "Tree of parents and children / list" },
+    { on = "u", run = "scope", desc = "Scope: every process / mine" },
     { on = "x", run = "kill", desc = "End the selected process" },
     { on = "P", run = "pause", desc = "Pause / resume sampling" },
     { on = "+", run = "interval +", desc = "Sample less often" },

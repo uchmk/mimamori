@@ -33,6 +33,8 @@ back to `[ ]`.
 - [ ] 3.6 Windows: `x` then `y` on a SYSTEM process (for example `services.exe`) without elevation: nothing ends and the toast says `Could not end … Access is denied.`
 - [ ] 3.7 macOS / Linux: `sh -c "trap '' TERM; while :; do sleep 1; done"` in a terminal, then `x` `y` on it: the toast says `Ending …`, then about 3 s later `… ignored SIGTERM; killed`. A plain `sleep 600` ends at once with `… ended`.
 - [ ] 3.8 `x` shows the question over a dimmed screen with the process's name, PID, user and command; `n`, `Esc` and `q` close it and the process keeps running; `x` on mimamori itself only says so.
+- [ ] 3.9 `t` shows procs as a tree: children under their parent with `├ │ └` branch lines in line with the names, siblings in the sort order, and the left column says `View Tree`; `t` again goes back to the list. Windows: a child whose parent has exited is a root, not under a newer process that took the parent's PID.
+- [ ] 3.10 `u` switches the scope between All and Mine (the left column's selection follows, the toast says `Scope: …`), and the selected process stays selected when it is in both.
 
 ## 4. Resizing the columns
 

@@ -23,7 +23,7 @@ inside each tile.
 | `2` | cpu      | Groups and counts; the core tiles, the total over the last minute and a thread heatmap; the selected core's threads and the top CPU users |
 | `3` | mem      | Used / available / swap; the usage bar and graph; the processes using the most memory |
 | `4` | gpu·npu  | Not yet |
-| `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, end one with `x`); the selected process's details and graphs |
+| `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
 | `6`–`0` | svc, net, disk, sensors, sys | Not yet |
 
 Every screen is three columns. Their widths change with the mouse (drag a
@@ -43,6 +43,8 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `Enter` | Open the selection (a gauge's screen, a process in procs) |
 | `/` | Filter processes (`Enter` keeps it, `Esc` drops it) |
 | `s` | Next sort column |
+| `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |
+| `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column) |
 | `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
@@ -106,6 +108,8 @@ What `run` can say in a keymap:
 | `enter`, `filter`, `sort`, `pause` | As the keys above |
 | `interval +`, `interval -` | Sample less / more often |
 | `kill` | Ask, then end the selected process |
+| `tree` | Procs as a tree, or a flat list |
+| `scope`, `scope all`, `scope mine` | Switch procs' scope, or set it |
 | `help`, `escape`, `quit` | As the keys above |
 | `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended (`[confirm]`) |
 

@@ -35,6 +35,11 @@ pub enum Act {
     Enter,
     Filter,
     Sort,
+    /// procs as a tree of parents and children, or a flat list.
+    Tree,
+    /// procs' scope: every process, or only mine (`Some(true)`); `None`
+    /// switches to the other.
+    Scope(Option<bool>),
     /// Ask, then end the selected process.
     Kill,
     Pause,
@@ -89,10 +94,17 @@ pub fn parse(s: &str) -> Result<Act, String> {
             "-" | "faster" => -1,
             _ => return Err(bad()),
         })),
+        "scope" => Ok(Act::Scope(match arg {
+            None => None,
+            Some("all") => Some(false),
+            Some("mine") => Some(true),
+            Some(_) => return Err(bad()),
+        })),
         "equalize" => none(Act::Equalize),
         "enter" => none(Act::Enter),
         "filter" => none(Act::Filter),
         "sort" => none(Act::Sort),
+        "tree" => none(Act::Tree),
         "kill" => none(Act::Kill),
         "pause" => none(Act::Pause),
         "help" => none(Act::Help),
@@ -119,6 +131,11 @@ mod tests {
         assert_eq!(parse("interval +"), Ok(Act::Interval(1)));
         assert_eq!(parse("focus left"), Ok(Act::Focus(-1)));
         assert_eq!(parse("kill"), Ok(Act::Kill));
+        assert_eq!(parse("tree"), Ok(Act::Tree));
+        assert_eq!(parse("scope"), Ok(Act::Scope(None)));
+        assert_eq!(parse("scope mine"), Ok(Act::Scope(Some(true))));
+        assert_eq!(parse("scope all"), Ok(Act::Scope(Some(false))));
+        assert!(parse("scope others").is_err());
         assert!(parse("screen nowhere").is_err());
         assert!(parse("quit now").is_err());
         assert!(parse("fly").is_err());

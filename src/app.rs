@@ -109,6 +109,10 @@ pub struct App {
     proc_pid: Option<u32>,
     /// The process list as procs shows it: indices into `model.procs`.
     pub rows: Vec<usize>,
+    /// procs as a tree (`t`) rather than a flat list.
+    pub tree: bool,
+    /// The branch lines in front of each row's name, while `tree` is on.
+    pub tree_lines: Vec<String>,
     pub top_cpu: Vec<usize>,
     pub top_mem: Vec<usize>,
     me: Option<String>,
@@ -147,6 +151,8 @@ impl App {
             sort: SortCol::Cpu,
             proc_pid: None,
             rows: Vec::new(),
+            tree: false,
+            tree_lines: Vec::new(),
             top_cpu: Vec::new(),
             top_mem: Vec::new(),
             me: None,
@@ -294,6 +300,14 @@ impl App {
             o.then(a.pid.cmp(&b.pid))
         };
         rows.sort_by(|&a, &b| key(&procs[a], &procs[b]));
+        // The tree keeps the sort among siblings.
+        let lines = if self.tree {
+            let t = crate::tree::order(procs, &rows);
+            rows = t.iter().map(|r| r.0).collect();
+            t.into_iter().map(|r| r.1).collect()
+        } else {
+            Vec::new()
+        };
         let mut by_cpu: Vec<usize> = (0..procs.len()).collect();
         by_cpu.sort_by(|&a, &b| procs[b].cpu.total_cmp(&procs[a].cpu).then(procs[a].pid.cmp(&procs[b].pid)));
         by_cpu.truncate(TOP_CPU);
@@ -301,6 +315,7 @@ impl App {
         by_mem.sort_by(|&a, &b| procs[b].mem.cmp(&procs[a].mem).then(procs[a].pid.cmp(&procs[b].pid)));
         by_mem.truncate(TOP_MEM);
         self.rows = rows;
+        self.tree_lines = lines;
         self.top_cpu = by_cpu;
         self.top_mem = by_mem;
 
@@ -586,6 +601,17 @@ impl App {
                 self.refresh_rows();
                 self.toast(trf("toast.sort", &[self.sort.label()]));
             }
+            Act::Tree => {
+                self.tree = !self.tree;
+                self.refresh_rows();
+                self.toast(tr(if self.tree { "toast.tree_on" } else { "toast.tree_off" }));
+            }
+            Act::Scope(to) => {
+                let mine = to.unwrap_or(!self.mine_only());
+                self.views.entry(Screen::Procs).or_default().sel[0] = mine as usize;
+                self.refresh_rows();
+                self.toast(trf("toast.scope", &[tr(if mine { "procs.mine" } else { "procs.all" })]));
+            }
             Act::Pause => {
                 self.paused = !self.paused;
                 let _ = self.ctl.send(Ctl::Pause(self.paused));
@@ -694,6 +720,8 @@ impl App {
         s += &format!("sel: {:?}\n", v.sel);
         s += &format!("filter: {}\n", self.filter);
         s += &format!("sort: {:?}\n", self.sort);
+        s += &format!("tree: {}\n", self.tree);
+        s += &format!("scope: {}\n", if self.mine_only() { "mine" } else { "all" });
         s += &format!("interval: {}\n", self.interval);
         s += &format!("paused: {}\n", self.paused);
         s += &format!("samples: {}\n", self.model.samples);
@@ -837,6 +865,34 @@ mod tests {
         keys(&mut a, "l l <Enter>");
         assert_eq!(a.screen, Screen::Procs);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
+    }
+
+    #[test]
+    fn t_shows_the_tree_and_u_switches_the_scope() {
+        let (mut a, tx, _ctl) = app();
+        let child = |pid, ppid, cpu, user: &str| Proc { ppid: Some(ppid), user: Some(user.into()), ..proc(pid, "c", cpu, 1) };
+        let me = Proc { user: Some("me".into()), ..proc(std::process::id(), "mimamori", 0.0, 1) };
+        let init = Proc { user: Some("root".into()), ..proc(1, "init", 0.0, 1) };
+        let procs = vec![init, child(10, 1, 5.0, "root"), child(11, 1, 9.0, "me"), child(20, 10, 1.0, "me"), me];
+        tx.send(Msg::Procs { procs, total_threads: None }).unwrap();
+        a.pump();
+        keys(&mut a, "5 t");
+        assert!(a.tree);
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.tree_on")));
+        let pids: Vec<u32> = a.rows.iter().map(|&i| a.model.procs[i].pid).collect();
+        // Siblings by CPU, as the list is sorted: 11 before 10.
+        assert_eq!(&pids[..4], [1, 11, 10, 20]);
+        assert_eq!(&a.tree_lines[..4], ["", "├ ", "└ ", "  └ "]);
+        keys(&mut a, "u");
+        assert!(a.mine_only());
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.scope", &[tr("procs.mine")])));
+        // Neither 20's parent nor 11's is mine, so each is a root.
+        let pids: Vec<u32> = a.rows.iter().map(|&i| a.model.procs[i].pid).collect();
+        assert_eq!(pids.len(), 3);
+        assert!(a.tree_lines.iter().all(|l| l.is_empty()), "{:?}", a.tree_lines);
+        keys(&mut a, "u t");
+        assert!(!a.mine_only() && !a.tree && a.tree_lines.is_empty());
+        assert_eq!(a.rows.len(), 5);
     }
 
     #[test]
