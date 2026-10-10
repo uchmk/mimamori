@@ -4,14 +4,17 @@
 //!
 //! Linux takes the interfaces from sysinfo and what kind each is from
 //! `/sys/class/net`, the sockets from `/proc/net` with their processes from
-//! `/proc/*/fd`. Windows asks the IP helper for both. macOS has sysinfo's
-//! interfaces and no sockets yet. The parsing is kept in pure functions so
-//! the tests run everywhere.
+//! `/proc/*/fd`. Windows asks the IP helper for both. macOS takes the
+//! interfaces from sysinfo and their kinds from `networksetup`, the sockets
+//! from `netstat`. The parsing is kept in pure functions so the tests run
+//! everywhere.
 
 #[cfg(windows)]
 mod iphlp;
 #[cfg(any(target_os = "linux", test))]
 pub mod linux;
+#[cfg(any(target_os = "macos", test))]
+pub mod mac;
 #[cfg(any(windows, test))]
 pub mod windows;
 
@@ -21,8 +24,8 @@ use std::time::Instant;
 
 /// What an interface is, as far as the OS lets on.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
-// macOS reads no sockets and guesses kinds from names alone.
-#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+// Other OSes read no sockets and guess kinds from names alone.
+#[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum Kind {
     Wired,
     Wireless,
@@ -57,8 +60,8 @@ impl Kind {
 pub struct Nic {
     /// The interface name (`eth0`, `en0`) or Windows' alias (`Wi-Fi`).
     pub name: String,
-    /// The adapter's description on Windows, the driver on Linux; empty
-    /// when there is none.
+    /// The adapter's description on Windows, the driver on Linux, the
+    /// hardware port on macOS (`Wi-Fi`); empty when there is none.
     pub desc: String,
     pub kind: Kind,
     /// Carrying traffic: the link is up (or the OS cannot say).
@@ -113,6 +116,8 @@ fn sort(list: &mut [Nic]) {
 pub struct NicReader {
     #[cfg(not(windows))]
     nets: sysinfo::Networks,
+    #[cfg(target_os = "macos")]
+    ports: mac::Ports,
     last: HashMap<String, (u64, u64)>,
     at: Option<Instant>,
 }
@@ -122,6 +127,8 @@ impl NicReader {
         Self {
             #[cfg(not(windows))]
             nets: sysinfo::Networks::new_with_refreshed_list(),
+            #[cfg(target_os = "macos")]
+            ports: mac::Ports::default(),
             last: HashMap::new(),
             at: None,
         }
@@ -145,6 +152,8 @@ impl NicReader {
     #[cfg(not(windows))]
     fn read_os(&mut self) -> Vec<Nic> {
         self.nets.refresh(true);
+        #[cfg(target_os = "macos")]
+        let ports = self.ports.get();
         self.nets
             .list()
             .iter()
@@ -152,7 +161,15 @@ impl NicReader {
                 let mut n = from_sysinfo(name, d);
                 #[cfg(target_os = "linux")]
                 linux::fill(&mut n, std::path::Path::new("/sys/class/net"));
-                #[cfg(not(target_os = "linux"))]
+                #[cfg(target_os = "macos")]
+                match ports.get(name.as_str()) {
+                    Some(port) => {
+                        n.kind = mac::port_kind(port);
+                        n.desc = port.clone();
+                    }
+                    None => n.kind = guess_kind(name),
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "macos")))]
                 {
                     n.kind = guess_kind(name);
                 }
@@ -185,7 +202,8 @@ fn from_sysinfo(name: &str, d: &sysinfo::NetworkData) -> Nic {
     }
 }
 
-/// The kind from the name alone, BSD style: all macOS gives cheaply.
+/// The kind from the name alone, BSD style: for what macOS has no hardware
+/// port for (VPNs, AirDrop, VM bridges).
 #[cfg(any(not(any(windows, target_os = "linux")), test))]
 pub fn guess_kind(name: &str) -> Kind {
     let starts = |ps: &[&str]| ps.iter().any(|p| name.starts_with(p));
@@ -201,7 +219,7 @@ pub fn guess_kind(name: &str) -> Kind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum Proto {
     Tcp,
     Tcp6,
@@ -226,7 +244,7 @@ impl Proto {
 
 /// A TCP socket's state; UDP has none.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum State {
     Listen,
     Established,
@@ -308,7 +326,7 @@ impl Conn {
 }
 
 /// `None` for the all-zeros address and port: no peer.
-#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+#[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub fn peer(a: SocketAddr) -> Option<SocketAddr> {
     (!(a.ip().is_unspecified() && a.port() == 0)).then_some(a)
 }
@@ -321,19 +339,17 @@ pub enum Note {
     OtherUsers,
     /// The OS would not give the table.
     Failed,
-    MacNotYet,
     OtherOs,
 }
 
 impl Note {
     #[cfg(test)]
-    pub const ALL: [Note; 4] = [Self::OtherUsers, Self::Failed, Self::MacNotYet, Self::OtherOs];
+    pub const ALL: [Note; 3] = [Self::OtherUsers, Self::Failed, Self::OtherOs];
 
     pub fn key(self) -> &'static str {
         match self {
             Self::OtherUsers => "net.note.other_users",
             Self::Failed => "net.note.failed",
-            Self::MacNotYet => "net.note.mac",
             Self::OtherOs => "net.note.other_os",
         }
     }
@@ -342,7 +358,7 @@ impl Note {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Conns {
     pub list: Vec<Conn>,
-    /// `/proc/net`, `iphlpapi`.
+    /// `/proc/net`, `iphlpapi`, `netstat`.
     pub source: &'static str,
     pub note: Option<Note>,
 }
@@ -371,7 +387,7 @@ fn read_conns_os() -> Conns {
 
 #[cfg(target_os = "macos")]
 fn read_conns_os() -> Conns {
-    Conns { list: Vec::new(), source: "", note: Some(Note::MacNotYet) }
+    mac::conns()
 }
 
 #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]

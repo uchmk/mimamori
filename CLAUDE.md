@@ -60,7 +60,7 @@
 | `src/collect/` | 収集のスレッド（cpu / mem / proc / gpu / net のインターフェース、svc と net のソケットは画面が出ている間だけ）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32） |
 | `src/collect/gpu/` | GPU・NPU。`linux.rs`（drm と accel の sysfs）、`windows.rs`（PDH のカウンタを装置ごとにまとめる純粋な関数）と `pdh.rs`（PDH・DXGI の呼び出し）、`nvidia.rs`（NVML を実行時に読む）。取れない値は `Why` で理由を持つ |
 | `src/collect/svc/` | サービス。`linux.rs`（`systemctl` の出力のパース）、`windows.rs`（SCM の数値を状態に畳み、ドライバーを見分ける純粋な関数）と `scm.rs`（SCM の呼び出し、サービスとドライバー、設定は 1 分キャッシュ）、`mac.rs`（`launchctl list` と `print-disabled`、launchd の plist。plist はファイルの時刻でキャッシュ）。一覧が短い理由は `Note` |
-| `src/collect/net/` | ネットワーク。インターフェースは sysinfo の数え値に、`linux.rs`（sysfs の種類・速度・ドライバー）と `windows.rs`（IP ヘルパーの表から人が思うアダプターを選ぶ純粋な関数）と `iphlp.rs`（IP ヘルパーの呼び出し）。ソケットは Linux が `/proc/net` と `/proc/*/fd`、Windows が `GetExtendedTcpTable` / `GetExtendedUdpTable`、macOS はまだ（`Note`） |
+| `src/collect/net/` | ネットワーク。インターフェースは sysinfo の数え値に、`linux.rs`（sysfs の種類・速度・ドライバー）と `windows.rs`（IP ヘルパーの表から人が思うアダプターを選ぶ純粋な関数）と `iphlp.rs`（IP ヘルパーの呼び出し）、`mac.rs`（`networksetup` のハードウェアポートで種類、`netstat -anvW` のパースでソケット）。ソケットは Linux が `/proc/net` と `/proc/*/fd`、Windows が `GetExtendedTcpTable` / `GetExtendedUdpTable` |
 | `src/kill.rs` | プロセスの終了（確認の後、1 回ごとのスレッドで。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL） |
 | `src/svcctl.rs` | サービスの開始・停止・再起動（確認の後、1 回ごとのスレッドで。Windows は SCM、Linux は `systemctl`、macOS は `launchctl`。権限不足とエラーの読み替えは純粋な関数） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |

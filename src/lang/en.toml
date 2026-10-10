@@ -347,7 +347,6 @@ none = "—"
 [net.note]
 other_users = "Some sockets belong to other users: their process is not shown without root"
 failed = "The socket tables could not be read"
-mac = "Sockets are not read on macOS yet"
 other_os = "Not read on this OS"
 
 [help]

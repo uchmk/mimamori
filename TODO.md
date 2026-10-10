@@ -17,7 +17,10 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → 一緒に読み、`u`（procs の Mine や net の LISTEN と同じ鍵）でサービス ⇄ ドライバーを切り替える。左の列に今の種類を出す。ドライバーの操作の行は `sc.exe start|stop`（v0.7.3）。
 - [ ] svc の実機の確認 `【実機】`（TESTING.md 3b）。
 - [x] net（`7`）: インターフェースごとの送受信のグラフ、接続の一覧。Windows は IP ヘルパー、Linux は sysfs と `/proc/net`・`/proc/*/fd`。
-- [ ] net: macOS のソケットの一覧（`proc_pidinfo` の `PROC_PIDFDSOCKETINFO`、または `netstat -anv` のパース）と、インターフェースの種類（`SCNetworkInterface`。Bluetooth PAN も見分ける）。今はインターフェースだけ。
+- [x] net: macOS のソケットの一覧（`proc_pidinfo` の `PROC_PIDFDSOCKETINFO`、または `netstat -anv` のパース）と、インターフェースの種類（`SCNetworkInterface`。Bluetooth PAN も見分ける）。今はインターフェースだけ。
+  → ソケットは `netstat -anvW` のパース（PID の列は見出しから数える。古い `pid` と Sonoma 以降の `process:pid` の両方）。`proc_pidinfo` は他の利用者のプロセスを root なしで覗けず、
+  `lsof` は 2 秒ごとには重いので使わない。種類は `networksetup -listallhardwareports` のハードウェアポート名（Wi-Fi・Ethernet・Bluetooth PAN・Thunderbolt Bridge）で、
+  1 分ごとに読み直す。SCNetworkInterface のバインディングを抱えずに済む。ポートの無いもの（utun・awdl など）は名前から推す（v0.7.4）。
 - [ ] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
 - [ ] net の実機の確認 `【実機】`（TESTING.md 3c）。
 - [ ] disk（`8`）: ドライブごとの使用量と読み書きの速さ。

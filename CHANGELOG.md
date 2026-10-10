@@ -4,6 +4,15 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.7.4] - 2026-10-10
+
+### 追加
+
+- macOS の net の画面で、ソケットの一覧を読むようにした（`netstat -anvW` のパース。TCP と UDP、IPv4 と IPv6、状態と PID）。
+  PID の無い行が root なしで出るときだけ、左の列に「他の利用者のソケット」と出す。
+- macOS のインターフェースの種類を、名前から推すのをやめ、`networksetup -listallhardwareports` のハードウェアポートで決めるようにした
+  （Wi-Fi・Ethernet・Bluetooth PAN・Thunderbolt Bridge）。右の列の `Adapter` にポート名を出す。ポートの無いもの（`utun`・`awdl` など）は今までどおり名前から推す。
+
 ## [0.7.3] - 2026-10-10
 
 ### 追加
