@@ -4,7 +4,7 @@
 //!
 //! Each OS has its own source: the service control manager on Windows,
 //! `systemctl` on Linux (unit files alone when systemd is not running) and
-//! `launchctl list` on macOS. The parsing is kept in pure functions so the
+//! `launchctl` with launchd's plists on macOS. The parsing is kept in pure functions so the
 //! tests run everywhere.
 
 #[cfg(any(target_os = "linux", test))]
@@ -141,11 +141,14 @@ impl Services {
     }
 }
 
-/// Reads the services; on Windows it keeps their configuration a while.
+/// Reads the services; it keeps Windows' configuration a while and
+/// macOS's plists while they are unchanged.
 #[derive(Default)]
 pub struct Reader {
     #[cfg(windows)]
     cache: scm::Cache,
+    #[cfg(target_os = "macos")]
+    plists: mac::Cache,
 }
 
 impl Reader {
@@ -168,7 +171,7 @@ impl Reader {
 
     #[cfg(target_os = "macos")]
     fn read_os(&mut self) -> Services {
-        mac::read()
+        mac::read(&mut self.plists)
     }
 
     #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]

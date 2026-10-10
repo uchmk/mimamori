@@ -141,20 +141,7 @@ mod mac {
     use super::Action;
 
     #[cfg(target_os = "macos")]
-    unsafe extern "C" {
-        fn geteuid() -> u32;
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn uid() -> u32 {
-        // SAFETY: geteuid takes nothing and cannot fail.
-        unsafe { geteuid() }
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn root() -> bool {
-        uid() == 0
-    }
+    pub use crate::collect::svc::mac::{root, uid};
 
     /// The service target: the system domain as root, the user's GUI domain
     /// otherwise, as `launchctl list` lists them.

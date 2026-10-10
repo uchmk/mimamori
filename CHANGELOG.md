@@ -4,6 +4,17 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.7.1] - 2026-10-10
+
+### 追加
+
+- macOS の svc の画面で、launchd の plist も読むようにした。利用者なら `~/Library/LaunchAgents`・`/Library/LaunchAgents`・`/System/Library/LaunchAgents`、
+  root なら `/Library/LaunchDaemons`・`/System/Library/LaunchDaemons`（`svcctl` が操作するのと同じドメイン）。
+  - 読み込まれていないジョブ（無効のものなど）も、止まっているジョブとして一覧に出る。無効かどうかは `launchctl print-disabled` を plist の `Disabled` より優先する。
+  - どのジョブにもコマンド（`ProgramArguments` / `Program`）・ファイル・アカウント（`UserName`。デーモンで無ければ root）・起動の種類
+    （`keep alive`・`at load`・`keep alive if`・`on a schedule`・`on demand`・`disabled`）が出る。
+  - plist は XML もバイナリも読む（Pure Rust の `plist` クレート）。読んだものはファイルの時刻が変わるまで覚えておく。
+
 ## [0.7.0] - 2026-10-10
 
 ### 追加

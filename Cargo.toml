@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -26,6 +26,14 @@ tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "085c421f5c3c
 # simply not there and no NVIDIA device is listed from it. macOS has no NVML.
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
 nvml-wrapper = { version = "0.13", default-features = false }
+
+# launchd's plists, XML or binary: pure Rust. The tests read plists on every
+# OS, so it is a dev-dependency too.
+[target.'cfg(target_os = "macos")'.dependencies]
+plist = { version = "1.8", default-features = false }
+
+[dev-dependencies]
+plist = { version = "1.8", default-features = false }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
