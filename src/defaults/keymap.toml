@@ -3,8 +3,10 @@
 # section's list, `prepend_keymap` and `append_keymap` go before and after it.
 #
 # `on` is one key token or several separated by spaces ("g g"), or an array
-# of tokens; `on_mac` is used instead on macOS. `<P-…>` is the primary
-# modifier: Cmd on macOS, Ctrl elsewhere.
+# of tokens; `on_mac` is used instead on macOS.
+#
+# C = Ctrl on Windows and Linux, Cmd on macOS (where Ctrl works too).
+# <C-,> is Ctrl+, (Cmd+, on a Mac).
 
 [main]
 keymap = [
@@ -41,12 +43,13 @@ keymap = [
     { on = "l", run = "focus right", desc = "Column to the right" },
     { on = "<Right>", run = "focus right", desc = "Column to the right" },
 
-    # tsumugi's pane keys: Alt+Shift+arrow, Cmd+Ctrl+arrow on a Mac.
-    { on = "<A-S-Left>", on_mac = "<D-C-Left>", run = "resize left", desc = "Move the divider left" },
-    { on = "<A-S-Right>", on_mac = "<D-C-Right>", run = "resize right", desc = "Move the divider right" },
-    { on = "<A-S-Up>", on_mac = "<D-C-Up>", run = "resize up", desc = "Move the divider up" },
-    { on = "<A-S-Down>", on_mac = "<D-C-Down>", run = "resize down", desc = "Move the divider down" },
-    { on = "<P-S-e>", run = "equalize", desc = "Columns back to equal widths" },
+    # tsumugi's pane keys: Alt+Shift+arrow, Cmd+Ctrl+arrow on a Mac (where
+    # Cmd and Ctrl are both C).
+    { on = "<A-S-Left>", on_mac = "<C-Left>", run = "resize left", desc = "Move the divider left" },
+    { on = "<A-S-Right>", on_mac = "<C-Right>", run = "resize right", desc = "Move the divider right" },
+    { on = "<A-S-Up>", on_mac = "<C-Up>", run = "resize up", desc = "Move the divider up" },
+    { on = "<A-S-Down>", on_mac = "<C-Down>", run = "resize down", desc = "Move the divider down" },
+    { on = "<C-S-e>", run = "equalize", desc = "Columns back to equal widths" },
 
     { on = "<Enter>", run = "enter", desc = "Open the selection" },
     { on = "/", run = "filter", desc = "Filter processes, services or connections" },
@@ -62,8 +65,17 @@ keymap = [
     { on = "-", run = "interval -", desc = "Sample more often" },
     { on = "y", run = "copy", desc = "Copy (fleet: the sample [[host]], or the machine's address)" },
     { on = "?", run = "help", desc = "Help" },
-    { on = "<P-,>", run = "settings", desc = "Settings" },
+    { on = "<F1>", run = "help", desc = "Help" },
+    { on = "<C-,>", run = "settings", desc = "Settings" },
+    # The scale every uchmk app shares (common.toml). `<C-;>` is for JIS
+    # keyboards, where + is Shift+;.
+    { on = "<C-=>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-+>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-;>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-->", run = "scale out", desc = "Zoom out" },
+    { on = "<C-0>", run = "scale reset", desc = "Zoom to 100%" },
     { on = "q", run = "quit", desc = "Quit" },
+    { on = "<C-q>", run = "quit", desc = "Quit" },
     { on = "<Esc>", run = "escape", desc = "Clear the filter (and on net the interface)" },
 ]
 
@@ -78,7 +90,13 @@ keymap = [
 [help]
 keymap = [
     { on = "?", run = "escape", desc = "Close" },
+    { on = "<F1>", run = "escape", desc = "Close" },
     { on = "q", run = "escape", desc = "Close" },
+    { on = "<C-=>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-+>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-;>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-->", run = "scale out", desc = "Zoom out" },
+    { on = "<C-0>", run = "scale reset", desc = "Zoom to 100%" },
     { on = "<Esc>", run = "escape", desc = "Close" },
     { on = "j", run = "arrow 1", desc = "Down" },
     { on = "<Down>", run = "arrow 1", desc = "Down" },
@@ -103,10 +121,15 @@ keymap = [
 [settings]
 keymap = [
     { on = "<Esc>", run = "escape", desc = "Close" },
-    { on = "<P-,>", run = "settings", desc = "Close" },
+    { on = "<C-,>", run = "settings", desc = "Close" },
     { on = "<C-Tab>", run = "page next", desc = "Next page" },
     { on = "<C-PageDown>", run = "page next", desc = "Next page" },
     { on = "<C-BackTab>", run = "page prev", desc = "Previous page" },
     { on = "<C-PageUp>", run = "page prev", desc = "Previous page" },
-    { on = "<P-f>", run = "search", desc = "Search the settings" },
+    { on = "<C-f>", run = "search", desc = "Search the settings" },
+    { on = "<C-=>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-+>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-;>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-->", run = "scale out", desc = "Zoom out" },
+    { on = "<C-0>", run = "scale reset", desc = "Zoom to 100%" },
 ]

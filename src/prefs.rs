@@ -172,7 +172,7 @@ impl Prefs {
             return;
         };
         std::thread::spawn(move || {
-            let path = if file { edit::config_path(&base) } else { base.join(crate::config::settings::DIR) };
+            let path = if file { edit::config_path(&base) } else { crate::config::settings::own_dir(&base) };
             let made = if file && !path.exists() {
                 write_atomic(&path, "")
             } else if !file {

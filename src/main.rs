@@ -58,8 +58,12 @@ usage: yagura [--keys SCRIPT]
 
 Settings: Ctrl+, (Cmd+, on macOS) opens the settings screen. The files are
 <config dir>/uchmk/yagura/config.toml ([[host]] lists the fleet) and keymap.toml;
-the language, the theme and the clock are shared by every uchmk app in
-<config dir>/uchmk/common.toml, and themes of your own go in <config dir>/uchmk/themes/.";
+the language, the scale, the theme and the clock are shared by every uchmk app in
+<config dir>/uchmk/common.toml, and themes of your own go in <config dir>/uchmk/themes/.
+
+Environment: UCHMK_CONFIG_DIR moves the whole uchmk folder, YAGURA_CONFIG_HOME
+yagura's own folder and YAGURA_STATE_HOME the folder of state.toml (the column
+widths).";
 
 struct Yagura {
     app: App,
@@ -93,6 +97,7 @@ impl Yagura {
                 Some(Act::Page(d)) if d < 0 => keys.back = true,
                 Some(Act::Page(_)) => keys.next = true,
                 Some(Act::Search) => keys.find = true,
+                Some(Act::Scale(to)) => self.app.scale(to),
                 _ => continue,
             }
             used.push(n);
@@ -258,13 +263,14 @@ fn main() -> eframe::Result {
     }
     i18n::set_language(&s.language);
     let (km, km_warn) = Keymap::load(s.keymap.as_deref());
-    let (layouts, stacks, layout_warn) = persist::load(s.dir.as_deref());
+    let (state_dir, state_note) = persist::dir(s.dir.as_deref());
+    let (layouts, stacks, layout_warn) = persist::load(state_dir.as_deref());
     let (wgpu_options, gpu_warn) = gpu_backend::options(s.backend.as_deref());
-    let warnings: Vec<String> = s.warnings.iter().chain(&km_warn).chain(&layout_warn).cloned().chain(gpu_warn).collect();
+    let warnings: Vec<String> = s.warnings.iter().chain(&km_warn).chain(&layout_warn).cloned().chain(gpu_warn).chain(state_note).collect();
     for w in &warnings {
         eprintln!("yagura: {w}");
     }
-    let saver = persist::Saver::new(s.dir.clone());
+    let saver = persist::Saver::new(state_dir);
     let interval = s.interval;
     let hosts = s.hosts.clone();
     let done = std::env::var_os("YAGURA_KEYS_DONE").filter(|v| !v.is_empty()).map(PathBuf::from);
@@ -293,6 +299,10 @@ fn main() -> eframe::Result {
             app.prefs = prefs::Prefs::load(settings::base_dir(), s);
             app.prefs.watch(&cc.egui_ctx);
             app.prefs.apply_theme(&cc.egui_ctx);
+            // The scale is common.toml's, stepped by the keymap's scale keys,
+            // so egui's own Ctrl+= / Ctrl+- stay out of it.
+            cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
+            cc.egui_ctx.set_zoom_factor(app.prefs.common.scale_or_one());
             if !hosts.is_empty() {
                 let peers = hosts.iter().map(remote::Peer::new).collect();
                 app.set_fleet(peers, remote::client::spawn(&hosts, Some(cc.egui_ctx.clone())));

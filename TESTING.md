@@ -157,10 +157,10 @@ back to `[ ]`.
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.
-- [ ] 4.2 Keyboard: `Alt+Shift+Left/Right` (macOS `Cmd+Ctrl+Left/Right`) moves the focused column's divider; `Alt+Shift+Up` says "No divider on that side".
+- [ ] 4.2 Keyboard: `Alt+Shift+Left/Right` (macOS `Cmd+Left/Right`, `Ctrl+Left/Right` or both) moves the focused column's divider; `Alt+Shift+Up` says "No divider on that side".
 - [ ] 4.3 `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) puts the columns back to equal widths.
-- [ ] 4.4 Quit and start again: each screen keeps the widths it was left with.
-- [ ] 4.5 macOS: the `Cmd` bindings work and the `Ctrl` ones of other platforms do not fire by accident.
+- [ ] 4.4 Quit and start again: each screen keeps the widths it was left with. `state.toml` is in the state folder (`%LOCALAPPDATA%\uchmk\yagura` on Windows, `~/Library/Application Support/uchmk/yagura/state` on macOS, `~/.local/state/uchmk/yagura` on Linux); one left in `<config dir>/uchmk/yagura/` by v0.38.0 is moved there on the first start, widths and heights and all.
+- [ ] 4.5 macOS: every `Ctrl+…` key of the other platforms works with `Cmd` and with `Ctrl` alike (`Cmd+,` and `Ctrl+,` both open the settings, `Cmd+q` and `Ctrl+q` both quit).
 - [ ] 4.6 Panels split their column evenly: the overview's graphs on a machine with CPU, memory, swap, two GPUs and a drive are two columns of three of the same size; cpu's cores, total and threads are thirds; gpu·npu's usage, engines and memory are thirds; disk's read, write and busy graphs sit side by side, equally wide, over the volumes.
 - [ ] 4.7 Mouse: hovering the gap between two stacked panels shows the up-down cursor and a line; dragging it moves the panels while dragging; double-clicking it puts it halfway along the room it splits.
 - [ ] 4.8 Quit and start again: each screen keeps the panel heights it was left with; `Ctrl+Shift+e` puts them back to equal along with the columns; on a screen whose panels change (another GPU picked, swap turned on), a kept height for the old set of panels is not applied to the new one.
@@ -170,7 +170,7 @@ back to `[ ]`.
 - [ ] 5.1 `common.toml` with `language = "en"` and a `yagura/config.toml` with `interval = 2`: the status bar says `every 2 s`.
 - [ ] 5.2 A `keymap.toml` with `prepend_keymap` adding a key: the key works and appears in `?` help.
 - [ ] 5.3 A broken `config.toml` (bad TOML): yagura still starts with defaults and says what was wrong.
-- [ ] 5.5 Windows: `language = "ja"` in `common.toml`: tabs, panels, toasts and `?` help are in Japanese and drawn in BIZ UDGothic (or MS Gothic / Yu Gothic / Meiryo), with no boxes; long labels are cut with `…` and do not run into the next column.
+- [ ] 5.5 Windows: `language = "ja"` in `common.toml`: tabs, panels, toasts and `?` help are in Japanese and drawn in Meiryo (or Yu Gothic / MS Gothic, the list every uchmk app uses), with no boxes; long labels are cut with `…` and do not run into the next column.
 - [ ] 5.6 macOS: the same with Hiragino; and with `language = "auto"` on a Mac set to Japanese, the screens are in Japanese.
 - [ ] 5.7 Linux desktop (X11 and Wayland): the same with Noto Sans CJK (or IPA Gothic); `LANG=ja_JP.UTF-8` with `language = "auto"` gives Japanese.
 - [ ] 5.8 With `language = "en"`, a process or service whose name has Japanese in it (Windows' Japanese service descriptions, a file named in Japanese) reads instead of drawing boxes.
@@ -181,3 +181,5 @@ back to `[ ]`.
 - [ ] 5.12 Fleet page: the two allow switches and the port write `[agent]` into `config.toml` keeping its comments; **Add host** adds a `[[host]]` whose name and address can be edited, and the fleet screen shows (and connects to) the new card without a restart; **Delete** takes it away; the update interval on General changes the status bar's `every … s` at once.
 - [ ] 5.13 Copy: each Copy button on the Fleet page and a click on a cyan line in fleet's hint put the line on the clipboard (paste it into a terminal and an editor; the `[[host]]` sample pastes as three lines of TOML), and the toast says `Copied: …`; `y` on fleet's hint copies the sample, on another machine's card its address.
 - [ ] 5.14 Advanced: **Open** opens the config folder in Explorer / Finder / the file manager, **Open config.toml** opens the file in the editor the OS uses for `.toml` (making it first when there is none), and the warnings list shows what a broken `config.toml` or `common.toml` said.
+- [ ] 5.15 `Ctrl+=` (also `Ctrl++`, and `Ctrl+;` on a JIS keyboard), `Ctrl+-`, `Ctrl+0` (macOS `Cmd`) zoom the whole window in 10% steps and back to 100%, with a toast of the percentage; the help (`?`, `F1`) and the settings screen take the same keys. `common.toml` gets `scale = 1.1` and so on, and a running kura follows within 2 s; editing `scale` in `common.toml` by hand (or kura's own zoom keys) changes yagura's window the same way. The General page's **Scale** row shows and sets the same value. yagura starts at the saved scale.
+- [ ] 5.16 `F1` opens the help and closes it again (`?` still does both); `Ctrl+q` (macOS `Cmd+q`) quits, as `q` does.

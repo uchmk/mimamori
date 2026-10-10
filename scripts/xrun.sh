@@ -19,9 +19,10 @@
 # `<Shot:name>` and `<State:name>` steps write name.png / name.txt into the
 # folder YAGURA_KEYS_DONE is in, which is OUTDIR. YAGURA_BIN overrides the
 # binary (default target/debug/yagura). The settings are read from
-# OUTDIR/config (UCHMK_CONFIG_DIR), so the column widths a run leaves behind
-# do not carry into the next one or into the machine's own config; put files
-# there first to test them. Needs Xvfb, xdotool, ImageMagick.
+# OUTDIR/config (UCHMK_CONFIG_DIR) and the column widths kept in OUTDIR/state
+# (YAGURA_STATE_HOME), so what a run leaves behind does not carry into the
+# next one or into the machine's own folders; put files there first to test
+# them. Needs Xvfb, xdotool, ImageMagick.
 
 set -u
 out="${1:?usage: scripts/xrun.sh OUTDIR [yagura arguments...]}"
@@ -49,7 +50,7 @@ export DISPLAY=":$n"
 for _ in $(seq 1 50); do xdotool getdisplaygeometry >/dev/null 2>&1 && break; sleep 0.1; done
 
 mkdir -p -- "$out/config"
-UCHMK_CONFIG_DIR="$out/config" YAGURA_KEYS_DONE="$out/keys.done" "$bin" "$@" >"$out/yagura.log" 2>&1 &
+UCHMK_CONFIG_DIR="$out/config" YAGURA_STATE_HOME="$out/state" YAGURA_KEYS_DONE="$out/keys.done" "$bin" "$@" >"$out/yagura.log" 2>&1 &
 pid=$!
 win=""
 for _ in $(seq 1 100); do

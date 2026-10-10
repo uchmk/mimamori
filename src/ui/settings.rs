@@ -36,6 +36,7 @@ fn index() -> Vec<(usize, &'static str)> {
     let w = Words::of(current_language());
     let mut v = vec![
         (GENERAL, w.language),
+        (GENERAL, w.scale),
         (GENERAL, tr("settings.interval")),
         (GENERAL, w.clock),
         (GENERAL, w.show_time),
@@ -97,6 +98,8 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 };
                 let now = common.language.as_deref().unwrap_or("auto");
                 asked.common.extend(ito_prefs::language_row(ui, l, w, now, &note));
+                sep(ui, l);
+                asked.common.extend(ito_prefs::scale_row(ui, l, w, common.scale_or_one(), tr("settings.scale_note")));
                 sep(ui, l);
                 let secs = |s: f32| trf("settings.seconds", &[&fmt_interval(s)]);
                 let mut options: Vec<(f32, String)> = INTERVALS.iter().map(|&s| (s, secs(s))).collect();

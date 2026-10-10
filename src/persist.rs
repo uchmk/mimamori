@@ -1,6 +1,11 @@
 //! `state.toml`: what yagura writes for itself, the column widths of each
 //! screen and the shares of the panels stacked in a column. Read once at startup; written by a thread of its own whenever a
 //! divider settles, so the UI never waits on the disk.
+//!
+//! It lives in the state folder ([`ito_common::state_dir`]:
+//! `%LOCALAPPDATA%\uchmk\yagura` on Windows, `YAGURA_STATE_HOME` when set),
+//! apart from the settings. Before v0.39.0 it was in the settings folder;
+//! [`dir`] moves it the first time.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -39,6 +44,24 @@ fn valid(n: &Node<Pane>) -> bool {
     let mut leaves = n.leaves();
     leaves.sort_by_key(|p| p.index());
     leaves == Pane::ALL
+}
+
+/// The folder state.toml goes in, moving the one from before v0.39.0 out of
+/// the settings folder `config`, and what to tell; `None` when the OS has
+/// neither folder.
+pub fn dir(config: Option<&Path>) -> (Option<PathBuf>, Option<String>) {
+    match ito_common::state_dir("yagura") {
+        Some(state) => {
+            let note = config.and_then(|c| move_state(c, &state));
+            (Some(state), note)
+        }
+        None => (config.map(Path::to_path_buf), None),
+    }
+}
+
+/// Move `config/state.toml` into `state` when only the old one is there.
+fn move_state(config: &Path, state: &Path) -> Option<String> {
+    ito_common::move_old(&config.join("state.toml"), &state.join("state.toml")).err()
 }
 
 /// Every screen's layout (the saved one where it reads, else the default)
@@ -182,5 +205,21 @@ mod tests {
         let (_, back, warn) = load(Some(&d));
         assert_eq!(warn.len(), 2, "{warn:?}");
         assert_eq!(back.len(), 1);
+    }
+
+    #[test]
+    fn the_state_from_the_settings_folder_is_moved() {
+        let d = test_dir("persist-move");
+        let (config, state) = (d.join("yagura"), d.join("state"));
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::write(config.join("state.toml"), "[layouts]\n").unwrap();
+        assert_eq!(move_state(&config, &state), None);
+        assert!(!config.join("state.toml").exists() && state.join("state.toml").is_file());
+
+        // With both there, the new one stays and the old one is left alone.
+        std::fs::write(config.join("state.toml"), "old").unwrap();
+        assert_eq!(move_state(&config, &state), None);
+        assert_eq!(std::fs::read_to_string(state.join("state.toml")).unwrap(), "[layouts]\n");
+        assert!(config.join("state.toml").is_file());
     }
 }

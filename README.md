@@ -65,9 +65,10 @@ column dividers. The heights are kept per screen in
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
 | `y` | Copy: on fleet's hint the sample `[[host]]` (three lines of TOML, pasted as they are), on another machine's card its address |
 | `Ctrl+,` (macOS `Cmd+,`) | The settings screen, and back. See [Settings screen](#settings-screen) |
-| `?` | Help: every key of the keymap |
+| `?`, `F1` | Help: every key of the keymap |
+| `Ctrl+=` / `Ctrl++` / `Ctrl+;`, `Ctrl+-`, `Ctrl+0` (macOS `Cmd`) | Zoom in, out, back to 100%. The scale is every uchmk app's (common.toml's `scale`), so the others follow; `Ctrl+;` is for JIS keyboards |
 | `Esc` | Clear the filter, and on net the interface the sockets are narrowed to |
-| `q` | Quit |
+| `q`, `Ctrl+q` (macOS `Cmd+q`) | Quit |
 
 ## Settings
 
@@ -77,13 +78,20 @@ Everything lives in one folder shared by uchmk's apps:
 <config dir>/uchmk/common.toml         settings every uchmk app reads
 <config dir>/uchmk/yagura/config.toml  yagura's own settings
 <config dir>/uchmk/yagura/keymap.toml  laid over the built-in keymap
-<config dir>/uchmk/yagura/state.toml   the column widths and panel heights (yagura writes it)
 ```
 
 `<config dir>` is `%APPDATA%` on Windows, `~/Library/Application Support` on
 macOS and `~/.config` on Linux. `UCHMK_CONFIG_DIR` moves the whole `uchmk`
-folder. yagura was called mimamori before v0.33.0; its first start moves
-`uchmk/mimamori/` to `uchmk/yagura/` when only the old folder is there.
+folder, `YAGURA_CONFIG_HOME` yagura's own. yagura was called mimamori before
+v0.33.0; its first start moves `uchmk/mimamori/` to `uchmk/yagura/` when only
+the old folder is there.
+
+The column widths and panel heights yagura writes for itself go to `state.toml` in the state
+folder: `%LOCALAPPDATA%\uchmk\yagura` on Windows,
+`~/Library/Application Support/uchmk/yagura/state` on macOS and
+`~/.local/state/uchmk/yagura` on Linux (`$XDG_STATE_HOME`), or
+`YAGURA_STATE_HOME`. Before v0.39.0 it was in `uchmk/yagura/`; the first
+start moves it.
 
 `common.toml` is shared: change it and every uchmk app (tsumugi, yagura,
 and kura to come) follows within 2 s, with no restart:
@@ -129,7 +137,8 @@ addr = "localhost:7314"   # host or host:port; the port defaults to 7313
 `keymap.toml` uses yazi's format, section by section (`[main]`, `[input]`,
 `[help]`, `[confirm]`, `[settings]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
 add before and after it. `on_mac` gives a binding its own keys on macOS, and
-`<P-…>` is the primary modifier (Cmd on macOS, Ctrl elsewhere). The built-in
+`C` is Ctrl on Windows and Linux and Cmd on macOS (where Ctrl works too):
+`<C-,>` is Ctrl+, (Cmd+, on a Mac). The built-in
 keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml). The key
 notation is the crate `ito-keys` in [ito](https://github.com/uchmk/ito), so it reads the
 same in uchmk's other apps.
@@ -151,7 +160,7 @@ says otherwise.
 
 | Page | Rows |
 | ---- | ---- |
-| General | Language (common.toml), the update interval, the clock card (common.toml) |
+| General | Language and scale (common.toml), the update interval, the clock card (common.toml) |
 | Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with yagura's own tiles, process rows and status bar (common.toml) |
 | Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); and the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path), each with Copy |
 | Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
@@ -182,6 +191,7 @@ What `run` can say in a keymap:
 | `machine next`, `machine prev` | The next or previous machine's screens (this one, then the `[[host]]` that are up) |
 | `copy` | Copy the sample `[[host]]` (fleet's hint) or the card's address |
 | `settings` | The settings screen, and back |
+| `scale in`, `scale out`, `scale reset` | Step the scale every uchmk app shares (common.toml), or put it back to 100% |
 | `page next`, `page prev`, `search` | The settings screen's keys (`[settings]`): turn the page, go to the search |
 | `help`, `escape`, `quit` | As the keys above |
 | `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended or a service is started, stopped or restarted (`[confirm]`) |

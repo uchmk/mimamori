@@ -498,6 +498,26 @@ impl App {
         let _ = self.ctl.send(Ctl::Interval(Duration::from_secs_f32(s)));
     }
 
+    /// One step of the scale every uchmk app shares: shown at once, written
+    /// to common.toml on a thread (the other apps follow it from there).
+    pub fn scale(&mut self, to: ito_common::ScaleTo) {
+        let next = ito_common::scale_step(self.prefs.common.scale_or_one(), to);
+        self.prefs.common.scale = Some(next);
+        self.apply_scale();
+        self.prefs.common_change(vec![ito_common::scale_change(next)]);
+        self.toast(ito_common::scale_text(next, crate::i18n::current_language()));
+    }
+
+    /// Put common.toml's scale on the window.
+    fn apply_scale(&self) {
+        if let Some(ctx) = &self.wake {
+            let s = self.prefs.common.scale_or_one();
+            if ctx.zoom_factor() != s {
+                ctx.set_zoom_factor(s);
+            }
+        }
+    }
+
     pub fn open_settings(&mut self) {
         self.mode = Mode::Settings;
         self.pending.clear();
@@ -529,6 +549,7 @@ impl App {
                 self.prefs.common = c;
                 self.prefs.common_warn = w;
                 self.relanguage();
+                self.apply_scale();
             }
             Reload::Common(Err(e)) => {
                 self.toast(e.clone());
@@ -1262,6 +1283,7 @@ impl App {
     fn run_help(&mut self, a: Act) {
         match a {
             Act::Escape | Act::Help | Act::Quit => self.mode = Mode::Normal,
+            Act::Scale(to) => self.scale(to),
             Act::Arrow(Step::By(n)) => self.help_scroll = (self.help_scroll as i64 + n).max(0) as usize,
             Act::Arrow(Step::Top) => self.help_scroll = 0,
             _ => {}
@@ -1525,6 +1547,7 @@ impl App {
                 self.help_scroll = 0;
             }
             Act::Settings => self.open_settings(),
+            Act::Scale(to) => self.scale(to),
             Act::Copy => self.toast(tr("toast.copy_none")),
             Act::Quit => self.quit = true,
             Act::Escape => {

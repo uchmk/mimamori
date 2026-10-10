@@ -38,7 +38,7 @@
 - **画面は Xvfb で確かめる**: `scripts/xrun.sh OUTDIR --keys '<Wait:2000>2<Shot:cpu><State:a>'`。
   - `<Shot:名前>` は PNG、`<State:名前>` は画面・フォーカス・選択・列の幅などの文字を OUTDIR に書く。
   - `<Click:x,y>` と `<Drag:x1,y1-x2,y2>` の座標は窓に対する割合（0〜1）。境目を掴むときは `<State>` の `widths`（1000 分率）から位置を出す。
-  - 設定は OUTDIR/config から読む（`UCHMK_CONFIG_DIR`）。前の回の列の幅は持ち越さない。
+  - 設定は OUTDIR/config から読み（`UCHMK_CONFIG_DIR`）、列の幅は OUTDIR/state に書く（`YAGURA_STATE_HOME`）。前の回の列の幅は持ち越さない。
   - `XRUN_IDLE=10` で、最後の 10 秒の CPU 使用率を `cpu.txt` に書く。Xvfb は llvmpipe（ソフトウェア描画）なので、
     再描画 1 回が重く、1 秒ごとのサンプリングで 1 コアの 10% 前後に見える。yagura 自身（収集 0.1%・UI 0.7% ほど）とは分けて読む。
 - CI の `smoke` は `scripts/smoke-linux.sh`（xrun.sh で 1〜0 と F（fleet）の画面を順に撮り、panic・別の画面・真っ平らな画像で落ちる）。画像は成果物 `linux-smoke` に残る。
@@ -51,7 +51,7 @@
 - **何もしていないときは再描画しない。**`request_repaint_after` はフレームの中で呼ぶ（`raw_input_hook` の中で頼んだものはフレームの頭で消える）。
   トーストのように時間で消えるものは、残り時間で起こす（`App::toast_left`）。
 - **キーは keymap 経由**（`src/defaults/keymap.toml`、利用者の `keymap.toml` が上に重なる）。ハードコードしない。
-  修飾キーは `<P-…>` が macOS で Cmd、ほかで Ctrl。`on_mac` で macOS だけ別のキーにできる。
+  修飾キーの `C` は Windows と Linux で Ctrl、macOS で Cmd（macOS では Ctrl でも同じ）。`on_mac` で macOS だけ別のキーにできる。
 - **画面の文字はすべて `tr("key")` / `trf("key", &[..])` を通す。**英語の表は `src/lang/en.toml`、日本語は `ja.toml`（キーを足したら両方に。
   テストがキーと `{0}` の数の食い違いを落とす）。既定の keymap の `desc` を変えたら `ja.toml` の `[keydesc]` も直す。
   幅は `util::width`（全角は 2 桁）で数える。

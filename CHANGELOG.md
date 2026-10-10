@@ -4,6 +4,25 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.39.0] - 2026-10-11
+
+### 追加
+
+- 倍率を uchmk のアプリで共通にした（ito 0.6.0、common.toml の `scale`）。`Ctrl+=`（`Ctrl++`、JIS 配列の `Ctrl+;` も）で
+  10% ずつ拡大、`Ctrl+-` で縮小、`Ctrl+0` で 100% に戻す（macOS は Cmd）。common.toml に書くので、ほかのアプリも同じ倍率になり、
+  common.toml が変わればこちらも合わせる。設定の一般のページに「倍率」の行を足した。egui の倍率のキーは切った。
+- `F1` でヘルプを開閉する（`?` も残す）。`Ctrl+q`（macOS は `Cmd+q`）で終了する（`q` も残す）。
+- 環境変数 `YAGURA_CONFIG_HOME`（yagura のフォルダー）と `YAGURA_STATE_HOME`（state.toml のフォルダー）。`--help` に載せた。
+- コマンド `scale in` / `scale out` / `scale reset`。
+
+### 変更
+
+- 列の幅とパネルの高さを覚える `state.toml` を状態のフォルダーに移した（Windows は `%LOCALAPPDATA%\uchmk\yagura`、macOS は
+  `~/Library/Application Support/uchmk/yagura/state`、Linux は `~/.local/state/uchmk/yagura`）。前の場所にあれば最初の起動で移す。
+- キーの書き方を `<C-…>` にした（Windows と Linux は Ctrl、macOS は Cmd。macOS では Ctrl でも同じ）。前の `<P-…>` も読む。
+  macOS の列の幅のキーは `Cmd+矢印`（`Ctrl+矢印` でも同じ）になった。
+- 日本語のフォントの候補を uchmk のアプリで共通の並び（ito の `fonts::JAPANESE`）にした。Windows は Meiryo が先になる。
+
 ## [0.38.0] - 2026-10-11
 
 ### 追加

@@ -5,11 +5,12 @@
 //! <config dir>/uchmk/yagura/config.toml  interval, language, backend,
 //!                                         [agent], [[host]]
 //! <config dir>/uchmk/yagura/keymap.toml  laid over the built-in keymap
-//! <config dir>/uchmk/yagura/state.toml   the column widths (written by yagura)
 //! ```
 //!
 //! `<config dir>` is the OS's (`%APPDATA%`, `~/Library/Application Support`,
-//! `~/.config`); `UCHMK_CONFIG_DIR` points the whole `uchmk` folder elsewhere.
+//! `~/.config`); `UCHMK_CONFIG_DIR` points the whole `uchmk` folder elsewhere
+//! and `YAGURA_CONFIG_HOME` yagura's own. The column widths yagura writes
+//! for itself go to the state folder (`crate::persist`).
 //! Before v0.33.0 the app was called mimamori and its folder `mimamori/`;
 //! [`load`] moves that folder to `yagura/` the first time it finds it alone
 //! (or copies it, when another program keeps it from being renamed).
@@ -25,6 +26,14 @@ pub const ALLOW: [&str; 2] = ["kill", "service"];
 pub const DIR: &str = "yagura";
 /// The folder's name before v0.33.0, when the app was called mimamori.
 const OLD_DIR: &str = "mimamori";
+/// Puts yagura's own folder anywhere, in place of `<uchmk>/yagura`.
+const CONFIG_HOME: &str = "YAGURA_CONFIG_HOME";
+
+/// yagura's own folder for the `uchmk` folder `base`: `YAGURA_CONFIG_HOME`
+/// when set, else `base/yagura`.
+pub fn own_dir(base: &Path) -> PathBuf {
+    ito_common::env_dir(CONFIG_HOME).unwrap_or_else(|| base.join(DIR))
+}
 
 /// A machine on the fleet screen: `[[host]] name = "nas", addr = "localhost:7314"`.
 #[derive(Clone, Debug, PartialEq)]
@@ -47,8 +56,8 @@ pub struct Settings {
     pub backend: Option<String>,
     /// The user's keymap.toml, if there is one.
     pub keymap: Option<String>,
-    /// yagura's own folder, where state.toml goes; `None` when the OS has
-    /// no config directory.
+    /// yagura's own folder (where state.toml was before v0.38.0); `None`
+    /// when the OS has no config directory.
     pub dir: Option<PathBuf>,
     /// `[agent] allow`: what a fleet viewer may do here (nothing by default).
     pub allow: Vec<String>,
@@ -178,7 +187,10 @@ pub fn load(base: Option<&Path>) -> Settings {
             Ok(l) => common_lang = l,
             Err(e) => warn.push(e),
         }
-        let (dir, note) = move_old_dir(base);
+        let (dir, note) = match ito_common::env_dir(CONFIG_HOME) {
+            Some(d) => (d, None),
+            None => move_old_dir(base),
+        };
         warn.extend(note);
         if let Some(t) = read_table(&dir.join("config.toml"), &mut warn) {
             for (k, v) in &t {

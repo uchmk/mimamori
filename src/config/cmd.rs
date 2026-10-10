@@ -1,5 +1,6 @@
 //! Command strings (`screen cpu`, `arrow -1`, `resize left`) to [`Act`].
 
+use ito_common::ScaleTo;
 use ito_layout::Toward;
 
 use crate::screen::Screen;
@@ -63,6 +64,8 @@ pub enum Act {
     Page(i32),
     /// The settings screen's search.
     Search,
+    /// The scale every uchmk app shares (common.toml's `scale`).
+    Scale(ScaleTo),
     Quit,
     Escape,
     Confirm,
@@ -133,6 +136,12 @@ pub fn parse(s: &str) -> Result<Act, String> {
             "prev" | "-1" => -1,
             _ => return Err(bad()),
         })),
+        "scale" => Ok(Act::Scale(match need()? {
+            "in" | "+" => ScaleTo::In,
+            "out" | "-" => ScaleTo::Out,
+            "reset" | "0" => ScaleTo::Reset,
+            _ => return Err(bad()),
+        })),
         "equalize" => none(Act::Equalize),
         "enter" => none(Act::Enter),
         "filter" => none(Act::Filter),
@@ -180,6 +189,11 @@ mod tests {
         assert_eq!(parse("page -1"), Ok(Act::Page(-1)));
         assert!(parse("page").is_err());
         assert_eq!(parse("search"), Ok(Act::Search));
+        assert_eq!(parse("scale in"), Ok(Act::Scale(ScaleTo::In)));
+        assert_eq!(parse("scale -"), Ok(Act::Scale(ScaleTo::Out)));
+        assert_eq!(parse("scale reset"), Ok(Act::Scale(ScaleTo::Reset)));
+        assert!(parse("scale").is_err());
+        assert!(parse("scale up").is_err());
         assert_eq!(parse("scope"), Ok(Act::Scope(None)));
         assert_eq!(parse("scope mine"), Ok(Act::Scope(Some(true))));
         assert_eq!(parse("scope all"), Ok(Act::Scope(Some(false))));

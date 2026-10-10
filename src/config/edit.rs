@@ -39,9 +39,9 @@ impl Edit {
     }
 }
 
-/// yagura's config.toml in the `uchmk` folder `base`.
+/// yagura's config.toml for the `uchmk` folder `base`.
 pub fn config_path(base: &Path) -> std::path::PathBuf {
-    base.join(super::settings::DIR).join("config.toml")
+    super::settings::own_dir(base).join("config.toml")
 }
 
 /// Make the change in the file at once. Call it off the UI thread.
