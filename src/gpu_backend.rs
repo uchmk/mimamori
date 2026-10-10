@@ -3,7 +3,7 @@
 //! Windows draws with GL first when the machine has it: under Vulkan and DX12
 //! an AMD driver thread spins a core for a window that is doing nothing
 //! (filer #232, #240), which a system monitor would then report about
-//! itself. Elsewhere wgpu chooses. The same rules as tsumugi-pane's `gpu.rs`,
+//! itself. Elsewhere wgpu chooses. The same rules as ito-pane's `gpu.rs`,
 //! copied rather than depending on the whole pane for them.
 
 use eframe::wgpu::{self, Backends};

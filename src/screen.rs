@@ -1,7 +1,7 @@
 //! The ten screens behind the number keys and the three columns of each.
 
+use ito_layout::{Dir, Node};
 use serde::{Deserialize, Serialize};
-use tsumugi_layout::{Dir, Node};
 
 /// One screen. All ten have their number from the first version so the keys
 /// never move; the ones not built yet say so when opened.
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn the_default_layout_has_the_mock_widths() {
-        let rects = Screen::Ovw.default_layout().layout(tsumugi_layout::Rect::new(0.0, 0.0, 600.0, 100.0), 0.0);
+        let rects = Screen::Ovw.default_layout().layout(ito_layout::Rect::new(0.0, 0.0, 600.0, 100.0), 0.0);
         let w: Vec<f32> = rects.iter().map(|(_, r)| r.w).collect();
         assert!((w[0] - 115.0).abs() < 0.5 && (w[1] - 300.0).abs() < 0.5 && (w[2] - 185.0).abs() < 0.5, "{w:?}");
     }

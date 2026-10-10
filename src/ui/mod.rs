@@ -23,7 +23,7 @@ mod tiles;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use egui::{Align2, Color32, FontId, Id, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
-use tsumugi_layout::ui::{Look, dividers, from_egui, to_egui};
+use ito_layout::ui::{Look, dividers, from_egui, to_egui};
 
 use crate::app::{App, Mode, Out, TOAST, fmt_interval};
 use crate::config::cmd::Act;
@@ -469,9 +469,9 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         let now = chrono::Local::now().naive_local();
         let lang = crate::i18n::current_language();
         let cr = pen.text_r(pos2(end, y), &clock.text(&now, lang), theme::strong());
-        let full = tsumugi_common::Clock::full(&now, lang);
+        let full = ito_common::Clock::full(&now, lang);
         ui.interact(cr, Id::new("status-clock"), Sense::hover()).on_hover_text(full);
-        ui.ctx().request_repaint_after(tsumugi_common::Clock::next_minute(&now));
+        ui.ctx().request_repaint_after(ito_common::Clock::next_minute(&now));
         end = cr.left() - 16.0;
     }
     let rr = pen.text_r(pos2(end, y), &right, theme::dim());

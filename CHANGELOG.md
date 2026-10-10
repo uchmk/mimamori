@@ -4,6 +4,14 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.32.1] - 2026-10-11
+
+### 変更
+
+- 共有のクレートを [uchmk/ito](https://github.com/uchmk/ito) から読むようにした（`tsumugi-{layout,i18n,keys,common,theme,prefs}` → `ito-*`、
+  ito 0.2.0 の `90314f9`）。中身は今までの `rev`（tsumugi v0.81.0 の `a26aefd`）と同じで、動きは変わらない。
+  共通仕様の参照先を ito の `docs/common-spec.md` に直した。
+
 ## [0.32.0] - 2026-10-11
 
 ### 追加

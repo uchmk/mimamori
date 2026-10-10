@@ -1,12 +1,12 @@
-//! The settings screen (Ctrl+,), laid out as tsumugi's: `tsumugi-prefs`
+//! The settings screen (Ctrl+,), laid out as tsumugi's: `ito-prefs`
 //! draws the nav and the cards, and the rows common to every uchmk app (the
 //! language, the clock, the theme) write common.toml. mimamori's own rows
 //! write config.toml; what a row asks for is gathered while the page is
 //! drawn and done once it is.
 
 use egui::{Align2, FontId, Rect, Sense, Ui, pos2, vec2};
-use tsumugi_common::{Clock, CommonChange, common_path, themes_dir};
-use tsumugi_prefs::{Words, button, field, row, section, select, sep, status, switch};
+use ito_common::{Clock, CommonChange, common_path, themes_dir};
+use ito_prefs::{Words, button, field, row, section, select, sep, status, switch};
 
 use crate::app::{App, INTERVALS, TOAST, fmt_interval};
 use crate::config::edit::Edit;
@@ -69,7 +69,7 @@ fn index() -> Vec<(usize, &'static str)> {
     v
 }
 
-pub fn show(ui: &mut Ui, app: &mut App, keys: tsumugi_prefs::Keys) {
+pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     let lang = current_language();
     let w = Words::of(lang);
     let pages = [
@@ -79,7 +79,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: tsumugi_prefs::Keys) {
         (tr("settings.advanced"), tr("settings.advanced_lead")),
     ];
     let index = index();
-    let nav = tsumugi_prefs::Nav { pages: &pages, index: &index, words: w, file: "config.toml" };
+    let nav = ito_prefs::Nav { pages: &pages, index: &index, words: w, file: "config.toml" };
     let mut asked = Asked::default();
     let interval = app.interval;
     let warnings = app.prefs.warnings();
@@ -87,7 +87,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: tsumugi_prefs::Keys) {
     let (settings, common, themes, base) = (&prefs.settings, &prefs.common, &prefs.themes, prefs.base.as_deref());
     let drafts = &mut prefs.drafts;
     let config = base.map(crate::config::edit::config_path);
-    let out = tsumugi_prefs::show(ui, tsumugi_theme::colors(), &mut prefs.state, &nav, keys, |ui, page, l| match page {
+    let out = ito_prefs::show(ui, ito_theme::colors(), &mut prefs.state, &nav, keys, |ui, page, l| match page {
         GENERAL => {
             section(ui, l, tr("settings.display"), |ui| {
                 let own = settings.app_language.as_deref().filter(|l| *l != "auto");
@@ -96,7 +96,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: tsumugi_prefs::Keys) {
                     None => tr("settings.language_note").into(),
                 };
                 let now = common.language.as_deref().unwrap_or("auto");
-                asked.common.extend(tsumugi_prefs::language_row(ui, l, w, now, &note));
+                asked.common.extend(ito_prefs::language_row(ui, l, w, now, &note));
                 sep(ui, l);
                 let secs = |s: f32| trf("settings.seconds", &[&fmt_interval(s)]);
                 let mut options: Vec<(f32, String)> = INTERVALS.iter().map(|&s| (s, secs(s))).collect();
@@ -111,7 +111,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: tsumugi_prefs::Keys) {
                     asked.interval = Some(f32::from_bits(bits));
                 }
             });
-            asked.common.extend(tsumugi_prefs::clock_card(ui, l, w, &common.clock_or(None)));
+            asked.common.extend(ito_prefs::clock_card(ui, l, w, &common.clock_or(None)));
         }
         THEME => {
             let (t, d, li) = common.theme_choice(None);
@@ -119,7 +119,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: tsumugi_prefs::Keys) {
                 Some(b) => trf("settings.theme_note", &[&themes_dir(b).display().to_string()]),
                 None => tr("settings.no_folder").into(),
             };
-            asked.common.extend(tsumugi_prefs::theme_page(ui, l, w, themes, (&t, &d, &li), &note, preview));
+            asked.common.extend(ito_prefs::theme_page(ui, l, w, themes, (&t, &d, &li), &note, preview));
         }
         FLEET => {
             section(ui, l, tr("settings.agent"), |ui| {
@@ -287,7 +287,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: tsumugi_prefs::Keys) {
 /// The toast over the foot of the page: there is no status bar here.
 fn draw_toast(ui: &Ui, app: &App) {
     let Some((t, at)) = app.toast.as_ref().filter(|(_, at)| at.elapsed() < TOAST) else { return };
-    let c = tsumugi_theme::colors();
+    let c = ito_theme::colors();
     let font = FontId::proportional(12.5);
     let area = ui.max_rect();
     let galley = ui.painter().layout_no_wrap(t.clone(), font, c.strong());

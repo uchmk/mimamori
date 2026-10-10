@@ -1,6 +1,6 @@
 //! Command strings (`screen cpu`, `arrow -1`, `resize left`) to [`Act`].
 
-use tsumugi_layout::Toward;
+use ito_layout::Toward;
 
 use crate::screen::Screen;
 use crate::svcctl::Action;

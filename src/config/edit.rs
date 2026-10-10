@@ -1,10 +1,10 @@
 //! Writing the settings screen's changes into mimamori's config.toml, one
 //! key at a time so a person's comments and order stay. common.toml's part
-//! (the language, the theme, the clock) is `tsumugi-common`'s.
+//! (the language, the theme, the clock) is `ito-common`'s.
 
 use std::path::Path;
 
-use tsumugi_common::{quote, quote_list, read_or_empty, set_key, set_tables, write_atomic};
+use ito_common::{quote, quote_list, read_or_empty, set_key, set_tables, write_atomic};
 
 use super::settings::Host;
 

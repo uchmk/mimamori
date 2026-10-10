@@ -1,4 +1,4 @@
-//! What the settings screen reads and writes (tsumugi's `docs/common-spec.md`):
+//! What the settings screen reads and writes (ito's `docs/common-spec.md`):
 //! common.toml (the language, the theme and the clock, shared by every uchmk
 //! app), mimamori's own config.toml, and the user's themes. The files are
 //! watched every 2 s and written on threads of their own; what was read
@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender};
-use tsumugi_common::{Common, CommonChange, common_path, edit_common, themes_dir, write_atomic};
-use tsumugi_prefs::{Drafts, State};
-use tsumugi_theme::Theme;
+use ito_common::{Common, CommonChange, common_path, edit_common, themes_dir, write_atomic};
+use ito_prefs::{Drafts, State};
+use ito_theme::Theme;
 
 use crate::config::edit::{self, Edit};
 use crate::config::settings::{self, Settings};
@@ -54,7 +54,7 @@ impl Prefs {
         Self {
             base: None,
             common: Common::default(),
-            themes: tsumugi_theme::builtin(),
+            themes: ito_theme::builtin(),
             settings: Settings::default(),
             common_warn: Vec::new(),
             theme_warn: Vec::new(),
@@ -76,7 +76,7 @@ impl Prefs {
                 Ok((c, w)) => (p.common, p.common_warn) = (c, w),
                 Err(e) => p.common_warn = vec![e],
             }
-            let (user, warn) = tsumugi_theme::load_dir(&themes_dir(b));
+            let (user, warn) = ito_theme::load_dir(&themes_dir(b));
             p.themes.extend(user);
             p.theme_warn = warn;
         }
@@ -97,7 +97,7 @@ impl Prefs {
             paths.extend(entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "toml")));
         }
         let (tx, ctx) = (self.tx.clone(), ctx.clone());
-        tsumugi_common::watch(paths, WATCH, move |changed| {
+        ito_common::watch(paths, WATCH, move |changed| {
             let mut sent = true;
             if changed.contains(&common) {
                 sent &= tx.send(Reload::Common(Common::read(&base))).is_ok();
@@ -106,8 +106,8 @@ impl Prefs {
                 sent &= tx.send(Reload::Settings(Box::new(settings::load(Some(&base))))).is_ok();
             }
             if changed.iter().any(|p| p.starts_with(&themes)) {
-                let (user, warn) = tsumugi_theme::load_dir(&themes);
-                let all = tsumugi_theme::builtin().into_iter().chain(user).collect();
+                let (user, warn) = ito_theme::load_dir(&themes);
+                let all = ito_theme::builtin().into_iter().chain(user).collect();
                 sent &= tx.send(Reload::Themes(all, warn)).is_ok();
             }
             ctx.request_repaint();
@@ -192,7 +192,7 @@ impl Prefs {
     pub fn apply_theme(&mut self, ctx: &egui::Context) {
         let os_light = ctx.system_theme() == Some(egui::Theme::Light);
         let (choice, dark, light) = self.common.theme_choice(None);
-        let colors = match tsumugi_theme::pick(&self.themes, &choice, &dark, &light, os_light) {
+        let colors = match ito_theme::pick(&self.themes, &choice, &dark, &light, os_light) {
             Ok(t) => {
                 self.theme_err = None;
                 t.colors
@@ -202,8 +202,8 @@ impl Prefs {
                 self.themes[0].colors
             }
         };
-        if colors != tsumugi_theme::colors() {
-            tsumugi_theme::set(colors);
+        if colors != ito_theme::colors() {
+            ito_theme::set(colors);
             ctx.set_visuals(theme::visuals());
         }
     }

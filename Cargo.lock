@@ -1663,6 +1663,64 @@ dependencies = [
 ]
 
 [[package]]
+name = "ito-common"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "chrono",
+ "serde",
+ "sys-locale",
+ "toml",
+ "toml_edit 0.23.10+spec-1.0.0",
+]
+
+[[package]]
+name = "ito-i18n"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "ito-common",
+ "toml",
+]
+
+[[package]]
+name = "ito-keys"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "egui",
+]
+
+[[package]]
+name = "ito-layout"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "egui",
+ "serde",
+]
+
+[[package]]
+name = "ito-prefs"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "egui",
+ "ito-common",
+ "ito-i18n",
+ "ito-theme",
+]
+
+[[package]]
+name = "ito-theme"
+version = "0.2.0"
+source = "git+https://github.com/uchmk/ito?rev=90314f94820ed2b1c08b8610c0cf7bad59b07f7f#90314f94820ed2b1c08b8610c0cf7bad59b07f7f"
+dependencies = [
+ "egui",
+ "toml",
+]
+
+[[package]]
 name = "jni"
 version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1875,13 +1933,19 @@ dependencies = [
 
 [[package]]
 name = "mimamori"
-version = "0.32.0"
+version = "0.32.1"
 dependencies = [
  "chrono",
  "crossbeam-channel",
  "dirs",
  "eframe",
  "egui",
+ "ito-common",
+ "ito-i18n",
+ "ito-keys",
+ "ito-layout",
+ "ito-prefs",
+ "ito-theme",
  "libc",
  "nvml-wrapper",
  "objc2-core-foundation",
@@ -1892,12 +1956,6 @@ dependencies = [
  "serde",
  "sysinfo",
  "toml",
- "tsumugi-common",
- "tsumugi-i18n",
- "tsumugi-keys",
- "tsumugi-layout",
- "tsumugi-prefs",
- "tsumugi-theme",
  "windows",
 ]
 
@@ -3490,64 +3548,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
-]
-
-[[package]]
-name = "tsumugi-common"
-version = "0.81.0"
-source = "git+https://github.com/uchmk/tsumugi?rev=a26aefd5443a65b040a1b3368f9ad430144da0b8#a26aefd5443a65b040a1b3368f9ad430144da0b8"
-dependencies = [
- "chrono",
- "serde",
- "sys-locale",
- "toml",
- "toml_edit 0.23.10+spec-1.0.0",
-]
-
-[[package]]
-name = "tsumugi-i18n"
-version = "0.81.0"
-source = "git+https://github.com/uchmk/tsumugi?rev=a26aefd5443a65b040a1b3368f9ad430144da0b8#a26aefd5443a65b040a1b3368f9ad430144da0b8"
-dependencies = [
- "toml",
- "tsumugi-common",
-]
-
-[[package]]
-name = "tsumugi-keys"
-version = "0.81.0"
-source = "git+https://github.com/uchmk/tsumugi?rev=a26aefd5443a65b040a1b3368f9ad430144da0b8#a26aefd5443a65b040a1b3368f9ad430144da0b8"
-dependencies = [
- "egui",
-]
-
-[[package]]
-name = "tsumugi-layout"
-version = "0.81.0"
-source = "git+https://github.com/uchmk/tsumugi?rev=a26aefd5443a65b040a1b3368f9ad430144da0b8#a26aefd5443a65b040a1b3368f9ad430144da0b8"
-dependencies = [
- "egui",
- "serde",
-]
-
-[[package]]
-name = "tsumugi-prefs"
-version = "0.81.0"
-source = "git+https://github.com/uchmk/tsumugi?rev=a26aefd5443a65b040a1b3368f9ad430144da0b8#a26aefd5443a65b040a1b3368f9ad430144da0b8"
-dependencies = [
- "egui",
- "tsumugi-common",
- "tsumugi-i18n",
- "tsumugi-theme",
-]
-
-[[package]]
-name = "tsumugi-theme"
-version = "0.81.0"
-source = "git+https://github.com/uchmk/tsumugi?rev=a26aefd5443a65b040a1b3368f9ad430144da0b8#a26aefd5443a65b040a1b3368f9ad430144da0b8"
-dependencies = [
- "egui",
- "toml",
 ]
 
 [[package]]

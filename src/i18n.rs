@@ -8,13 +8,13 @@
 //!
 //! Which language: the app's own `language` (mimamori's `config.toml`), else
 //! the one in the `common.toml` all of uchmk's apps share, else the OS's
-//! (`auto`). The table, the choice and the checks live in `tsumugi-i18n`,
+//! (`auto`). The table, the choice and the checks live in `ito-i18n`,
 //! shared with tsumugi (whose Settings window writes common.toml).
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use tsumugi_i18n::Table;
+use ito_i18n::Table;
 
 /// The languages with a table, English first.
 pub const AVAILABLE: &[(&str, &str)] = &[("en", include_str!("lang/en.toml")), ("ja", include_str!("lang/ja.toml"))];
@@ -74,13 +74,13 @@ pub fn trf(key: &str, args: &[&str]) -> String {
 /// English.
 pub fn resolve_language(app: Option<&str>, common: Option<&str>, os: Option<&str>) -> String {
     let codes: Vec<&str> = AVAILABLE.iter().map(|(l, _)| *l).collect();
-    tsumugi_i18n::resolve(app, common, os, &codes)
+    ito_i18n::resolve(app, common, os, &codes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tsumugi_i18n::check;
+    use ito_i18n::check;
 
     #[test]
     fn a_missing_key_reads_as_itself() {

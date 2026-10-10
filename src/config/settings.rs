@@ -69,9 +69,9 @@ impl Default for Settings {
     }
 }
 
-/// The `uchmk` folder (the same for every uchmk app; `tsumugi-i18n`).
+/// The `uchmk` folder (the same for every uchmk app; `ito-i18n`).
 pub fn base_dir() -> Option<PathBuf> {
-    tsumugi_i18n::base_dir()
+    ito_i18n::base_dir()
 }
 
 fn read_table(path: &Path, warn: &mut Vec<String>) -> Option<toml::Table> {
@@ -167,7 +167,7 @@ pub fn load(base: Option<&Path>) -> Settings {
     let mut common_lang = None;
     let mut app_lang = None;
     if let Some(base) = &base {
-        match tsumugi_i18n::read_common_language(base) {
+        match ito_i18n::read_common_language(base) {
             Ok(l) => common_lang = l,
             Err(e) => warn.push(e),
         }
@@ -194,7 +194,7 @@ pub fn load(base: Option<&Path>) -> Settings {
         s.keymap = std::fs::read_to_string(dir.join("keymap.toml")).ok();
         s.dir = Some(dir);
     }
-    let os = tsumugi_i18n::os_language();
+    let os = ito_i18n::os_language();
     s.language = crate::i18n::resolve_language(app_lang.as_deref(), common_lang.as_deref(), os.as_deref());
     s.app_language = app_lang;
     s.warnings = warn;

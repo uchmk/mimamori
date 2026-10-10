@@ -98,8 +98,8 @@ Catppuccin Mocha and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized
 Dark and Light, One Dark and Rosé Pine. A theme of
 your own is a TOML file in `<config dir>/uchmk/themes/`, in the form of
 tsumugi's themes; it shows in every app's list. The rules every uchmk app
-keeps (where the files are, the settings screen, the clock) are tsumugi's
-[docs/common-spec.md](https://github.com/uchmk/tsumugi/blob/main/docs/common-spec.md).
+keeps (where the files are, the settings screen, the clock) are ito's
+[docs/common-spec.md](https://github.com/uchmk/ito/blob/main/docs/common-spec.md).
 
 `config.toml`:
 
@@ -122,7 +122,7 @@ addr = "localhost:7314"   # host or host:port; the port defaults to 7313
 add before and after it. `on_mac` gives a binding its own keys on macOS, and
 `<P-…>` is the primary modifier (Cmd on macOS, Ctrl elsewhere). The built-in
 keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml). The key
-notation is the crate `tsumugi-keys` in tsumugi's workspace, so it reads the
+notation is the crate `ito-keys` in [ito](https://github.com/uchmk/ito), so it reads the
 same in uchmk's other apps.
 
 ```toml
@@ -229,8 +229,8 @@ has the same keys, and any key it leaves out reads in English; its
 `[keydesc]` translates the built-in keymap's descriptions in `?` help (one
 you wrote yourself reads as you wrote it). The language is picked from
 `config.toml`, then `common.toml`, then the OS (`ja-JP` is Japanese).
-The table and that choice come from `tsumugi-i18n`, a crate in
-[tsumugi](https://github.com/uchmk/tsumugi)'s workspace; the settings screen's
+The table and that choice come from `ito-i18n`, a crate in
+[ito](https://github.com/uchmk/ito), the uchmk apps' shared crates; the settings screen's
 Language row (in mimamori or tsumugi) writes `common.toml`, and every running
 app changes language within 2 s.
 

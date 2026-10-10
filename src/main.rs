@@ -77,8 +77,8 @@ impl Mimamori {
 
     /// The settings screen's keys, from its layer of the keymap: those
     /// taken out of egui's input, the rest left to the controls.
-    fn settings_keys(&mut self, ctx: &egui::Context) -> tsumugi_prefs::Keys {
-        let mut keys = tsumugi_prefs::Keys::default();
+    fn settings_keys(&mut self, ctx: &egui::Context) -> ito_prefs::Keys {
+        let mut keys = ito_prefs::Keys::default();
         // A control had the keys: Esc is its (egui lets go of the control).
         let busy = self.app.prefs.state.held || ctx.memory(|m| m.focused().is_some());
         let events = ctx.input(|i| i.events.clone());
@@ -161,7 +161,7 @@ impl eframe::App for Mimamori {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let keys = if self.app.mode == Mode::Settings { self.settings_keys(&ctx) } else { tsumugi_prefs::Keys::default() };
+        let keys = if self.app.mode == Mode::Settings { self.settings_keys(&ctx) } else { ito_prefs::Keys::default() };
         if self.app.mode != Mode::Settings {
             self.keys(&ctx);
         }

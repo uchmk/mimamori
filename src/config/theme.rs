@@ -3,10 +3,10 @@
 //! so a theme picked while mimamori runs is drawn from the next frame.
 
 use egui::Color32;
-use tsumugi_theme::{Colors, mix};
+use ito_theme::{Colors, mix};
 
 fn now() -> Colors {
-    tsumugi_theme::colors()
+    ito_theme::colors()
 }
 
 /// The window's background.
@@ -107,7 +107,7 @@ mod tests {
     /// bar and the selection within a few steps of the old constants.
     #[test]
     fn tsumugi_dark_is_the_old_look() {
-        let dark = tsumugi_theme::builtin()[0].colors;
+        let dark = ito_theme::builtin()[0].colors;
         assert_eq!(bar_of(&dark), Color32::from_rgb(0x20, 0x23, 0x2a));
         let near = |a: Color32, b: Color32| a.r().abs_diff(b.r()) < 16 && a.g().abs_diff(b.g()) < 16 && a.b().abs_diff(b.b()) < 16;
         assert!(near(mix(dark.bg, dark.blue, 0.3), Color32::from_rgb(0x2f, 0x4a, 0x6b)));

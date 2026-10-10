@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn the_colours_are_the_themes() {
-        let dark = tsumugi_theme::builtin()[0].colors;
+        let dark = ito_theme::builtin()[0].colors;
         assert_eq!(BG, rgb(dark.bg));
         assert_eq!(EDGE, rgb(dark.border));
         assert_eq!(EMPTY, rgb(theme::bar_of(&dark)));

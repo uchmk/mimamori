@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender};
-use tsumugi_layout::Node;
+use ito_layout::Node;
 
 use crate::collect::{Ctl, Msg, Proc, disk, gpu, hw, net, sensors, svc};
 use crate::config::cmd::{Act, Goto, Step};
@@ -98,7 +98,7 @@ pub struct Out {
     pub pane_rects: [Option<egui::Rect>; 3],
     pub tab: Option<Screen>,
     /// A divider dragged, released or double-clicked.
-    pub moved: Option<tsumugi_layout::ui::Moved<Pane>>,
+    pub moved: Option<ito_layout::ui::Moved<Pane>>,
     /// How far the help can scroll, so a key past the end stays there.
     pub help_max: Option<usize>,
     /// The fleet tab clicked.
@@ -310,7 +310,7 @@ impl App {
 
     /// The language as config.toml, common.toml and the OS pick it now.
     fn relanguage(&self) {
-        let os = tsumugi_i18n::os_language();
+        let os = ito_i18n::os_language();
         let app = self.prefs.settings.app_language.as_deref();
         crate::i18n::set_language(&crate::i18n::resolve_language(app, self.prefs.common.language.as_deref(), os.as_deref()));
     }
@@ -1250,8 +1250,8 @@ impl App {
     }
 
     /// A divider dragged or double-clicked with the mouse.
-    pub fn moved(&mut self, m: tsumugi_layout::ui::Moved<Pane>) {
-        use tsumugi_layout::ui::Moved;
+    pub fn moved(&mut self, m: ito_layout::ui::Moved<Pane>) {
+        use ito_layout::ui::Moved;
         match m {
             Moved::Dragging(l) => self.drag = Some(l),
             Moved::Released => {
@@ -1328,7 +1328,7 @@ impl App {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
         }
         let widths: Vec<String> = self.layouts[&self.screen]
-            .layout(tsumugi_layout::Rect::new(0.0, 0.0, 1000.0, 100.0), 0.0)
+            .layout(ito_layout::Rect::new(0.0, 0.0, 1000.0, 100.0), 0.0)
             .iter()
             .map(|(p, r)| format!("{}={:.0}", p.name(), r.w))
             .collect();
@@ -1437,7 +1437,7 @@ mod tests {
         let ctrl = if cfg!(target_os = "macos") { "<D-S-e>" } else { "<C-S-e>" };
         keys(&mut a, ctrl);
         let w: Vec<f32> =
-            a.layouts[&Screen::Cpu].layout(tsumugi_layout::Rect::new(0.0, 0.0, 300.0, 10.0), 0.0).iter().map(|(_, r)| r.w).collect();
+            a.layouts[&Screen::Cpu].layout(ito_layout::Rect::new(0.0, 0.0, 300.0, 10.0), 0.0).iter().map(|(_, r)| r.w).collect();
         assert!(w.iter().all(|x| (x - 100.0).abs() < 0.5), "{w:?}");
     }
 

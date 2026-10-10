@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use crossbeam_channel::{Sender, unbounded};
+use ito_layout::Node;
 use serde::{Deserialize, Serialize};
-use tsumugi_layout::Node;
 
 use crate::screen::{Pane, Screen};
 
@@ -106,7 +106,7 @@ mod tests {
         let (mut layouts, warn) = load(Some(&d));
         assert!(warn.is_empty());
         let mut cpu = Screen::Cpu.default_layout();
-        assert!(cpu.nudge(&Pane::Left, tsumugi_layout::Toward::Right, 0.1));
+        assert!(cpu.nudge(&Pane::Left, ito_layout::Toward::Right, 0.1));
         layouts.insert(Screen::Cpu, cpu.clone());
         write(&d, &render(&layouts)).unwrap();
         let (back, warn) = load(Some(&d));
