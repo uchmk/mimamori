@@ -19,7 +19,7 @@ inside each tile.
 
 | Key | Screen   | What it shows |
 | --- | -------- | ------------- |
-| `1` | overview | CPU / memory / swap gauges and the system; a big graph of the selected gauge over the compact core tiles; the top processes by CPU and by memory |
+| `1` | overview | CPU / memory / swap gauges, then one per GPU and NPU (its usage) and per drive (how busy it is), and the system with what each device is; a big graph of the selected gauge over the compact core tiles; the top processes by CPU and by memory |
 | `2` | cpu      | Groups and counts; the core tiles, the total over the last minute and a thread heatmap; the selected core's threads and the top CPU users |
 | `3` | mem      | Used / available / swap; the usage bar and graph; the processes using the most memory |
 | `4` | gpu·npu  | The GPUs and NPUs found, each with its usage over the last minute (and why a missing one is missing); the selected device's usage, engines, dedicated and shared memory and VRAM graph; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
@@ -45,7 +45,7 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `h` `l` / `←` `→` | Column to the left, to the right |
 | `Alt+Shift+←→↑↓` (macOS `Cmd+Ctrl+arrow`) | Move the focused column's divider (tsumugi's keys) |
 | `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) | Columns back to equal widths |
-| `Enter` | Open the selection (a gauge's screen, a process in procs, a service's or a socket's process). On a net interface: only the sockets on it. On disk: a drive's first volume, or a volume's drive. On sensors: a chip's first sensor, or a sensor's chip |
+| `Enter` | Open the selection (a gauge's screen, on the device for a GPU, NPU or drive; a process in procs, a service's or a socket's process). On a net interface: only the sockets on it. On disk: a drive's first volume, or a volume's drive. On sensors: a chip's first sensor, or a sensor's chip |
 | `/` | Filter processes, or on svc services by name and description, or on net sockets by protocol, address, state, PID and process (`Enter` keeps it, `Esc` drops it). One filter serves all three |
 | `s` | Next sort column |
 | `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |

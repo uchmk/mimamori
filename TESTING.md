@@ -55,6 +55,7 @@ back to `[ ]`.
 - [ ] 3a.9 macOS, Apple silicon: the GPU is listed as the chip (`Apple M2 Pro`) with vendor `Apple`; usage, `Renderer` and `Tiler` follow a game or a video export within a second or two and roughly match Activity Monitor's GPU History; `Shared` shows the memory in use and dedicated says why it is missing; `Source` says `iokit`; the left column still says `No NPU` with the reason.
 - [ ] 3a.11 macOS, Intel Mac (with an AMD card if there is one): each GPU is listed once with its name and PCI ids; the AMD card shows VRAM used of its total and, where the driver gives them, temperature, fan, power and clock; the Intel iGPU shows usage or says why it is missing.
 - [ ] 3a.10 A machine with two GPUs (an iGPU and a dGPU): both are listed, `j` / `k` switch between them, and the crumb names the selected one.
+- [ ] 3a.13 Overview (`1`): each GPU and NPU has a gauge under Swap (`GPU`, `NPU`; `GPU 1`, `GPU 2` with two) whose percent follows the gpu·npu screen's usage (`—` when it has none); selecting it draws its last minute in the middle with its name in the title, the System rows list its name, and `Enter` opens the gpu·npu screen on that device.
 
 ## 3b. Services (`6`)
 
@@ -105,6 +106,7 @@ back to `[ ]`.
 - [ ] 3d.14 Linux: as root, an NVMe drive shows `Life used`, `Powered on`, `Lifetime writes` and `Media errors` matching `smartctl -A`; a SATA drive shows `Powered on`, `Remapped sectors` and `Pending sectors` (attributes 9, 5 and 197) and, for an SSD, `Life used` from its wear attribute. After the drive spins down (`hdparm -y`), the counts stay on screen.
 - [ ] 3d.12 The health reads `checking…` for the first moment after start; a drive that predicts its failure (if one is at hand) shows its name in red in the left column and `failing: back it up` in red on the right.
 - [ ] 3d.7 `Enter` on a drive selects its first volume in the middle; `Enter` on a volume selects its drive on the left. A volume over 90 % full shows its `USE%` in red and a red bar on the right; a narrow window drops the device and file system columns first.
+- [ ] 3d.18 Overview (`1`): each drive has a gauge after the GPUs (`Disk`, or `Disk 1`, `Disk 2`… with several) showing its busy percent, which rises while a large file is copied; selecting it draws its busy graph in the middle titled with its model and size, the System rows list them, and `Enter` opens the disk screen on that drive.
 
 ## 3e. Sensors (`9`)
 

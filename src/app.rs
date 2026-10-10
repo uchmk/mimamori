@@ -28,6 +28,18 @@ pub const TOAST: Duration = Duration::from_secs(3);
 const NUDGE: f32 = 0.03;
 /// Rows the overview lists in each of its two top lists.
 pub const OVW_TOP: usize = 5;
+
+/// A row of the overview's left column.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Gauge {
+    Cpu,
+    Mem,
+    Swap,
+    /// A GPU or NPU, by its index in the model's list.
+    Gpu(usize),
+    /// A drive, by its index in the model's list.
+    Disk(usize),
+}
 const TOP_CPU: usize = 10;
 const TOP_MEM: usize = 15;
 
@@ -661,7 +673,7 @@ impl App {
         let groups = self.model.st.as_ref().map_or(0, |st| st.topo.groups.len());
         let cores = self.model.st.as_ref().map_or(0, |st| st.topo.core_count());
         match (s, p) {
-            (Screen::Ovw, Pane::Left) => 3,
+            (Screen::Ovw, Pane::Left) => 3 + self.model.gpus.len() + self.model.disks.drives.len(),
             (Screen::Ovw, Pane::Right) => self.top_cpu.len().min(OVW_TOP) + self.top_mem.len().min(OVW_TOP),
             (Screen::Cpu, Pane::Left) => 1 + groups,
             (Screen::Cpu, Pane::Mid) => cores,
@@ -684,6 +696,15 @@ impl App {
             (Screen::Sys, Pane::Mid) => self.model.hw.as_ref().map_or(0, |h| h.slots.len()),
             _ => 0,
         }
+    }
+
+    /// The overview's left column: CPU, memory and swap, then the GPUs and
+    /// NPUs, then the drives.
+    pub fn ovw_gauges(&self) -> Vec<Gauge> {
+        let mut g = vec![Gauge::Cpu, Gauge::Mem, Gauge::Swap];
+        g.extend((0..self.model.gpus.len()).map(Gauge::Gpu));
+        g.extend((0..self.model.disks.drives.len()).map(Gauge::Disk));
+        g
     }
 
     /// The overview's right column: the top CPU users, then the top memory.
@@ -1143,7 +1164,20 @@ impl App {
         let v = self.view();
         let sel = v.sel[v.focus.min(2)];
         match (self.screen, self.focus()) {
-            (Screen::Ovw, Pane::Left) => self.goto(if sel == 0 { Screen::Cpu } else { Screen::Mem }),
+            (Screen::Ovw, Pane::Left) => {
+                let (s, row) = match self.ovw_gauges().get(sel) {
+                    Some(Gauge::Cpu) | None => (Screen::Cpu, None),
+                    Some(Gauge::Mem | Gauge::Swap) => (Screen::Mem, None),
+                    Some(&Gauge::Gpu(i)) => (Screen::Gpu, Some(i)),
+                    Some(&Gauge::Disk(i)) => (Screen::Disk, Some(i)),
+                };
+                self.goto(s);
+                if let Some(i) = row {
+                    let v = self.view_mut();
+                    v.focus = Pane::Left.index();
+                    v.sel[Pane::Left.index()] = i;
+                }
+            }
             (Screen::Ovw, Pane::Right) => {
                 if let Some(i) = self.ovw_top(sel) {
                     self.open_proc(self.model.procs[i].pid);
@@ -1405,6 +1439,26 @@ mod tests {
         a.pump();
         assert_eq!(a.view().sel[1], 0);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(2));
+    }
+
+    #[test]
+    fn the_overview_has_a_gauge_per_device_and_enter_opens_its_screen() {
+        let (mut a, tx, _ctl) = app();
+        assert_eq!(a.ovw_gauges(), [Gauge::Cpu, Gauge::Mem, Gauge::Swap]);
+        let dev = |id: &str, kind| gpu::Device { id: id.into(), kind, ..gpu::Device::default() };
+        tx.send(Msg::Gpu(vec![dev("a", gpu::Kind::Gpu), dev("b", gpu::Kind::Npu)])).unwrap();
+        let drive = |id: &str| disk::Drive { id: id.into(), ..disk::Drive::default() };
+        tx.send(Msg::Disks(disk::Disks { drives: vec![drive("sda"), drive("sdb")], ..disk::Disks::default() })).unwrap();
+        a.pump();
+        assert_eq!(a.ovw_gauges(), [Gauge::Cpu, Gauge::Mem, Gauge::Swap, Gauge::Gpu(0), Gauge::Gpu(1), Gauge::Disk(0), Gauge::Disk(1)]);
+        keys(&mut a, "j j j j <Enter>");
+        assert_eq!((a.screen, a.selected_gpu().map(|d| d.id.as_str())), (Screen::Gpu, Some("b")));
+        keys(&mut a, "1 j j <Enter>");
+        assert_eq!((a.screen, a.selected_drive().map(|d| d.id.as_str())), (Screen::Disk, Some("sdb")));
+        keys(&mut a, "1 k k k k k k <Enter>");
+        assert_eq!(a.screen, Screen::Cpu);
+        keys(&mut a, "1 j j <Enter>");
+        assert_eq!(a.screen, Screen::Mem);
     }
 
     #[test]
