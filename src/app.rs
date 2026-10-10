@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use tsumugi_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc, gpu, svc};
+use crate::collect::{Ctl, Msg, Proc, gpu, net, svc};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -119,6 +119,12 @@ pub struct App {
     pub svc_rows: Vec<usize>,
     /// The service selected, kept while the list is read again.
     svc_name: Option<String>,
+    /// The socket list as net shows it: indices into `model.conns.list`.
+    pub net_rows: Vec<usize>,
+    /// The socket selected, kept while the list is read again.
+    net_key: Option<ConnKey>,
+    /// net lists only the sockets waiting for others (`u`).
+    pub net_listen: bool,
     me: Option<String>,
     dirty: bool,
     pub interval: f32,
@@ -161,6 +167,9 @@ impl App {
             top_mem: Vec::new(),
             svc_rows: Vec::new(),
             svc_name: None,
+            net_rows: Vec::new(),
+            net_key: None,
+            net_listen: false,
             me: None,
             dirty: true,
             interval,
@@ -207,17 +216,22 @@ impl App {
 
     /// Fold in what the sampler sent and bring the lists up to date.
     pub fn pump(&mut self) {
-        let mut svc_dirty = false;
+        let (mut svc_dirty, mut net_dirty) = (false, false);
         while let Ok(m) = self.rx.try_recv() {
             match m {
-                Msg::Procs { .. } => self.dirty = true,
+                // The net filter matches process names too.
+                Msg::Procs { .. } => (self.dirty, net_dirty) = (true, true),
                 Msg::Svc(_) => svc_dirty = true,
+                Msg::Conns(_) => net_dirty = true,
                 _ => {}
             }
             self.model.apply(m);
         }
         if svc_dirty {
             self.refresh_svc();
+        }
+        if net_dirty && self.model.conn_read {
+            self.refresh_net();
         }
         while let Ok((t, o)) = self.kill_rx.try_recv() {
             let (name, pid) = (t.name.as_str(), t.pid.to_string());
@@ -316,10 +330,56 @@ impl App {
         self.svc_name = self.selected_svc().map(|s| s.name.clone());
     }
 
-    /// Both lists the filter narrows.
+    /// The interface the net screen has selected.
+    pub fn selected_nic(&self) -> Option<&net::Nic> {
+        self.model.nics.get(self.view_of(Screen::Net).sel[0])
+    }
+
+    /// The socket the net screen has selected.
+    pub fn selected_conn(&self) -> Option<&net::Conn> {
+        let sel = self.view_of(Screen::Net).sel[1];
+        self.net_rows.get(sel).and_then(|&i| self.model.conns.list.get(i))
+    }
+
+    /// The name of the process with `pid`, if it is in the process list.
+    pub fn proc_name(&self, pid: Option<u32>) -> Option<&str> {
+        let pid = pid?;
+        self.model.procs.iter().find(|p| p.pid == pid).map(|p| p.name.as_str())
+    }
+
+    fn conn_matches(&self, c: &net::Conn, f: &str) -> bool {
+        if self.net_listen && !c.listening() {
+            return false;
+        }
+        if f.is_empty() {
+            return true;
+        }
+        let local = c.local.to_string();
+        let remote = c.remote.map(|r| r.to_string()).unwrap_or_default();
+        let pid = c.pid.map(|p| p.to_string()).unwrap_or_default();
+        let name = self.proc_name(c.pid).unwrap_or_default().to_lowercase();
+        let state = tr(c.state.key()).to_lowercase();
+        [c.proto.label(), &local, &remote, &pid, &name, &state].iter().any(|s| s.contains(f))
+    }
+
+    fn refresh_net(&mut self) {
+        let f = self.filter.to_lowercase();
+        let list = &self.model.conns.list;
+        let rows: Vec<usize> = (0..list.len()).filter(|&i| self.conn_matches(&list[i], &f)).collect();
+        let found = self.net_key.and_then(|k| rows.iter().position(|&i| conn_key(&list[i]) == k));
+        self.net_rows = rows;
+        if let Some(pos) = found {
+            self.views.entry(Screen::Net).or_default().sel[1] = pos;
+        }
+        self.clamp_all();
+        self.net_key = self.selected_conn().map(conn_key);
+    }
+
+    /// Every list the filter narrows.
     fn refilter(&mut self) {
         self.refresh_rows();
         self.refresh_svc();
+        self.refresh_net();
     }
 
     pub fn mine_only(&self) -> bool {
@@ -411,6 +471,8 @@ impl App {
             (Screen::Procs, Pane::Mid) => self.rows.len(),
             (Screen::Svc, Pane::Left) => Self::SVC_SHOW.len(),
             (Screen::Svc, Pane::Mid) => self.svc_rows.len(),
+            (Screen::Net, Pane::Left) => self.model.nics.len(),
+            (Screen::Net, Pane::Mid) => self.net_rows.len(),
             _ => 0,
         }
     }
@@ -506,6 +568,7 @@ impl App {
             (Screen::Procs, Pane::Left) => self.refresh_rows(),
             (Screen::Svc, Pane::Mid) => self.svc_name = self.selected_svc().map(|s| s.name.clone()),
             (Screen::Svc, Pane::Left) => self.refresh_svc(),
+            (Screen::Net, Pane::Mid) => self.net_key = self.selected_conn().map(conn_key),
             _ => {}
         }
     }
@@ -514,6 +577,10 @@ impl App {
         // Services are read only while their screen shows.
         if (s == Screen::Svc) != (self.screen == Screen::Svc) {
             let _ = self.ctl.send(Ctl::Services(s == Screen::Svc));
+        }
+        // And sockets while theirs does.
+        if (s == Screen::Net) != (self.screen == Screen::Net) {
+            let _ = self.ctl.send(Ctl::Net(s == Screen::Net));
         }
         self.screen = s;
         self.drag = None;
@@ -665,8 +732,8 @@ impl App {
             }
             Act::Enter if built => self.enter(),
             Act::Filter => {
-                // svc filters its own list; anywhere else it is procs'.
-                if self.screen != Screen::Svc {
+                // svc and net filter their own lists; anywhere else it is procs'.
+                if !matches!(self.screen, Screen::Svc | Screen::Net) {
                     self.goto(Screen::Procs);
                 }
                 self.view_mut().focus = Pane::Mid.index();
@@ -682,6 +749,11 @@ impl App {
                 self.tree = !self.tree;
                 self.refresh_rows();
                 self.toast(tr(if self.tree { "toast.tree_on" } else { "toast.tree_off" }));
+            }
+            Act::Scope(to) if self.screen == Screen::Net => {
+                self.net_listen = to.unwrap_or(!self.net_listen);
+                self.refresh_net();
+                self.toast(trf("toast.scope", &[tr(if self.net_listen { "net.listening" } else { "net.all_conns" })]));
             }
             Act::Scope(to) => {
                 let mine = to.unwrap_or(!self.mine_only());
@@ -762,6 +834,12 @@ impl App {
                 Some((None, name)) => self.toast(trf("toast.svc_no_pid", &[&name])),
                 None => {}
             },
+            (Screen::Net, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
+            (Screen::Net, Pane::Mid | Pane::Right) => match self.selected_conn().map(|c| (c.pid, c.local)) {
+                Some((Some(pid), _)) => self.open_proc(pid),
+                Some((None, local)) => self.toast(trf("toast.net_no_pid", &[&local.to_string()])),
+                None => {}
+            },
             _ => {}
         }
     }
@@ -821,6 +899,15 @@ impl App {
             let sv = &self.model.services;
             s += &format!("svcs: {} of {} ({})\n", self.svc_rows.len(), sv.list.len(), sv.source);
         }
+        if self.model.nic_read {
+            let names: Vec<&str> = self.model.nics.iter().map(|n| n.name.as_str()).collect();
+            s += &format!("nics: {} ({})\n", names.len(), names.join(" "));
+        }
+        if self.model.conn_read {
+            let c = &self.model.conns;
+            let scope = if self.net_listen { "listening" } else { "all" };
+            s += &format!("conns: {} of {} ({}, {scope})\n", self.net_rows.len(), c.list.len(), c.source);
+        }
         if let Some(st) = &self.model.st {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
         }
@@ -838,6 +925,13 @@ impl App {
         }
         s
     }
+}
+
+/// What tells one socket from another while the list is read again.
+type ConnKey = (net::Proto, std::net::SocketAddr, Option<std::net::SocketAddr>);
+
+fn conn_key(c: &net::Conn) -> ConnKey {
+    (c.proto, c.local, c.remote)
 }
 
 pub fn fmt_interval(s: f32) -> String {
@@ -958,6 +1052,8 @@ mod tests {
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Svc);
         keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Net);
+        keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Ovw);
         tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
         a.pump();
@@ -1066,6 +1162,51 @@ mod tests {
         assert_eq!(a.screen, Screen::Procs);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
         assert!(matches!(ctl.try_iter().last(), Some(Ctl::Services(false))));
+    }
+
+    #[test]
+    fn net_reads_sockets_only_while_shown_and_enter_opens_the_owner() {
+        let (mut a, tx, ctl) = app();
+        keys(&mut a, "7 1");
+        let got: Vec<Ctl> = ctl.try_iter().collect();
+        assert!(matches!(got[..], [Ctl::Net(true), Ctl::Net(false)]), "{got:?}");
+        tx.send(Msg::Procs { procs: vec![proc(7, "sshd", 1.0, 1)], total_threads: None }).unwrap();
+        let conn = |proto, local: &str, remote: Option<&str>, state, pid| net::Conn {
+            proto,
+            local: local.parse().unwrap(),
+            remote: remote.map(|r| r.parse().unwrap()),
+            state,
+            pid,
+        };
+        let list = vec![
+            conn(net::Proto::Tcp, "0.0.0.0:22", None, net::State::Listen, Some(7)),
+            conn(net::Proto::Tcp, "10.0.0.2:50000", Some("8.8.8.8:443"), net::State::Established, None),
+            conn(net::Proto::Udp, "0.0.0.0:5353", None, net::State::None, None),
+        ];
+        tx.send(Msg::Conns(net::Conns { list, source: "/proc/net", note: None })).unwrap();
+        tx.send(Msg::Nics(vec![net::Nic { name: "eth0".into(), up: true, ..net::Nic::default() }])).unwrap();
+        a.pump();
+        keys(&mut a, "7");
+        assert_eq!((a.net_rows.len(), a.selected_nic().map(|n| n.name.as_str())), (3, Some("eth0")));
+        // u keeps the sockets that wait for others: TCP listening and unconnected UDP.
+        keys(&mut a, "u");
+        assert!(a.net_listen);
+        assert_eq!(a.net_rows.len(), 2);
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.scope", &[tr("net.listening")])));
+        keys(&mut a, "u");
+        assert_eq!(a.net_rows.len(), 3);
+        // Enter on an interface moves to the sockets; one with no owner toasts.
+        keys(&mut a, "<Enter> j <Enter>");
+        assert_eq!(a.focus(), Pane::Mid);
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.net_no_pid", &["10.0.0.2:50000"])));
+        // The filter matches the process name, and the selection follows the socket.
+        keys(&mut a, "/ s s h <Enter>");
+        assert_eq!((a.screen, a.net_rows.len()), (Screen::Net, 1));
+        assert_eq!(a.selected_conn().map(|c| c.local.port()), Some(22));
+        keys(&mut a, "<Enter>");
+        assert_eq!(a.screen, Screen::Procs);
+        assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
+        assert!(matches!(ctl.try_iter().last(), Some(Ctl::Net(false))));
     }
 
     #[test]

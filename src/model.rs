@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, gpu, svc};
+use crate::collect::{Mem, Msg, Proc, Static, gpu, net, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -69,6 +69,14 @@ pub struct Model {
     pub services: svc::Services,
     /// Whether services have been read once.
     pub svc_read: bool,
+    /// Network interfaces, up first.
+    pub nics: Vec<net::Nic>,
+    /// Received and sent bytes per second per live interface, by name.
+    pub net_hist: HashMap<String, (Ring, Ring)>,
+    pub nic_read: bool,
+    /// The last reading of sockets, kept when the net screen is left.
+    pub conns: net::Conns,
+    pub conn_read: bool,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -125,6 +133,22 @@ impl Model {
             Msg::Svc(s) => {
                 self.services = s;
                 self.svc_read = true;
+            }
+            Msg::Nics(nics) => {
+                let mut hist = std::mem::take(&mut self.net_hist);
+                hist.retain(|name, _| nics.iter().any(|n| n.name == *name));
+                for n in &nics {
+                    let (rx, tx) = hist.entry(n.name.clone()).or_default();
+                    rx.push(n.rx_rate as f32);
+                    tx.push(n.tx_rate as f32);
+                }
+                self.net_hist = hist;
+                self.nics = nics;
+                self.nic_read = true;
+            }
+            Msg::Conns(c) => {
+                self.conns = c;
+                self.conn_read = true;
             }
         }
     }
@@ -197,5 +221,19 @@ mod tests {
         assert!(!m.gpu_hist.contains_key("a"));
         let (u, v) = &m.gpu_hist["b"];
         assert_eq!((u.len(), u.last(), v.last()), (2, Some(30.0), Some(25.0)));
+    }
+
+    #[test]
+    fn net_history_follows_the_live_interfaces() {
+        let nic = |name: &str, rx: f64| net::Nic { name: name.into(), rx_rate: rx, tx_rate: rx / 2.0, ..net::Nic::default() };
+        let mut m = Model::default();
+        m.apply(Msg::Nics(vec![nic("eth0", 100.0), nic("tun0", 5.0)]));
+        m.apply(Msg::Nics(vec![nic("eth0", 300.0)]));
+        assert!(m.nic_read && !m.net_hist.contains_key("tun0"));
+        let (rx, tx) = &m.net_hist["eth0"];
+        assert_eq!((rx.len(), rx.last(), tx.last()), (2, Some(300.0), Some(150.0)));
+        assert!(!m.conn_read);
+        m.apply(Msg::Conns(net::Conns { source: "/proc/net", ..net::Conns::default() }));
+        assert!(m.conn_read);
     }
 }

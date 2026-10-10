@@ -9,6 +9,7 @@ mod gpu;
 mod graph;
 mod help;
 mod mem;
+mod net;
 mod overview;
 mod procs;
 mod svc;
@@ -250,6 +251,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Gpu => gpu::draw(&mut cx, rects),
                     Screen::Procs => procs::draw(&mut cx, rects),
                     Screen::Svc => svc::draw(&mut cx, rects),
+                    Screen::Net => net::draw(&mut cx, rects),
                     _ => {}
                 }
             }
@@ -334,6 +336,13 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
             let n = |s| sv.count(s).to_string();
             use crate::collect::svc::State;
             trf("crumb.svc", &[&sv.list.len().to_string(), &n(State::Running), &n(State::Failed), sv.source])
+        }
+        Screen::Net if !m.nic_read => tr("misc.reading").to_string(),
+        Screen::Net => {
+            let up = m.nics.iter().filter(|n| n.up).count().to_string();
+            let socks = if m.conn_read { m.conns.list.len().to_string() } else { "—".to_string() };
+            let source = if m.conn_read { m.conns.source } else { "—" };
+            trf("crumb.net", &[&m.nics.len().to_string(), &up, &socks, source])
         }
         _ => tr("misc.not_yet").to_string(),
     };

@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.5** has six screens: overview, cpu, mem, gpu·npu, procs and svc. The other four tabs
+> **v0.6** has seven screens: overview, cpu, mem, gpu·npu, procs, svc and net. The other three tabs
 > are there with their final numbers, so the keys will not move, and say
 > "Not yet". See [TODO.md](TODO.md).
 
@@ -25,7 +25,8 @@ inside each tile.
 | `4` | gpu·npu  | The GPUs and NPUs found, each with its usage over the last minute (and why a missing one is missing); the selected device's usage, engines, dedicated and shared memory and VRAM graph; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
 | `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
 | `6` | svc      | Services, read only: Windows' services, systemd's units, launchd's jobs. Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). Read every 5 s, and only while the screen shows |
-| `7`–`0` | net, disk, sensors, sys | Not yet |
+| `7` | net      | The network interfaces, each with its traffic over the last minute, and counts of the sockets; every TCP and UDP socket (protocol, local and remote address, state, PID, process; filter with `/`, only the listening ones with `u`); the selected interface's received and sent graphs, adapter, kind, link speed, addresses, MAC, MTU and totals, and the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
+| `8`–`0` | disk, sensors, sys | Not yet |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`.
@@ -41,11 +42,11 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `h` `l` / `←` `→` | Column to the left, to the right |
 | `Alt+Shift+←→↑↓` (macOS `Cmd+Ctrl+arrow`) | Move the focused column's divider (tsumugi's keys) |
 | `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) | Columns back to equal widths |
-| `Enter` | Open the selection (a gauge's screen, a process in procs, a service's process) |
-| `/` | Filter processes, or on svc services by name and description (`Enter` keeps it, `Esc` drops it). One filter serves both |
+| `Enter` | Open the selection (a gauge's screen, a process in procs, a service's or a socket's process) |
+| `/` | Filter processes, or on svc services by name and description, or on net sockets by protocol, address, state, PID and process (`Enter` keeps it, `Esc` drops it). One filter serves all three |
 | `s` | Next sort column |
 | `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |
-| `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column) |
+| `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column). On net: every socket, or only the listening ones (TCP `LISTEN` and unconnected UDP) |
 | `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
@@ -148,6 +149,14 @@ The svc screen reads:
 | Windows | The service control manager (`EnumServicesStatusExW`, and `QueryServiceConfigW` for the start type, account and command, kept a minute) | Drivers are left out; a failed service shows its exit code |
 | Linux | `systemctl list-unit-files` and `systemctl show '*.service'` | Without systemd running (a container, WSL without systemd) only the unit files are listed, their state unknown |
 | macOS | `launchctl list` | As a user, that user's jobs; the system's need `sudo` |
+
+The net screen reads:
+
+| OS | Interfaces | Sockets |
+| --- | --- | --- |
+| Windows | The IP helper (`GetIfTable2`, `GetUnicastIpAddressTable`): the physical adapters, even unplugged, and any other that is up with an address (VPNs, Hyper-V switches), without the filter layers | `GetExtendedTcpTable` / `GetExtendedUdpTable` with the owning PID |
+| Linux | sysinfo for the counters and addresses; `/sys/class/net` for the kind, link speed and driver | `/proc/net/{tcp,tcp6,udp,udp6}`, the owner from the `socket:[inode]` links in `/proc/*/fd`. Another user's sockets show no process without root |
+| macOS | sysinfo; the kind is guessed from the name | Not yet |
 
 On Windows and Linux, NVIDIA cards are read through NVML, loaded from the
 driver at run time (`nvml.dll` / `libnvidia-ml.so.1`); without it they are

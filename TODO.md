@@ -13,7 +13,10 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] svc: macOS の launchd の plist（`/Library/LaunchDaemons` など）を読み、止まっている・無効のジョブ、コマンドとファイルも出す。今は `launchctl list` だけ。
 - [ ] svc: Windows のドライバー（`SERVICE_DRIVER`）を出すか、左の列の切り替えにするか決める。
 - [ ] svc の実機の確認 `【実機】`（TESTING.md 3b）。
-- [ ] net（`7`）: インターフェースごとの送受信のグラフ、接続の一覧。
+- [x] net（`7`）: インターフェースごとの送受信のグラフ、接続の一覧。Windows は IP ヘルパー、Linux は sysfs と `/proc/net`・`/proc/*/fd`。
+- [ ] net: macOS のソケットの一覧（`proc_pidinfo` の `PROC_PIDFDSOCKETINFO`、または `netstat -anv` のパース）と、インターフェースの種類（`SCNetworkInterface`）。今はインターフェースだけ。
+- [ ] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
+- [ ] net の実機の確認 `【実機】`（TESTING.md 3c）。
 - [ ] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
 - [ ] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
 - [ ] sys（`0`）: OS・BIOS・メモリのスロットなど、変わらない情報。

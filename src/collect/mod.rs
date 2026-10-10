@@ -1,10 +1,11 @@
 //! The sampler: one thread that reads the machine through sysinfo on its own
-//! schedule (CPU, memory and GPUs every interval, processes every other) and sends
+//! schedule (CPU, memory, GPUs and network interfaces every interval, processes every other) and sends
 //! each reading to the UI, waking it. The UI steers it with [`Ctl`]: the
-//! interval, pause, whether services are wanted. Dropping the receiver ends
-//! the thread.
+//! interval, pause, whether services or sockets are wanted. Dropping the
+//! receiver ends the thread.
 
 pub mod gpu;
+pub mod net;
 pub mod svc;
 pub mod topo;
 
@@ -79,6 +80,10 @@ pub enum Msg {
     Gpu(Vec<gpu::Device>),
     /// Only while the svc screen wants them.
     Svc(svc::Services),
+    /// Every interval, so each interface has its history.
+    Nics(Vec<net::Nic>),
+    /// Only while the net screen wants them.
+    Conns(net::Conns),
 }
 
 #[derive(Debug)]
@@ -87,11 +92,17 @@ pub enum Ctl {
     Pause(bool),
     /// Read services (at once, then every [`SVC_EVERY`]) or stop reading them.
     Services(bool),
+    /// Read sockets (at once, then every [`NET_EVERY`]) or stop reading them.
+    Net(bool),
 }
 
 /// How often services are read while wanted: listing them spawns `systemctl`
 /// or opens every service, so not at the sampling interval.
 pub const SVC_EVERY: Duration = Duration::from_secs(5);
+
+/// How often sockets are read while wanted: on Linux that walks every
+/// process's open files.
+pub const NET_EVERY: Duration = Duration::from_secs(2);
 
 /// Start the sampler; `wake` is repainted after every message.
 pub fn spawn(wake: egui::Context, interval: Duration) -> (Receiver<Msg>, Sender<Ctl>) {
@@ -133,16 +144,14 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
     let mut services = svc::Reader::default();
     // When services are next due; `None` while nobody wants them.
     let mut svc_next: Option<Instant> = None;
+    let mut nics = net::NicReader::new();
+    let mut net_next: Option<Instant> = None;
     let mut paused = false;
     // The first CPU reading needs a gap after the first refresh.
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
     let mut tick: u64 = 0;
     loop {
-        let due = if paused { None } else { Some(next) };
-        let due = match (due, svc_next.filter(|_| !paused)) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
+        let due = if paused { None } else { [Some(next), svc_next, net_next].into_iter().flatten().min() };
         let got = match due {
             Some(t) => ctl.recv_timeout(t.saturating_duration_since(Instant::now())),
             None => ctl.recv().map_err(|_| RecvTimeoutError::Disconnected),
@@ -166,6 +175,13 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
                 svc_next = on.then(|| Instant::now() + SVC_EVERY);
                 continue;
             }
+            Ok(Ctl::Net(on)) => {
+                if on && !send(Msg::Conns(net::read_conns())) {
+                    return;
+                }
+                net_next = on.then(|| Instant::now() + NET_EVERY);
+                continue;
+            }
             Err(RecvTimeoutError::Disconnected) => return,
             Err(RecvTimeoutError::Timeout) => {}
         }
@@ -176,6 +192,14 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
                 return;
             }
             svc_next = Some(Instant::now() + SVC_EVERY);
+        }
+        if let Some(t) = net_next
+            && Instant::now() >= t
+        {
+            if !send(Msg::Conns(net::read_conns())) {
+                return;
+            }
+            net_next = Some(Instant::now() + NET_EVERY);
         }
         if Instant::now() < next {
             continue;
@@ -196,7 +220,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
         if !send(Msg::Cpu { usage, freq_mhz, total, load }) || !send(Msg::Mem(mem)) {
             return;
         }
-        if !send(Msg::Gpu(gpus.sample())) {
+        if !send(Msg::Gpu(gpus.sample())) || !send(Msg::Nics(nics.read())) {
             return;
         }
         if tick.is_multiple_of(2) {
