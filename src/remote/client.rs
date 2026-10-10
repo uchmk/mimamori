@@ -2,7 +2,9 @@
 //! agent's frames and pinging it, and connecting again after a wait that
 //! grows while it stays down. What the viewer wants of a machine (its
 //! readings while its screens are open) goes through a channel per host and
-//! is said again after each reconnect.
+//! is said again after each reconnect. What it asks the agent to do goes
+//! the same way, once: a request queued while the link was down is dropped,
+//! not sent to the next connection.
 
 use std::io;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -11,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, bounded, never, select, unbounded};
 
-use super::proto::{self, FromAgent, Hello, PROTO, Summary, ToAgent, Want};
+use super::proto::{self, Act, Done, FromAgent, Hello, PROTO, Summary, ToAgent, Want};
 use crate::collect::Msg;
 use crate::config::settings::Host;
 
@@ -32,6 +34,17 @@ pub enum Event {
     Down(Why),
     /// One of the agent's readings, while the viewer watches it.
     Msg(Box<Msg>),
+    /// How the request with this id went.
+    Done(u64, Done),
+}
+
+/// What the viewer sends a host's thread.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ToHost {
+    /// What it shows of the machine now.
+    Want(Want),
+    /// Something to do there, answered with [`Event::Done`] and the same id.
+    Act(u64, Act),
 }
 
 /// Why a host is down, for its card.
@@ -55,13 +68,13 @@ pub enum Why {
 /// What a host's thread keeps of the viewer's wants.
 #[derive(Clone)]
 struct Wants {
-    rx: Receiver<Want>,
+    rx: Receiver<ToHost>,
     /// The latest, said again after each reconnect.
     now: Arc<Mutex<Want>>,
 }
 
 impl Wants {
-    fn new(rx: Receiver<Want>) -> Self {
+    fn new(rx: Receiver<ToHost>) -> Self {
         Self { rx, now: Arc::default() }
     }
 
@@ -72,11 +85,21 @@ impl Wants {
     fn set(&self, w: Want) {
         *self.now.lock().unwrap_or_else(|e| e.into_inner()) = w;
     }
+
+    /// Take what was sent while no connection was up: the latest want is
+    /// kept, requests are dropped (the viewer has given up on them).
+    fn drain(&self) {
+        for m in self.rx.try_iter() {
+            if let ToHost::Want(w) = m {
+                self.set(w);
+            }
+        }
+    }
 }
 
 /// Watch every host; events come tagged with the host's index, and each
-/// host's sender takes what the viewer wants of it.
-pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> (Receiver<(usize, Event)>, Vec<Sender<Want>>) {
+/// host's sender takes what the viewer wants of it and asks of it.
+pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> (Receiver<(usize, Event)>, Vec<Sender<ToHost>>) {
     let (tx, rx) = unbounded();
     let mut senders = Vec::new();
     for (i, h) in hosts.iter().enumerate() {
@@ -126,6 +149,7 @@ fn session(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) -> Option<(b
         Ok(h) => h,
         Err(why) => return Some((false, why)),
     };
+    wants.drain();
     if !emit(Event::Up(hello)) {
         return None;
     }
@@ -142,6 +166,7 @@ fn session(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) -> Option<(b
             Ok(FromAgent::Pong(n)) => Event::Latency(t0.elapsed().saturating_sub(Duration::from_micros(n))),
             Ok(FromAgent::Hello(_)) => continue,
             Ok(FromAgent::Msg(m)) => Event::Msg(m),
+            Ok(FromAgent::Done { id, outcome }) => Event::Done(id, outcome),
             Err(e) => return Some((true, why(&e))),
         };
         if !emit(e) {
@@ -169,10 +194,15 @@ fn write(mut w: TcpStream, t0: Instant, wants: &Wants, stop: &Receiver<()>) {
         }
         select! {
             recv(stop) -> _ => return,
-            recv(rx) -> want => match want {
-                Ok(want) => {
+            recv(rx) -> m => match m {
+                Ok(ToHost::Want(want)) => {
                     wants.set(want);
                     if proto::write_frame(&mut w, &ToAgent::Watch(want)).is_err() {
+                        return;
+                    }
+                }
+                Ok(ToHost::Act(id, act)) => {
+                    if proto::write_frame(&mut w, &ToAgent::Act { id, act }).is_err() {
                         return;
                     }
                 }
@@ -230,7 +260,7 @@ mod tests {
     }
 
     /// The same, and the sender of what the viewer wants.
-    fn watch_with(addr: String) -> (Receiver<Event>, Sender<Want>) {
+    fn watch_with(addr: String) -> (Receiver<Event>, Sender<ToHost>) {
         let (tx, rx) = unbounded();
         let (want_tx, want_rx) = unbounded();
         std::thread::spawn(move || watch(&addr, &Wants::new(want_rx), &|e| tx.send(e).is_ok()));
@@ -290,16 +320,16 @@ mod tests {
         assert!(matches!(next(&rx), Event::Up(_)));
         // Not watching: summaries only.
         assert!(readings(&rx, Duration::from_millis(800)).is_empty());
-        want.send(Want { detail: true, ..Want::default() }).unwrap();
+        want.send(ToHost::Want(Want { detail: true, ..Want::default() })).unwrap();
         let got = readings(&rx, Duration::from_secs(3));
         let has = |f: fn(&Msg) -> bool| got.iter().any(f);
         assert!(has(|m| matches!(m, Msg::Static(_))), "the cached static first");
         assert!(has(|m| matches!(m, Msg::Cpu { .. })) && has(|m| matches!(m, Msg::Mem(_))));
         assert!(has(|m| matches!(m, Msg::Procs { .. })), "processes while watched");
         assert!(!has(|m| matches!(m, Msg::Svc(_) | Msg::Conns(_))), "services and sockets only when asked");
-        want.send(Want { detail: true, conns: true, ..Want::default() }).unwrap();
+        want.send(ToHost::Want(Want { detail: true, conns: true, ..Want::default() })).unwrap();
         assert!(readings(&rx, Duration::from_secs(3)).iter().any(|m| matches!(m, Msg::Conns(_))));
-        want.send(Want::default()).unwrap();
+        want.send(ToHost::Want(Want::default())).unwrap();
         // What was on its way when it stopped may still come.
         let _ = readings(&rx, Duration::from_millis(500));
         assert!(readings(&rx, Duration::from_secs(1)).is_empty());
@@ -328,11 +358,90 @@ mod tests {
         let (rx, want) = watch_with(addr);
         assert!(matches!(next(&rx), Event::Up(_)));
         let w = Want { detail: true, services: true, conns: false };
-        want.send(w).unwrap();
+        want.send(ToHost::Want(w)).unwrap();
         assert_eq!(said_rx.recv_timeout(Duration::from_secs(5)), Ok(w));
         assert_eq!(next(&rx), Event::Down(Why::Closed));
         assert!(matches!(next(&rx), Event::Up(_)));
         assert_eq!(said_rx.recv_timeout(Duration::from_secs(5)), Ok(w), "said again unasked");
+    }
+
+    /// The answer to request `id`, skipping the summaries and pings.
+    fn done(rx: &Receiver<Event>, id: u64) -> Done {
+        loop {
+            match next(rx) {
+                Event::Done(i, d) if i == id => return d,
+                Event::Down(why) => panic!("down: {why:?}"),
+                _ => {}
+            }
+        }
+    }
+
+    fn agent_allowing(allow: &[&str]) -> String {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let cfg = Config { allow: allow.iter().map(|a| a.to_string()).collect(), interval: 0.5 };
+        std::thread::spawn(move || agent::serve(l, cfg));
+        addr
+    }
+
+    #[test]
+    fn an_agent_refuses_what_its_allow_does_not_list() {
+        let mut c = crate::kill::tests::sleeper();
+        let (rx, tx) = watch_with(agent_allowing(&[]));
+        let Event::Up(h) = next(&rx) else { panic!("not up first") };
+        assert_eq!(h.pid, std::process::id(), "the agent runs in this test's process");
+        tx.send(ToHost::Act(7, Act::Kill { pid: c.id(), start: 0 })).unwrap();
+        assert_eq!(done(&rx, 7), Done::Refused(proto::Refusal::NotAllowed));
+        assert!(c.try_wait().unwrap().is_none(), "the child must still be running");
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+
+    #[test]
+    fn an_agent_that_allows_kill_ends_the_process() {
+        let mut c = crate::kill::tests::sleeper();
+        let (rx, tx) = watch_with(agent_allowing(&["kill"]));
+        assert!(matches!(next(&rx), Event::Up(_)));
+        tx.send(ToHost::Act(1, Act::Kill { pid: c.id(), start: 0 })).unwrap();
+        assert_eq!(done(&rx, 1), Done::Kill(crate::kill::Outcome::Ended));
+        assert!(!c.wait().unwrap().success());
+        // Nor does it end itself, whatever the viewer says.
+        tx.send(ToHost::Act(2, Act::Kill { pid: std::process::id(), start: 0 })).unwrap();
+        assert_eq!(done(&rx, 2), Done::Refused(proto::Refusal::Agent));
+    }
+
+    #[test]
+    fn a_request_queued_while_down_is_not_sent_later() {
+        let mut c = crate::kill::tests::sleeper();
+        // Nothing listens yet: the request waits in the queue.
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        drop(l);
+        let (rx, tx) = watch_with(addr.clone());
+        assert_eq!(next(&rx), Event::Down(Why::Refused));
+        tx.send(ToHost::Act(1, Act::Kill { pid: c.id(), start: 0 })).unwrap();
+        let w = Want { detail: true, ..Want::default() };
+        tx.send(ToHost::Want(w)).unwrap();
+        let l = TcpListener::bind(&addr).unwrap();
+        std::thread::spawn(move || agent::serve(l, Config { allow: vec!["kill".into()], interval: 0.25 }));
+        loop {
+            match next(&rx) {
+                Event::Up(_) => break,
+                Event::Down(_) => {}
+                e => panic!("{e:?}"),
+            }
+        }
+        // The want went through; the request did not.
+        let end = Instant::now() + Duration::from_secs(3);
+        let mut readings = false;
+        while let Ok(e) = rx.recv_deadline(end) {
+            assert!(!matches!(e, Event::Done(..)), "{e:?}");
+            readings |= matches!(e, Event::Msg(_));
+        }
+        assert!(readings, "the want is said once the link is up");
+        assert!(c.try_wait().unwrap().is_none(), "the child must still be running");
+        let _ = c.kill();
+        let _ = c.wait();
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.35.0"
+version = "0.36.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"

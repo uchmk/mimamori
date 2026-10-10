@@ -53,7 +53,7 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column). On net: every socket, or only the listening ones (TCP `LISTEN` and unconnected UDP). On svc (Windows): services, or drivers |
 | `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem. On svc it stops the selected service instead |
 | `S`, `R` | On svc: start, restart the selected service, after asking. Windows asks the Service Control Manager (run yagura as administrator); Linux runs `systemctl` (root or polkit); macOS runs `launchctl kickstart` / `kill` in the domain the list came from (system jobs need `sudo`); a job that is not loaded is loaded from its plist first (`launchctl bootstrap`), while a disabled one is left disabled and the toast says the `launchctl enable` line. A start on a running service, or a stop on a stopped one, only says so |
-| `F` | The fleet screen, and back (`Esc` or a screen key also leave it). On it, `h` `j` `k` `l` and the arrows move between cards, `gg` / `G` to the first and last, `Enter` into the selected machine's screens. `x`, `S`, `R` on another machine's card say what its agent allows; acting on another machine comes later |
+| `F` | The fleet screen, and back (`Esc` or a screen key also leave it). On it, `h` `j` `k` `l` and the arrows move between cards, `gg` / `G` to the first and last, `Enter` into the selected machine's screens. `x`, `S`, `R` on another machine's card say what its agent allows (when it allows them: `Enter` and act on its screens) |
 | `]`, `[` | Next, previous machine: this one, then each `[[host]]` that is up. The screen stays the same, so `2` then `]` `]` compares the CPUs of the machines. While another machine shows, the crumb starts with its name and the status bar has a cyan pill with it (red `lost` when its link drops) |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
@@ -113,7 +113,7 @@ backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
 
 [agent]             # for `yagura --agent` on this machine
 port = 7313         # listens on 127.0.0.1 only
-allow = []          # "kill", "service": what a fleet viewer may do (read and shown; acting comes later)
+allow = []          # "kill", "service": what a fleet viewer may do on this machine (empty: view only)
 
 [[host]]            # a machine on the fleet screen, once per machine
 name = "nas"
@@ -222,18 +222,36 @@ services only while its svc screen shows, sockets only while its net screen
 shows; what does not change (the system, the hardware) is kept and sent at once
 to each new viewer. Several viewers share one sampler. This machine keeps
 sampling in the background, so `[` / `]` back to it finds its last minute.
-Ending a process and acting on services come later for another machine,
-and pause and the interval are its own (change them there); on its screens
-those keys say so. The viewer keeps one thread per host, pings it every 5 s for the
+Ending a process and acting on services work there as here when its agent
+allows them (below); pause and the interval are its own (change them there),
+and on its screens those keys say so. The viewer keeps one thread per host, pings it every 5 s for the
 round trip, marks it slow over 200 ms or after three missed summaries, and
 connects again after 2 s, doubling to 30 s while it stays down. The messages
 are [postcard](https://crates.io/crates/postcard) (serde's compact binary
 form) with a protocol number, so a viewer and an agent that speak different
 protocols say so instead of misreading each other.
 
-The agent is view only. `[agent] allow = ["kill", "service"]` is read and
-shown on its card, but acting on another machine comes in a later version.
-A v0.35 viewer and a v0.31–v0.34 agent do not connect (the card says which
+The agent is view only unless its own `config.toml` says otherwise:
+
+```toml
+[agent]
+allow = ["kill", "service"]   # either or both
+```
+
+Its card then shows `actions: kill service`, and inside its screens `x`
+(procs, and the process lists of the other screens), `S` and `R` (svc) ask
+first as on this machine: the window names the machine and the account its
+agent runs as, and `y` sends the request (protocol 3). The agent checks it
+against its own `allow`, not the viewer's word; it will not end itself, finds
+the service in its own list (a launchd job is loaded from the plist that
+machine read, never from a path the viewer sent), and runs it as its own
+user, so what needs administrator or root there needs the agent to run that
+way. The answer comes back as a toast that starts with the machine's name;
+if the link drops before it comes, a toast says so (look at its screen to see
+what happened), and a request is never sent again on the next connection.
+The agent writes each request and its outcome to its console
+(`yagura agent: 127.0.0.1:52144 asks to end 1234 (started …): Kill(Ended)`).
+A v0.36 viewer and a v0.31–v0.35 agent do not connect (the card says which
 side to update). On Windows, `yagura.exe --agent` run from a
 console writes there; run it at logon with Task Scheduler to keep it up.
 

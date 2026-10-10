@@ -12,10 +12,11 @@
 //! the owner's settings, so the toast only says the command.
 
 use crossbeam_channel::Sender;
+use serde::{Deserialize, Serialize};
 
 use crate::collect::svc::State;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Action {
     Start,
     Stop,
@@ -35,7 +36,7 @@ pub struct Target {
     pub driver: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Outcome {
     Done,
     /// The OS wants more rights than yagura has.
@@ -111,24 +112,25 @@ fn command(prog: &str, args: &[String], denied: fn(&str) -> bool) -> Outcome {
     }
 }
 
+/// Run `t` and wait for it. Blocks.
 #[cfg(target_os = "linux")]
-fn run(t: &Target) -> Outcome {
+pub fn run(t: &Target) -> Outcome {
     command("systemctl", &linux::args(t.action, &t.name), linux::denied)
 }
 
 #[cfg(target_os = "macos")]
-fn run(t: &Target) -> Outcome {
+pub fn run(t: &Target) -> Outcome {
     let steps = mac::steps(t, mac::root(), mac::uid());
     mac::settle(steps.iter().map(|s| command("launchctl", s, mac::denied)).collect())
 }
 
 #[cfg(windows)]
-fn run(t: &Target) -> Outcome {
+pub fn run(t: &Target) -> Outcome {
     win::run(t)
 }
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-fn run(_: &Target) -> Outcome {
+pub fn run(_: &Target) -> Outcome {
     Outcome::Failed("not supported on this OS".into())
 }
 

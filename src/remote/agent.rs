@@ -7,6 +7,12 @@
 //! watches the machine (`ToAgent::Watch`) also gets the sampler's readings,
 //! starting with the latest of each; processes, services and sockets are
 //! read only while somebody wants them.
+//!
+//! A viewer may also ask the agent to end a process or start, stop or
+//! restart a service ([`ToAgent::Act`]). The agent decides from its own
+//! `[agent] allow` and its own readings ([`check`]), runs each request on a
+//! thread of its own, logs it to stderr and answers with
+//! [`FromAgent::Done`].
 
 use std::io;
 use std::mem::Discriminant;
@@ -17,10 +23,11 @@ use std::time::Duration;
 
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded, select, unbounded};
 
-use super::proto::{self, FromAgent, Hello, PROTO, Summary, ToAgent, Want};
+use super::proto::{self, Act, Done, FromAgent, Hello, PROTO, Refusal, Summary, ToAgent, Want};
 use super::wire::{self, Route};
 use crate::collect::{self, Ctl, Msg, gpu};
 use crate::model::Model;
+use crate::{kill, svcctl};
 
 /// A frame shared by every viewer.
 type Frame = Arc<Vec<u8>>;
@@ -29,6 +36,8 @@ type Frame = Arc<Vec<u8>>;
 const QUEUE: usize = 64;
 /// A viewer pings every few seconds; one silent this long is gone.
 const QUIET: Duration = Duration::from_secs(30);
+/// How long an answer may wait behind the viewer's other frames.
+const ANSWER: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -73,6 +82,13 @@ enum HubIn {
     Join(u64, Sender<Frame>),
     Want(u64, Want),
     Leave(u64),
+    /// A viewer at `who` asks for `act`; the answer goes on `tx`.
+    Act {
+        id: u64,
+        who: String,
+        act: Act,
+        tx: Sender<Frame>,
+    },
 }
 
 struct Viewer {
@@ -144,6 +160,8 @@ fn hub(cfg: &Config, ins: &Receiver<HubIn>) {
     let mut last: Option<Frame> = None;
     let mut cache = Cache::default();
     let mut viewers: Vec<Viewer> = Vec::new();
+    // A service request that finished: read the services again at once.
+    let (re_tx, re_rx) = unbounded::<()>();
     loop {
         select! {
             recv(rx) -> m => {
@@ -187,7 +205,16 @@ fn hub(cfg: &Config, ins: &Receiver<HubIn>) {
                         }
                     }
                     Ok(HubIn::Leave(id)) => viewers.retain(|v| v.id != id),
+                    Ok(HubIn::Act { id, who, act, tx }) => {
+                        let job = check(&cfg.allow, &act, &model, std::process::id());
+                        do_job(id, who, act, job, tx, re_tx.clone());
+                    }
                     Err(_) => return,
+                }
+            }
+            recv(re_rx) -> _ => {
+                if reading.services {
+                    let _ = ctl.send(Ctl::Services(true));
                 }
             }
         }
@@ -212,6 +239,66 @@ fn hub(cfg: &Config, ins: &Receiver<HubIn>) {
     }
 }
 
+/// What the agent will run for a request it let through.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum Job {
+    Kill(kill::Target),
+    Svc(svcctl::Target),
+}
+
+/// Whether the agent does `act`, judged by its own `[agent] allow`, its own
+/// readings and its own PID `me`; never by what the viewer says of them.
+pub(crate) fn check(allow: &[String], act: &Act, model: &Model, me: u32) -> Result<Job, Refusal> {
+    if !proto::allowed(allow, act.word()) {
+        return Err(Refusal::NotAllowed);
+    }
+    match act {
+        Act::Kill { pid, .. } if *pid == me => Err(Refusal::Agent),
+        &Act::Kill { pid, start } => {
+            let name = model.procs.iter().find(|p| p.pid == pid).map(|p| p.name.clone()).unwrap_or_default();
+            Ok(Job::Kill(kill::Target { pid, name, start }))
+        }
+        Act::Service { action, name, driver } => {
+            let s = model.services.list.iter().find(|s| s.name == *name && s.driver == *driver).ok_or(Refusal::NoService)?;
+            // A launchd job known only from its plist: loaded from the plist
+            // this machine read, unless it is disabled.
+            let mut plist = None;
+            if s.unloaded && *action != svcctl::Action::Stop {
+                if s.start == crate::collect::svc::Start::Disabled {
+                    return Err(Refusal::Disabled(svcctl::enable_line(name)));
+                }
+                plist = s.file.clone();
+            }
+            Ok(Job::Svc(svcctl::Target { action: *action, name: name.clone(), plist, driver: *driver }))
+        }
+    }
+}
+
+/// Run `job` (or report its refusal) on a thread of its own, log it and
+/// answer the viewer.
+fn do_job(id: u64, who: String, act: Act, job: Result<Job, Refusal>, tx: Sender<Frame>, reread: Sender<()>) {
+    let run = move || {
+        let what = match &act {
+            Act::Kill { pid, start } => format!("end {pid} (started {start})"),
+            Act::Service { action, name, .. } => format!("{action:?} {name}").to_lowercase(),
+        };
+        let outcome = match job {
+            Err(r) => Done::Refused(r),
+            Ok(Job::Kill(t)) => Done::Kill(kill::end(&t, kill::GRACE)),
+            Ok(Job::Svc(t)) => {
+                let o = svcctl::run(&t);
+                let _ = reread.send(());
+                Done::Svc(o)
+            }
+        };
+        eprintln!("yagura agent: {who} asks to {what}: {outcome:?}");
+        let _ = tx.send_timeout(Arc::new(proto::frame(&FromAgent::Done { id, outcome })), ANSWER);
+    };
+    if let Err(e) = std::thread::Builder::new().name("yagura-act".into()).spawn(run) {
+        eprintln!("yagura agent: {e}");
+    }
+}
+
 /// `f` to every viewer `to` picks; those gone are dropped.
 fn send(viewers: &mut Vec<Viewer>, f: &Frame, to: impl Fn(Want) -> bool) {
     viewers.retain(|v| !to(v.want) || !matches!(v.tx.try_send(f.clone()), Err(TrySendError::Disconnected(_))));
@@ -231,6 +318,7 @@ fn hello_of(m: &Model, cfg: &Config) -> Hello {
         user: std::env::var("USER").or_else(|_| std::env::var("USERNAME")).unwrap_or_default(),
         allow: cfg.allow.clone(),
         interval: cfg.interval,
+        pid: std::process::id(),
     }
 }
 
@@ -247,7 +335,7 @@ pub fn summary(m: &Model) -> Summary {
 /// stops.
 fn viewer(s: TcpStream, hub: &Sender<HubIn>) {
     let peer = s.peer_addr().map(|a| a.to_string()).unwrap_or_default();
-    if let Err(e) = talk(&s, hub) {
+    if let Err(e) = talk(&s, &peer, hub) {
         eprintln!("yagura agent: {peer}: {e}");
     }
     let _ = s.shutdown(Shutdown::Both);
@@ -262,7 +350,7 @@ impl Drop for Leave<'_> {
     }
 }
 
-fn talk(s: &TcpStream, hub: &Sender<HubIn>) -> io::Result<()> {
+fn talk(s: &TcpStream, who: &str, hub: &Sender<HubIn>) -> io::Result<()> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let _ = s.set_nodelay(true);
     s.set_read_timeout(Some(QUIET))?;
@@ -299,7 +387,96 @@ fn talk(s: &TcpStream, hub: &Sender<HubIn>) -> io::Result<()> {
                     return Ok(());
                 }
             }
+            ToAgent::Act { id, act } => {
+                if hub.send(HubIn::Act { id, who: who.to_string(), act, tx: tx.clone() }).is_err() {
+                    return Ok(());
+                }
+            }
             ToAgent::Hello { .. } => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collect::Proc;
+    use crate::collect::svc::{Service, Start};
+    use crate::svcctl::Action;
+
+    fn allow(words: &[&str]) -> Vec<String> {
+        words.iter().map(|w| w.to_string()).collect()
+    }
+
+    fn model() -> Model {
+        let mut m = Model { procs: vec![Proc { pid: 42, name: "sleep".into(), ..Proc::default() }], ..Model::default() };
+        let svc = |name: &str, unloaded: bool, start: Start, driver: bool| Service {
+            name: name.into(),
+            start,
+            unloaded,
+            driver,
+            file: unloaded.then(|| format!("/Library/LaunchDaemons/{name}.plist")),
+            ..Service::default()
+        };
+        m.services.list = vec![
+            svc("cron", false, Start::Auto, false),
+            svc("job", true, Start::Manual, false),
+            svc("off", true, Start::Disabled, false),
+            svc("disk", false, Start::Auto, true),
+        ];
+        m
+    }
+
+    fn service(action: Action, name: &str, driver: bool) -> Act {
+        Act::Service { action, name: name.into(), driver }
+    }
+
+    #[test]
+    fn only_what_its_own_allow_lists_is_done() {
+        let m = model();
+        let kill = Act::Kill { pid: 42, start: 7 };
+        assert_eq!(check(&[], &kill, &m, 1), Err(Refusal::NotAllowed));
+        assert_eq!(check(&allow(&["service"]), &kill, &m, 1), Err(Refusal::NotAllowed));
+        assert_eq!(check(&allow(&["kill"]), &service(Action::Stop, "cron", false), &m, 1), Err(Refusal::NotAllowed));
+        assert_eq!(check(&allow(&["kill"]), &kill, &m, 1), Ok(Job::Kill(kill::Target { pid: 42, name: "sleep".into(), start: 7 })));
+    }
+
+    #[test]
+    fn the_agent_does_not_end_itself() {
+        let m = model();
+        assert_eq!(check(&allow(&["kill"]), &Act::Kill { pid: 1, start: 0 }, &m, 1), Err(Refusal::Agent));
+        // One it does not list is still tried: the list may be a moment old.
+        assert_eq!(
+            check(&allow(&["kill"]), &Act::Kill { pid: 9, start: 0 }, &m, 1),
+            Ok(Job::Kill(kill::Target { pid: 9, name: String::new(), start: 0 }))
+        );
+    }
+
+    #[test]
+    fn a_service_is_looked_up_in_its_own_list() {
+        let (m, a) = (model(), allow(&["service"]));
+        assert_eq!(check(&a, &service(Action::Stop, "nope", false), &m, 1), Err(Refusal::NoService));
+        // A driver and a service of the same name are not the same thing.
+        assert_eq!(check(&a, &service(Action::Stop, "disk", false), &m, 1), Err(Refusal::NoService));
+        assert_eq!(check(&a, &service(Action::Stop, "cron", true), &m, 1), Err(Refusal::NoService));
+        assert_eq!(
+            check(&a, &service(Action::Restart, "disk", true), &m, 1),
+            Ok(Job::Svc(svcctl::Target { action: Action::Restart, name: "disk".into(), plist: None, driver: true }))
+        );
+    }
+
+    #[test]
+    fn an_unloaded_job_starts_from_the_plist_this_machine_read() {
+        let (m, a) = (model(), allow(&["service"]));
+        let plist = Some("/Library/LaunchDaemons/job.plist".to_string());
+        assert_eq!(
+            check(&a, &service(Action::Start, "job", false), &m, 1),
+            Ok(Job::Svc(svcctl::Target { action: Action::Start, name: "job".into(), plist, driver: false }))
+        );
+        assert_eq!(
+            check(&a, &service(Action::Stop, "job", false), &m, 1),
+            Ok(Job::Svc(svcctl::Target { action: Action::Stop, name: "job".into(), plist: None, driver: false }))
+        );
+        assert_eq!(check(&a, &service(Action::Start, "off", false), &m, 1), Err(Refusal::Disabled(svcctl::enable_line("off"))));
     }
 }

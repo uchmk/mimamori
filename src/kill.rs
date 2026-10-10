@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use crossbeam_channel::Sender;
+use serde::{Deserialize, Serialize};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System};
 
 /// How long a process has after SIGTERM before it gets SIGKILL.
@@ -23,7 +24,7 @@ pub struct Target {
     pub start: u64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Outcome {
     /// It went: after SIGTERM, or after `TerminateProcess` on Windows.
     Ended,

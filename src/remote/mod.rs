@@ -121,8 +121,8 @@ impl Peer {
             }
             Event::Latency(d) => self.latency = Some(d),
             Event::Down(why) => self.link = Link::Down(why),
-            // The machine's own screens take these (`App::pump`).
-            Event::Msg(_) => {}
+            // The machine's own screens and the app take these (`App::pump`).
+            Event::Msg(_) | Event::Done(..) => {}
         }
     }
 

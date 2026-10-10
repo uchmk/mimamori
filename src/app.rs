@@ -16,8 +16,9 @@ use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
 use crate::persist::Saver;
 use crate::prefs::{Prefs, Reload};
-use crate::remote::proto::{self, Want};
-use crate::remote::{self, Link, Peer, client::Event};
+use crate::remote::client::{Event, ToHost};
+use crate::remote::proto::{self, Done, Refusal, Want};
+use crate::remote::{self, Link, Peer};
 use crate::screen::{Pane, Screen};
 use crate::svcctl::{self, Action};
 
@@ -49,6 +50,116 @@ const TOP_MEM: usize = 15;
 pub enum Ask {
     Kill(Target),
     Svc(svcctl::Target),
+}
+
+impl Ask {
+    /// The process's or the service's name.
+    pub fn name(&self) -> &str {
+        match self {
+            Ask::Kill(t) => &t.name,
+            Ask::Svc(t) => &t.name,
+        }
+    }
+
+    /// The `[agent] allow` word that lets another machine do it.
+    pub fn word(&self) -> &'static str {
+        match self {
+            Ask::Kill(_) => "kill",
+            Ask::Svc(_) => "service",
+        }
+    }
+
+    /// The request for another machine's agent.
+    fn act(&self) -> proto::Act {
+        match self {
+            Ask::Kill(t) => proto::Act::Kill { pid: t.pid, start: t.start },
+            Ask::Svc(t) => proto::Act::Service { action: t.action, name: t.name.clone(), driver: t.driver },
+        }
+    }
+
+    /// The toast while it runs.
+    fn starting(&self) -> String {
+        match self {
+            Ask::Kill(t) => trf("toast.ending", &[&t.name, &t.pid.to_string()]),
+            Ask::Svc(t) => {
+                let key = match t.action {
+                    Action::Start => "toast.svc_starting",
+                    Action::Stop => "toast.svc_stopping",
+                    Action::Restart => "toast.svc_restarting",
+                };
+                trf(key, &[&t.name])
+            }
+        }
+    }
+}
+
+/// A request sent to another machine's agent, until it answers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Asked {
+    pub id: u64,
+    /// The machine, by its index in `peers`.
+    pub peer: usize,
+    pub ask: Ask,
+}
+
+/// The kind of OS a machine runs, for the words that differ by it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Family {
+    Windows,
+    Mac,
+    Other,
+}
+
+impl Family {
+    pub fn here() -> Self {
+        if cfg!(windows) {
+            Self::Windows
+        } else if cfg!(target_os = "macos") {
+            Self::Mac
+        } else {
+            Self::Other
+        }
+    }
+
+    /// From a machine's OS as its hello says it (`Windows 11 Pro`,
+    /// `macOS 15 Sequoia`, `Linux 24.04 Ubuntu`).
+    pub fn of(os: &str) -> Self {
+        let os = os.to_lowercase();
+        if os.contains("windows") {
+            Self::Windows
+        } else if os.contains("mac") || os.contains("darwin") {
+            Self::Mac
+        } else {
+            Self::Other
+        }
+    }
+}
+
+/// The toast once a process has been ended, or not.
+pub fn kill_toast(t: &Target, o: Outcome) -> String {
+    let (name, pid) = (t.name.as_str(), t.pid.to_string());
+    match o {
+        Outcome::Ended => trf("toast.ended", &[name, &pid]),
+        Outcome::Killed => trf("toast.killed", &[name, &pid]),
+        Outcome::Gone => trf("toast.gone", &[name, &pid]),
+        Outcome::Failed(e) => trf("toast.kill_failed", &[name, &pid, &e]),
+    }
+}
+
+/// The toast once a service has moved, or not, on a machine of `family`.
+pub fn svc_toast(t: &svcctl::Target, o: svcctl::Outcome, family: Family) -> String {
+    let n = t.name.as_str();
+    match (o, t.action) {
+        (svcctl::Outcome::Done, Action::Start) => trf("toast.svc_started", &[n]),
+        (svcctl::Outcome::Done, Action::Stop) => trf("toast.svc_stopped", &[n]),
+        (svcctl::Outcome::Done, Action::Restart) => trf("toast.svc_restarted", &[n]),
+        (svcctl::Outcome::Denied, _) if family == Family::Windows => trf("toast.svc_denied_win", &[n]),
+        (svcctl::Outcome::Denied, _) if family == Family::Mac => trf("toast.svc_denied_mac", &[n]),
+        (svcctl::Outcome::Denied, _) => trf("toast.svc_denied_linux", &[n]),
+        (svcctl::Outcome::Failed(e), Action::Start) => trf("toast.svc_start_failed", &[n, &e]),
+        (svcctl::Outcome::Failed(e), Action::Stop) => trf("toast.svc_stop_failed", &[n, &e]),
+        (svcctl::Outcome::Failed(e), Action::Restart) => trf("toast.svc_restart_failed", &[n, &e]),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -198,8 +309,12 @@ pub struct App {
     /// The `[[host]]` machines; card 0 is this one, card `i` is `peers[i - 1]`.
     pub peers: Vec<Peer>,
     fleet_rx: Option<Receiver<(usize, Event)>>,
-    /// What each host's watcher is told to send, by its index in `peers`.
-    fleet_wants: Vec<Sender<Want>>,
+    /// What tells each host's watcher what to send and what to ask, by its
+    /// index in `peers`.
+    fleet_tx: Vec<Sender<ToHost>>,
+    /// Requests sent to other machines' agents and not yet answered.
+    pub asked: Vec<Asked>,
+    next_act: u64,
     /// What each host was last told to send.
     sent_remote: Vec<Want>,
     /// Whether this machine's sampler was last told to read services and
@@ -266,7 +381,9 @@ impl App {
             fleet: false,
             peers: Vec::new(),
             fleet_rx: None,
-            fleet_wants: Vec::new(),
+            fleet_tx: Vec::new(),
+            asked: Vec::new(),
+            next_act: 0,
             sent_remote: Vec::new(),
             sent_local: (false, false),
             away: None,
@@ -279,11 +396,11 @@ impl App {
 
     /// The `[[host]]` machines, their watchers' events and what tells each
     /// watcher what to send.
-    pub fn set_fleet(&mut self, peers: Vec<Peer>, (rx, wants): (Receiver<(usize, Event)>, Vec<Sender<Want>>)) {
+    pub fn set_fleet(&mut self, peers: Vec<Peer>, (rx, tx): (Receiver<(usize, Event)>, Vec<Sender<ToHost>>)) {
         self.sent_remote = vec![Want::default(); peers.len()];
         self.peers = peers;
         self.fleet_rx = Some(rx);
-        self.fleet_wants = wants;
+        self.fleet_tx = tx;
     }
 
     /// This machine's model, also while inside another's.
@@ -294,6 +411,14 @@ impl App {
     /// The machine whose screens show, unless it is this one.
     pub fn away_peer(&self) -> Option<&Peer> {
         self.away.as_ref().and_then(|a| self.peers.get(a.peer))
+    }
+
+    /// The kind of OS of the machine whose screens show.
+    pub fn family(&self) -> Family {
+        match self.away_peer() {
+            Some(p) => Family::of(p.hello.as_ref().map_or("", |h| h.os.as_str())),
+            None => Family::here(),
+        }
     }
 
     /// The fleet card selected, unless it is this machine's.
@@ -425,31 +550,13 @@ impl App {
             self.refresh_net();
         }
         while let Ok((t, o)) = self.kill_rx.try_recv() {
-            let (name, pid) = (t.name.as_str(), t.pid.to_string());
-            let s = match o {
-                Outcome::Ended => trf("toast.ended", &[name, &pid]),
-                Outcome::Killed => trf("toast.killed", &[name, &pid]),
-                Outcome::Gone => trf("toast.gone", &[name, &pid]),
-                Outcome::Failed(e) => trf("toast.kill_failed", &[name, &pid, &e]),
-            };
-            self.toast(s);
+            self.toast(kill_toast(&t, o));
         }
         while let Ok((t, o)) = self.svc_rx.try_recv() {
-            let n = t.name.as_str();
-            let s = match (o, t.action) {
-                (svcctl::Outcome::Done, Action::Start) => trf("toast.svc_started", &[n]),
-                (svcctl::Outcome::Done, Action::Stop) => trf("toast.svc_stopped", &[n]),
-                (svcctl::Outcome::Done, Action::Restart) => trf("toast.svc_restarted", &[n]),
-                (svcctl::Outcome::Denied, _) if cfg!(windows) => trf("toast.svc_denied_win", &[n]),
-                (svcctl::Outcome::Denied, _) if cfg!(target_os = "macos") => trf("toast.svc_denied_mac", &[n]),
-                (svcctl::Outcome::Denied, _) => trf("toast.svc_denied_linux", &[n]),
-                (svcctl::Outcome::Failed(e), Action::Start) => trf("toast.svc_start_failed", &[n, &e]),
-                (svcctl::Outcome::Failed(e), Action::Stop) => trf("toast.svc_stop_failed", &[n, &e]),
-                (svcctl::Outcome::Failed(e), Action::Restart) => trf("toast.svc_restart_failed", &[n, &e]),
-            };
-            self.toast(s);
-            // Read the list again now rather than at the next interval.
-            if self.screen == Screen::Svc {
+            self.toast(svc_toast(&t, o, Family::here()));
+            // Read the list again now rather than at the next interval;
+            // not while inside another machine, whose agent does that.
+            if self.screen == Screen::Svc && self.away.is_none() {
                 let _ = self.ctl.send(Ctl::Services(true));
             }
         }
@@ -490,6 +597,7 @@ impl App {
         match e {
             Event::Msg(m) if inside => self.take(*m, dirty),
             Event::Msg(_) => {}
+            Event::Done(id, d) => self.answered(i, id, d),
             e => {
                 let (down, up) = (matches!(e, Event::Down(_)), matches!(e, Event::Up(_)));
                 let Some(p) = self.peers.get_mut(i) else { return };
@@ -505,8 +613,52 @@ impl App {
                         self.toast(trf("toast.machine", &[&name]));
                     }
                 }
+                // No answer comes over the next connection.
+                let asked = self.asked.len();
+                self.asked.retain(|a| !down || a.peer != i);
+                if self.asked.len() < asked {
+                    self.toast(trf("toast.remote_no_answer", &[&name]));
+                }
             }
         }
+    }
+
+    /// The answer to request `id` sent to `peers[i]`.
+    fn answered(&mut self, i: usize, id: u64, d: Done) {
+        let Some(at) = self.asked.iter().position(|a| a.id == id && a.peer == i) else { return };
+        let ask = self.asked.remove(at).ask;
+        let Some(p) = self.peers.get(i) else { return };
+        let name = p.name.clone();
+        let family = Family::of(p.hello.as_ref().map_or("", |h| h.os.as_str()));
+        let on = |s: String| trf("toast.on_machine", &[&name, &s]);
+        let s = match (d, &ask) {
+            (Done::Kill(o), Ask::Kill(t)) => on(kill_toast(t, o)),
+            (Done::Svc(o), Ask::Svc(t)) => on(svc_toast(t, o, family)),
+            (Done::Refused(Refusal::NotAllowed), _) => trf("toast.fleet_view_only", &[&name, ask.word()]),
+            (Done::Refused(Refusal::Agent), _) => trf("toast.kill_agent", &[&name]),
+            (Done::Refused(Refusal::NoService), _) => on(trf("toast.remote_no_service", &[ask.name()])),
+            (Done::Refused(Refusal::Disabled(line)), _) => on(trf("toast.svc_disabled", &[ask.name(), &line])),
+            // An answer of the other kind is not this request's.
+            (Done::Kill(_) | Done::Svc(_), _) => return,
+        };
+        self.toast(s);
+    }
+
+    /// Send a confirmed question to the agent of the machine whose screens
+    /// show.
+    fn send_act(&mut self, ask: Ask) {
+        let Some(i) = self.away.as_ref().map(|a| a.peer) else { return };
+        let Some(p) = self.peers.get(i) else { return };
+        let name = p.name.clone();
+        self.next_act += 1;
+        let id = self.next_act;
+        let sent = p.link == Link::Up && self.fleet_tx.get(i).is_some_and(|tx| tx.send(ToHost::Act(id, ask.act())).is_ok());
+        if !sent {
+            self.toast(trf("toast.fleet_down", &[&name]));
+            return;
+        }
+        self.toast(trf("toast.on_machine", &[&name, &ask.starting()]));
+        self.asked.push(Asked { id, peer: i, ask });
     }
 
     /// Show another machine's screens: card `card` of the fleet (0 is this
@@ -602,10 +754,10 @@ impl App {
             let _ = self.ctl.send(Ctl::Net(local.1));
         }
         self.sent_local = local;
-        for (i, tx) in self.fleet_wants.iter().enumerate() {
+        for (i, tx) in self.fleet_tx.iter().enumerate() {
             let want = if away == Some(i) { Want { detail: true, services: svc, conns: net } } else { Want::default() };
             if self.sent_remote.get(i) != Some(&want) {
-                let _ = tx.send(want);
+                let _ = tx.send(ToHost::Want(want));
                 if let Some(w) = self.sent_remote.get_mut(i) {
                     *w = want;
                 }
@@ -1083,21 +1235,15 @@ impl App {
         match a {
             Act::Confirm | Act::Enter => {
                 self.mode = Mode::Normal;
-                match self.confirm.take() {
-                    Some(Ask::Kill(t)) => {
-                        self.toast(trf("toast.ending", &[&t.name, &t.pid.to_string()]));
-                        kill::spawn(t, self.kill_tx.clone(), self.wake.clone());
-                    }
-                    Some(Ask::Svc(t)) => {
-                        let key = match t.action {
-                            Action::Start => "toast.svc_starting",
-                            Action::Stop => "toast.svc_stopping",
-                            Action::Restart => "toast.svc_restarting",
-                        };
-                        self.toast(trf(key, &[&t.name]));
-                        svcctl::spawn(t, self.svc_tx.clone(), self.wake.clone());
-                    }
-                    None => {}
+                let Some(ask) = self.confirm.take() else { return };
+                if self.away.is_some() {
+                    self.send_act(ask);
+                    return;
+                }
+                self.toast(ask.starting());
+                match ask {
+                    Ask::Kill(t) => kill::spawn(t, self.kill_tx.clone(), self.wake.clone()),
+                    Ask::Svc(t) => svcctl::spawn(t, self.svc_tx.clone(), self.wake.clone()),
                 }
             }
             Act::Escape | Act::Quit => {
@@ -1114,11 +1260,21 @@ impl App {
             self.toast(tr("toast.kill_none"));
             return;
         };
-        if p.pid == std::process::id() {
-            self.toast(tr("toast.kill_self"));
-            return;
+        let t = Target { pid: p.pid, name: p.name.clone(), start: p.start };
+        // Inside another machine, its agent is the one not to end.
+        match self.away_peer() {
+            Some(m) if m.hello.as_ref().is_some_and(|h| h.pid == t.pid) => {
+                let s = trf("toast.kill_agent", &[&m.name]);
+                self.toast(s);
+                return;
+            }
+            None if t.pid == std::process::id() => {
+                self.toast(tr("toast.kill_self"));
+                return;
+            }
+            _ => {}
         }
-        self.confirm = Some(Ask::Kill(Target { pid: p.pid, name: p.name.clone(), start: p.start }));
+        self.confirm = Some(Ask::Kill(t));
         self.mode = Mode::Confirm;
     }
 
@@ -1136,9 +1292,10 @@ impl App {
             return;
         }
         // A launchd job that is not loaded: loaded from its plist, unless it
-        // is disabled, which is the owner's to undo.
+        // is disabled, which is the owner's to undo. Another machine's agent
+        // decides that from its own list.
         let mut plist = None;
-        if s.unloaded && action != Action::Stop {
+        if s.unloaded && action != Action::Stop && self.away.is_none() {
             if s.start == svc::Start::Disabled {
                 self.toast(trf("toast.svc_disabled", &[&name, &svcctl::enable_line(&name)]));
                 return;
@@ -1179,7 +1336,7 @@ impl App {
                 let t = match self.selected_peer() {
                     None => tr("toast.fleet_local").to_string(),
                     Some(p) if p.hello.as_ref().is_some_and(|h| proto::allowed(&h.allow, what)) => {
-                        trf("toast.fleet_actions_later", &[&p.name])
+                        trf("toast.fleet_act_inside", &[&p.name])
                     }
                     Some(p) => trf("toast.fleet_view_only", &[&p.name, what]),
                 };
@@ -1201,11 +1358,21 @@ impl App {
         }
         let built = self.screen.built();
         let away = self.away_peer().map(|p| p.name.clone());
+        // Ending a process or moving a service on another machine, which its
+        // `[agent] allow` may not let.
+        let refused = self.away_peer().and_then(|p| {
+            let word = match a {
+                Act::Kill if self.screen != Screen::Svc => "kill",
+                Act::Kill | Act::Service(_) if self.screen == Screen::Svc => "service",
+                _ => return None,
+            };
+            let allowed = p.hello.as_ref().is_some_and(|h| proto::allowed(&h.allow, word));
+            (!allowed).then(|| trf("toast.fleet_view_only", &[&p.name, word]))
+        });
         match a {
             Act::Machine(d) => self.cycle(d),
-            // Ending and restarting go through the agent later; its sampling
-            // is its own.
-            Act::Kill | Act::Service(_) if away.is_some() => self.toast(trf("toast.remote_actions_later", &[&away.unwrap_or_default()])),
+            Act::Kill | Act::Service(_) if refused.is_some() => self.toast(refused.unwrap_or_default()),
+            // Its sampling is its own.
             Act::Pause | Act::Interval(_) if away.is_some() => self.toast(trf("toast.remote_sampling", &[&away.unwrap_or_default()])),
             Act::Fleet => {
                 self.fleet = true;
@@ -1861,7 +2028,7 @@ mod tests {
         assert!(!a.fleet && a.screen == Screen::Procs);
         assert_eq!(a.away_peer().map(|p| p.name.as_str()), Some("nas"));
         assert_eq!((a.me.as_deref(), a.rows.len()), (Some("ana"), 0));
-        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [Want { detail: true, ..Want::default() }]);
+        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [ToHost::Want(Want { detail: true, ..Want::default() })]);
         assert!(wants1.try_recv().is_err());
         assert!(a.report().contains("machine: nas"), "{}", a.report());
         ftx.send((0, Event::Msg(Box::new(Msg::Procs { procs: vec![proc(9, "there", 5.0, 1)], total_threads: None })))).unwrap();
@@ -1874,11 +2041,12 @@ mod tests {
         // Its svc screen asks it for services, not this machine's sampler.
         let _ = ctl.try_iter().count();
         keys(&mut a, "6");
-        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [Want { detail: true, services: true, conns: false }]);
+        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [ToHost::Want(Want { detail: true, services: true, conns: false })]);
         assert!(ctl.try_recv().is_err());
-        // Acting and sampling stay with that machine.
+        // Its [agent] allow lists nothing, so it is view only; sampling stays with it.
         keys(&mut a, "x");
-        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.remote_actions_later", &["nas"])));
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.fleet_view_only", &["nas", "service"])));
+        assert!(a.confirm.is_none() && wants0.try_recv().is_err());
         keys(&mut a, "P");
         assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.remote_sampling", &["nas"])));
         // Lost, the screens keep its last readings.
@@ -1892,7 +2060,7 @@ mod tests {
         // ] goes round: pi is down, so back to this machine, where it was.
         keys(&mut a, "]");
         assert!(a.away.is_none() && a.screen == Screen::Svc);
-        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [Want::default()]);
+        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [ToHost::Want(Want::default())]);
         assert!(matches!(ctl.try_iter().collect::<Vec<_>>()[..], [Ctl::Services(true)]));
         assert_eq!(a.model.procs.iter().map(|p| p.pid).collect::<Vec<_>>(), [8]);
         assert!(a.report().contains("machine: this"), "{}", a.report());
@@ -1914,6 +2082,72 @@ mod tests {
         assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.machine_home")));
         keys(&mut a, "]");
         assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.machine_none")));
+    }
+
+    #[test]
+    fn a_machine_that_allows_kill_is_asked_to_end_and_answers() {
+        use crate::config::settings::Host;
+        use crate::remote::{client::Why, proto::Hello};
+        let (mut a, _tx, _ctl) = app();
+        let (ftx, frx) = crossbeam_channel::unbounded();
+        let (w0, wants0) = crossbeam_channel::unbounded();
+        a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: format!("localhost:{}", proto::PORT) })], (frx, vec![w0]));
+        let allow = vec!["kill".to_string()];
+        let hello = Hello { proto: proto::PROTO, user: "ana".into(), os: "Linux 24.04 Ubuntu".into(), allow, pid: 3, ..Hello::default() };
+        ftx.send((0, Event::Up(hello))).unwrap();
+        a.pump();
+        keys(&mut a, "5 F l <Enter>");
+        assert_eq!(a.away_peer().map(|p| p.name.as_str()), Some("nas"));
+        let procs = vec![proc(3, "yagura", 50.0, 1), proc(std::process::id(), "here", 1.0, 1), proc(7, "big", 80.0, 9)];
+        ftx.send((0, Event::Msg(Box::new(Msg::Procs { procs, total_threads: None })))).unwrap();
+        a.pump();
+        let _ = wants0.try_iter().count();
+        // Its agent is the one not to end; this machine's PID there is just a number.
+        keys(&mut a, "l j x");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.kill_agent", &["nas"]))));
+        keys(&mut a, "k x");
+        assert!(matches!(&a.confirm, Some(Ask::Kill(t)) if t.pid == 7), "{:?}", a.confirm);
+        assert_eq!(a.family(), Family::Other);
+        keys(&mut a, "y");
+        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [ToHost::Act(1, proto::Act::Kill { pid: 7, start: 0 })]);
+        let t = Target { pid: 7, name: "big".into(), start: 0 };
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.on_machine", &["nas", &Ask::Kill(t.clone()).starting()])));
+        assert_eq!(a.asked.len(), 1);
+        // The answer names the machine; one for another request is not this one's.
+        ftx.send((0, Event::Done(9, Done::Kill(Outcome::Gone)))).unwrap();
+        ftx.send((0, Event::Done(1, Done::Kill(Outcome::Ended)))).unwrap();
+        a.pump();
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.on_machine", &["nas", &kill_toast(&t, Outcome::Ended)])));
+        assert!(a.asked.is_empty());
+        // A refusal says why, in its own words.
+        keys(&mut a, "x y");
+        ftx.send((0, Event::Done(2, Done::Refused(Refusal::NotAllowed)))).unwrap();
+        a.pump();
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.fleet_view_only", &["nas", "kill"])));
+        // Lost before it answers: said once, and the request is forgotten.
+        keys(&mut a, "x y");
+        assert_eq!(a.asked.len(), 1);
+        ftx.send((0, Event::Down(Why::Closed))).unwrap();
+        a.pump();
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.remote_no_answer", &["nas"])));
+        assert!(a.asked.is_empty());
+        // Down, nothing is sent.
+        assert_eq!(wants0.try_iter().filter(|w| matches!(w, ToHost::Act(..))).count(), 2);
+        keys(&mut a, "x y");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.fleet_down", &["nas"])));
+        assert!(a.asked.is_empty() && !wants0.try_iter().any(|w| matches!(w, ToHost::Act(..))));
+        // service is not in its allow.
+        keys(&mut a, "6 x");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.fleet_view_only", &["nas", "service"])));
+    }
+
+    #[test]
+    fn the_os_in_a_hello_picks_the_words() {
+        assert_eq!(Family::of("Windows 11 Pro"), Family::Windows);
+        assert_eq!(Family::of("macOS 15 Sequoia"), Family::Mac);
+        assert_eq!(Family::of("Darwin 24.1"), Family::Mac);
+        assert_eq!(Family::of("Linux 24.04 Ubuntu"), Family::Other);
+        assert_eq!(Family::of(""), Family::Other);
     }
 
     #[test]

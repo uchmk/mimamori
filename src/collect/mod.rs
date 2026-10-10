@@ -53,7 +53,7 @@ pub struct Mem {
     pub swap_used: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Proc {
     pub pid: u32,
     pub ppid: Option<u32>,

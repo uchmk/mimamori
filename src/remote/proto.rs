@@ -12,11 +12,12 @@ use std::io::{self, Read, Write};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::collect::Msg;
+use crate::{kill, svcctl};
 
 /// Where the agent listens on 127.0.0.1 unless `[agent] port` says otherwise.
 pub const PORT: u16 = 7313;
 /// Raised whenever a message changes shape.
-pub const PROTO: u16 = 2;
+pub const PROTO: u16 = 3;
 /// A frame larger than this is not ours (another service on the port). The
 /// process list of a busy machine is the largest that is.
 pub const MAX_FRAME: usize = 16 << 20;
@@ -31,6 +32,12 @@ pub enum ToAgent {
     /// What the viewer shows of this machine now; the default (nothing) is
     /// the fleet card alone.
     Watch(Want),
+    /// Do something on the agent's machine, if its `[agent] allow` lets
+    /// viewers; answered with [`FromAgent::Done`] carrying the same id.
+    Act {
+        id: u64,
+        act: Act,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -41,6 +48,61 @@ pub enum FromAgent {
     Pong(u64),
     /// A sampler reading, while the viewer [watches](ToAgent::Watch).
     Msg(Box<Msg>),
+    /// How an [`ToAgent::Act`] went.
+    Done {
+        id: u64,
+        outcome: Done,
+    },
+}
+
+/// What a viewer asks the agent to do. The agent checks it against its own
+/// `[agent] allow` and its own readings: a service's plist, for one, is
+/// looked up there rather than taken from the viewer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Act {
+    /// End a process; `start` as the viewer's list showed it, so a PID taken
+    /// over meanwhile is left alone.
+    Kill {
+        pid: u32,
+        start: u64,
+    },
+    Service {
+        action: svcctl::Action,
+        name: String,
+        driver: bool,
+    },
+}
+
+impl Act {
+    /// The `[agent] allow` word that lets it.
+    pub fn word(&self) -> &'static str {
+        match self {
+            Act::Kill { .. } => "kill",
+            Act::Service { .. } => "service",
+        }
+    }
+}
+
+/// How an [`Act`] went.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Done {
+    Kill(kill::Outcome),
+    Svc(svcctl::Outcome),
+    /// The agent would not try.
+    Refused(Refusal),
+}
+
+/// Why the agent would not try.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Refusal {
+    /// Its `[agent] allow` does not list it.
+    NotAllowed,
+    /// It reads no such service.
+    NoService,
+    /// The process is the agent itself.
+    Agent,
+    /// A launchd job that is disabled; the command that enables it.
+    Disabled(String),
 }
 
 /// What a viewer shows of the agent's machine.
@@ -72,6 +134,8 @@ pub struct Hello {
     pub allow: Vec<String>,
     /// Seconds between summaries.
     pub interval: f32,
+    /// The agent's own process, which it does not end.
+    pub pid: u32,
 }
 
 /// The card's numbers.
@@ -174,6 +238,26 @@ mod tests {
         assert_eq!(read_frame::<FromAgent>(&mut r).unwrap(), FromAgent::Summary(sum));
         assert_eq!(read_frame::<FromAgent>(&mut r).unwrap(), FromAgent::Pong(7));
         assert!(read_frame::<FromAgent>(&mut r).is_err(), "nothing left");
+    }
+
+    #[test]
+    fn acts_and_their_answers_go_round() {
+        let acts = [
+            ToAgent::Act { id: 1, act: Act::Kill { pid: 42, start: 1_700_000_000 } },
+            ToAgent::Act { id: 2, act: Act::Service { action: svcctl::Action::Restart, name: "cron".into(), driver: false } },
+        ];
+        let dones = [
+            FromAgent::Done { id: 1, outcome: Done::Kill(kill::Outcome::Failed("Operation not permitted".into())) },
+            FromAgent::Done { id: 2, outcome: Done::Svc(svcctl::Outcome::Denied) },
+            FromAgent::Done { id: 3, outcome: Done::Refused(Refusal::Disabled("launchctl enable gui/501/x".into())) },
+        ];
+        for a in acts {
+            assert_eq!(decode::<ToAgent>(&frame(&a)[4..]).unwrap(), a);
+        }
+        for d in dones {
+            assert_eq!(decode::<FromAgent>(&frame(&d)[4..]).unwrap(), d);
+        }
+        assert_eq!(Act::Kill { pid: 1, start: 0 }.word(), "kill");
     }
 
     #[test]
