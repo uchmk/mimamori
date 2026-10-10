@@ -1,8 +1,9 @@
 //! The sampler: one thread that reads the machine through sysinfo on its own
-//! schedule (CPU and memory every interval, processes every other) and sends
+//! schedule (CPU, memory and GPUs every interval, processes every other) and sends
 //! each reading to the UI, waking it. The UI steers it with [`Ctl`]: the
 //! interval, pause. Dropping the receiver ends the thread.
 
+pub mod gpu;
 pub mod topo;
 
 use std::collections::HashMap;
@@ -72,6 +73,8 @@ pub enum Msg {
         procs: Vec<Proc>,
         total_threads: Option<u64>,
     },
+    /// GPUs first, then NPUs.
+    Gpu(Vec<gpu::Device>),
 }
 
 #[derive(Debug)]
@@ -115,6 +118,8 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
         return;
     }
     let mut procs = ProcSampler::new();
+    // Opened here: the counter handles stay on this thread.
+    let mut gpus = gpu::Sampler::new();
     let mut paused = false;
     // The first CPU reading needs a gap after the first refresh.
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
@@ -150,6 +155,9 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &egui::Context, mut interval
         };
         let load = load_average();
         if !send(Msg::Cpu { usage, freq_mhz, total, load }) || !send(Msg::Mem(mem)) {
+            return;
+        }
+        if !send(Msg::Gpu(gpus.sample())) {
             return;
         }
         if tick.is_multiple_of(2) {

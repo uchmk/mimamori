@@ -5,6 +5,7 @@
 
 mod confirm;
 mod cpu;
+mod gpu;
 mod graph;
 mod help;
 mod mem;
@@ -245,6 +246,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Ovw => overview::draw(&mut cx, rects),
                     Screen::Cpu => cpu::draw(&mut cx, rects),
                     Screen::Mem => mem::draw(&mut cx, rects),
+                    Screen::Gpu => gpu::draw(&mut cx, rects),
                     Screen::Procs => procs::draw(&mut cx, rects),
                     _ => {}
                 }
@@ -315,6 +317,11 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
         Screen::Ovw => format!("{} · {}", st.host, st.arch),
         Screen::Cpu => format!("{} · {}", st.brand, st.topo.summary()),
         Screen::Mem => trf("crumb.mem", &[&fmt_bytes(m.mem.total), &fmt_bytes(m.mem.swap_total)]),
+        Screen::Gpu if !m.gpu_read => tr("misc.reading").to_string(),
+        Screen::Gpu => match app.selected_gpu() {
+            Some(d) => format!("{} · {}", gpu::summary(&m.gpus), gpu::name(d)),
+            None => gpu::summary(&m.gpus),
+        },
         Screen::Procs => {
             let threads = m.total_threads.map_or_else(|| "—".to_string(), |t| t.to_string());
             trf("crumb.procs", &[&m.procs.len().to_string(), &threads])

@@ -57,7 +57,8 @@
 | --- | --- |
 | `src/main.rs` | eframe の起動、`--keys` の受け付け、フレームごとの `pump` と描画 |
 | `src/app.rs` | アプリの状態と `Act` の実行（画面・フォーカス・選択・絞り込み・並べ替え・列の幅・トースト） |
-| `src/collect/` | 収集のスレッド（cpu / mem / proc）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32） |
+| `src/collect/` | 収集のスレッド（cpu / mem / proc / gpu）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32） |
+| `src/collect/gpu/` | GPU・NPU。`linux.rs`（drm と accel の sysfs）、`windows.rs`（PDH のカウンタを装置ごとにまとめる純粋な関数）と `pdh.rs`（PDH・DXGI の呼び出し）、`nvidia.rs`（NVML を実行時に読む）。取れない値は `Why` で理由を持つ |
 | `src/kill.rs` | プロセスの終了（確認の後、1 回ごとのスレッドで。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
 | `src/model.rs` | 履歴のリングバッファ（60 秒）と最新の値 |
@@ -65,5 +66,5 @@
 | `src/i18n.rs`, `src/lang/` | `tr()` と言語の表 |
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
-| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（終了の確認） |
+| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（終了の確認） |
 | `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る） |

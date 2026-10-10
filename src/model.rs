@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static};
+use crate::collect::{Mem, Msg, Proc, Static, gpu};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -59,6 +59,12 @@ pub struct Model {
     pub proc_hist: HashMap<u32, (Ring, Ring)>,
     /// CPU readings so far.
     pub samples: u64,
+    /// GPUs, then NPUs.
+    pub gpus: Vec<gpu::Device>,
+    /// Usage and VRAM in percent per live device, by its id.
+    pub gpu_hist: HashMap<String, (Ring, Ring)>,
+    /// Whether the GPUs have been read once (an empty list then means none).
+    pub gpu_read: bool,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -99,6 +105,18 @@ impl Model {
                 self.proc_hist = hist;
                 self.procs = procs;
                 self.total_threads = total_threads;
+            }
+            Msg::Gpu(devs) => {
+                let mut hist = std::mem::take(&mut self.gpu_hist);
+                hist.retain(|id, _| devs.iter().any(|d| d.id == *id));
+                for d in &devs {
+                    let (u, v) = hist.entry(d.id.clone()).or_default();
+                    u.push(d.usage.unwrap_or(0.0));
+                    v.push(d.vram_pct().unwrap_or(0.0));
+                }
+                self.gpu_hist = hist;
+                self.gpus = devs;
+                self.gpu_read = true;
             }
         }
     }
@@ -152,5 +170,24 @@ mod tests {
         m.apply(Msg::Procs { procs: vec![proc(2, 9.0)], total_threads: None });
         assert!(!m.proc_hist.contains_key(&1));
         assert_eq!(m.proc_hist[&2].0.len(), 2);
+    }
+
+    #[test]
+    fn gpu_history_follows_the_live_devices() {
+        let dev = |id: &str, usage: f32| gpu::Device {
+            id: id.into(),
+            usage: Some(usage),
+            vram_used: Some(1),
+            vram_total: Some(4),
+            ..gpu::Device::default()
+        };
+        let mut m = Model::default();
+        assert!(!m.gpu_read);
+        m.apply(Msg::Gpu(vec![dev("a", 10.0), dev("b", 20.0)]));
+        m.apply(Msg::Gpu(vec![dev("b", 30.0)]));
+        assert!(m.gpu_read);
+        assert!(!m.gpu_hist.contains_key("a"));
+        let (u, v) = &m.gpu_hist["b"];
+        assert_eq!((u.len(), u.last(), v.last()), (2, Some(30.0), Some(25.0)));
     }
 }

@@ -36,6 +36,19 @@ back to `[ ]`.
 - [ ] 3.9 `t` shows procs as a tree: children under their parent with `├ │ └` branch lines in line with the names, siblings in the sort order, and the left column says `View Tree`; `t` again goes back to the list. Windows: a child whose parent has exited is a root, not under a newer process that took the parent's PID.
 - [ ] 3.10 `u` switches the scope between All and Mine (the left column's selection follows, the toast says `Scope: …`), and the selected process stays selected when it is in both.
 
+## 3a. GPU and NPU (`4`)
+
+- [ ] 3a.1 Windows, AMD or Intel GPU: the device is listed with its name from DXGI; usage follows a game or a video in Task Manager's GPU page within a second or two; the engines (3D, Copy, Video Decode…) and the dedicated / shared memory match Task Manager; `Source` says `pdh`.
+- [ ] 3a.2 Windows, NVIDIA: as 3a.1, and temperature, fan (%), power and clock are filled in from NVML and `Source` says `pdh+nvml`; with NVML missing (rename `nvml.dll` for the test) the four say `—` and the reason is listed under `Unavailable`.
+- [ ] 3a.3 Windows: the `Processes on it` list shows the game / browser using the GPU with its usage and dedicated memory; `Enter` on the device moves to the list, `Enter` on a process opens procs with it selected.
+- [ ] 3a.4 Windows, Intel Core Ultra or Snapdragon X: the NPU is listed as `NPU0` (magenta) with its usage while something runs on it (Windows Studio Effects, for example); with no NPU the left column says why.
+- [ ] 3a.5 Linux, amdgpu: usage, VRAM, GTT (shared), temperature, fan (rpm), power and clock are filled in and move with load; `Source` says `sysfs`.
+- [ ] 3a.6 Linux, Intel iGPU (i915 or xe): the device is listed with its clock; usage says why it is missing (no busy counter).
+- [ ] 3a.7 Linux, NVIDIA with the proprietary driver: the card comes from NVML (`Source` says `nvml`), once, not also from sysfs; its processes are listed with their memory.
+- [ ] 3a.8 Linux, Intel NPU (`intel_vpu`): `NPU0` shows usage while an OpenVINO job runs on it, and its clock.
+- [ ] 3a.9 macOS: the left column says `No GPU` / `No NPU` with the reasons (not built yet; the Neural Engine reports nothing).
+- [ ] 3a.10 A machine with two GPUs (an iGPU and a dGPU): both are listed, `j` / `k` switch between them, and the crumb names the selected one.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

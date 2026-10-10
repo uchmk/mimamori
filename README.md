@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.1** has four screens: overview, cpu, mem and procs. The other six tabs
+> **v0.4** has five screens: overview, cpu, mem, gpu·npu and procs. The other five tabs
 > are there with their final numbers, so the keys will not move, and say
 > "Not yet". See [TODO.md](TODO.md).
 
@@ -22,7 +22,7 @@ inside each tile.
 | `1` | overview | CPU / memory / swap gauges and the system; a big graph of the selected gauge over the compact core tiles; the top processes by CPU and by memory |
 | `2` | cpu      | Groups and counts; the core tiles, the total over the last minute and a thread heatmap; the selected core's threads and the top CPU users |
 | `3` | mem      | Used / available / swap; the usage bar and graph; the processes using the most memory |
-| `4` | gpu·npu  | Not yet |
+| `4` | gpu·npu  | The GPUs and NPUs found, each with its usage over the last minute (and why a missing one is missing); the selected device's usage, engines, dedicated and shared memory and VRAM graph; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
 | `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
 | `6`–`0` | svc, net, disk, sensors, sys | Not yet |
 
@@ -131,6 +131,18 @@ and Linux on x86_64 and ARM64) need no C toolchain beyond the platform's
 linker. The core layout comes from sysfs on Linux and
 `GetLogicalProcessorInformationEx` on Windows; macOS draws one tile per
 logical CPU for now.
+
+The gpu·npu screen reads, without linking anything at build time:
+
+| OS | GPUs | NPUs |
+| --- | --- | --- |
+| Windows | The `GPU Engine` and `GPU Adapter Memory` performance counters (PDH) for usage, engines, memory and per-process use, named through DXGI | One with an MCDM driver, the kind Task Manager shows, from the same counters |
+| Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
+| macOS | Not yet (IOKit) | The Neural Engine reports no usage to other programs |
+
+On Windows and Linux, NVIDIA cards are read through NVML, loaded from the
+driver at run time (`nvml.dll` / `libnvidia-ml.so.1`); without it they are
+listed from sysfs on Linux with nothing read, and have no sensors on Windows.
 
 `mimamori --keys SCRIPT` presses keys once the window is up (as filer's
 `--keys`), and `scripts/xrun.sh` runs it on a virtual X display and keeps the

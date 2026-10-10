@@ -4,6 +4,18 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.4.0] - 2026-10-10
+
+### 追加
+
+- gpu·npu の画面（`4`）を足した。左の列は見つかった GPU と NPU（それぞれの直近 1 分の使用率）と、無いときはその理由。
+  中の列は選んだ装置の使用率のグラフ・エンジンごとの使用率・専用 / 共有メモリ・VRAM のグラフ。右の列は温度・ファン・電力・クロック、
+  読めない値とその理由、その装置を使っているプロセス（`Enter` で procs を開き、そのプロセスを選ぶ）。
+- Windows は PDH の `GPU Engine` / `GPU Adapter Memory` / `GPU Process Memory` のカウンタを読み、DXGI で名前を付ける。MCDM のドライバーの NPU も同じカウンタから出す。
+- Linux は `/sys/class/drm`（amdgpu の使用率・VRAM・GTT・hwmon のセンサー、i915 / xe のクロック）と `/sys/class/accel`（`intel_vpu` の使用率とクロック、`amdxdna` は一覧だけ）を読む。
+- NVIDIA は NVML をドライバーから実行時に読む（ビルドには何も要らない）。Linux では NVIDIA のカードの出どころ、Windows ではセンサーとプロセスのメモリを足す。無ければ Linux では sysfs から名前だけを出し、Windows ではセンサーが「—」になる（どちらも理由を出す）。
+- macOS は今は何も読まず、理由を出す（GPU の IOKit は未実装、Neural Engine はほかのプログラムに使用率を出さない）。
+
 ## [0.3.0] - 2026-10-10
 
 ### 追加

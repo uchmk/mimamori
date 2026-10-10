@@ -7,7 +7,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 - [x] procs: プロセスの終了（`x`、確認のオーバーレイを挟む。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL）。
 - [x] procs: 木の表示（親子）と、スコープ（All / Mine）の切り替えのキー。
-- [ ] gpu·npu（`4`）: 使用率・VRAM・温度。Windows は PDH の `GPU Engine` カウンタ、Linux は `/sys/class/drm` と amdgpu / i915 の sysfs、NVIDIA は NVML を動的に読む（無ければ出さない）。NPU は見本の「設計」タブの限界のとおり、取れる OS だけ。
+- [x] gpu·npu（`4`）: 使用率・VRAM・温度。Windows は PDH の `GPU Engine` カウンタ、Linux は `/sys/class/drm` と amdgpu / i915 の sysfs、NVIDIA は NVML を動的に読む（無ければ出さない）。NPU は見本の「設計」タブの限界のとおり、取れる OS だけ。
 - [ ] svc（`6`）: Windows のサービス、Linux の systemd のユニット、macOS の launchd。読むだけから始める。
 - [ ] net（`7`）: インターフェースごとの送受信のグラフ、接続の一覧。
 - [ ] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
@@ -20,6 +20,11 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] Windows でプロセスのユーザー名が出るか確かめる `【実機】`（TESTING.md 3.x）。
 - [ ] Windows ARM64（Snapdragon）の構成: `EfficiencyClass` が P / E を分けるか `【実機】`。
 - [ ] AMD の GL ドライバーで落ちる件（filer の TODO と同じ `atio6axx.dll`）。filer で原因が分かったら同じ対策を入れる。今は `config.toml` の `backend = "dx12"` で避けられる。
+- [ ] macOS の GPU: IOKit の `IOAccelerator` の `PerformanceStatistics`（使用率・VRAM）。Pure Rust の `objc2-io-kit` で読めるか確かめる。
+- [ ] Windows の GPU のセンサー（温度・クロック）を NVIDIA 以外でも: D3DKMT の `D3DKMTQueryAdapterInfo`（Task Manager の温度の出どころ）。
+- [ ] Linux の Intel GPU の使用率: `/proc/<pid>/fdinfo` の `drm-engine-*`（i915 / xe が出す）から、全体とプロセスごとの使用率を出す。amdgpu も同じ形でプロセスごとが取れる。
+- [ ] NVML のプロセスごとの使用率（`process_utilization_stats`）。今はメモリだけ。
+- [ ] GPU·NPU の実機の確認 `【実機】`（TESTING.md 3a）。
 
 ## 3. 言語
 

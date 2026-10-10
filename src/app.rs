@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use tsumugi_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc};
+use crate::collect::{Ctl, Msg, Proc, gpu};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -253,9 +253,23 @@ impl App {
             (Screen::Ovw, Pane::Right) => self.ovw_top(sel),
             (Screen::Cpu, Pane::Right) => self.top_cpu.get(sel).copied(),
             (Screen::Mem, Pane::Right) => self.top_mem.get(sel).copied(),
+            (Screen::Gpu, Pane::Right) => {
+                let pid = self.gpu_procs().get(sel).map(|g| g.pid);
+                pid.and_then(|pid| self.model.procs.iter().position(|p| p.pid == pid))
+            }
             _ => None,
         };
         i.and_then(|i| self.proc_at(i))
+    }
+
+    /// The device the gpu screen has selected.
+    pub fn selected_gpu(&self) -> Option<&gpu::Device> {
+        self.model.gpus.get(self.view_of(Screen::Gpu).sel[0])
+    }
+
+    /// The processes on the selected device.
+    pub fn gpu_procs(&self) -> &[gpu::GpuProc] {
+        self.selected_gpu().map_or(&[], |d| &d.procs)
     }
 
     pub fn mine_only(&self) -> bool {
@@ -341,6 +355,8 @@ impl App {
             (Screen::Cpu, Pane::Right) => self.top_cpu.len(),
             (Screen::Mem, Pane::Left) => 3,
             (Screen::Mem, Pane::Right) => self.top_mem.len(),
+            (Screen::Gpu, Pane::Left) => self.model.gpus.len(),
+            (Screen::Gpu, Pane::Right) => self.gpu_procs().len(),
             (Screen::Procs, Pane::Left) => 2,
             (Screen::Procs, Pane::Mid) => self.rows.len(),
             _ => 0,
@@ -672,6 +688,12 @@ impl App {
                     self.open_proc(self.model.procs[i].pid);
                 }
             }
+            (Screen::Gpu, Pane::Left) if !self.gpu_procs().is_empty() => self.view_mut().focus = Pane::Right.index(),
+            (Screen::Gpu, Pane::Right) => {
+                if let Some(pid) = self.gpu_procs().get(sel).map(|g| g.pid) {
+                    self.open_proc(pid);
+                }
+            }
             (Screen::Procs, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
             _ => {}
         }
@@ -726,6 +748,8 @@ impl App {
         s += &format!("paused: {}\n", self.paused);
         s += &format!("samples: {}\n", self.model.samples);
         s += &format!("procs: {}\n", self.rows.len());
+        let gpus: Vec<&str> = self.model.gpus.iter().map(|d| d.id.as_str()).collect();
+        s += &format!("gpus: {} ({})\n", gpus.len(), gpus.join(" "));
         if let Some(st) = &self.model.st {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
         }
@@ -857,6 +881,8 @@ mod tests {
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Mem);
         keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Gpu);
+        keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Procs);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Ovw);
@@ -914,6 +940,28 @@ mod tests {
         keys(&mut a, "j x");
         assert_eq!(a.mode, Mode::Normal);
         assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.kill_self")));
+    }
+
+    #[test]
+    fn enter_on_a_gpu_and_then_its_process_opens_procs() {
+        let (mut a, tx, _ctl) = app();
+        tx.send(Msg::Procs { procs: vec![proc(7, "game", 80.0, 9), proc(8, "idle", 1.0, 1)], total_threads: None }).unwrap();
+        let procs = vec![gpu::GpuProc { pid: 7, usage: Some(60.0), mem: Some(1 << 30) }];
+        let dev = |id: &str, procs| gpu::Device { id: id.into(), usage: Some(60.0), procs, ..gpu::Device::default() };
+        tx.send(Msg::Gpu(vec![dev("a", Vec::new()), dev("b", procs)])).unwrap();
+        a.pump();
+        keys(&mut a, "4 <Enter>");
+        assert_eq!(a.focus(), Pane::Left, "nothing to open on a device without processes");
+        keys(&mut a, "j <Enter>");
+        assert_eq!((a.focus(), a.count(Screen::Gpu, Pane::Right)), (Pane::Right, 1));
+        assert_eq!(a.focused_proc().map(|p| p.pid), Some(7));
+        keys(&mut a, "<Enter>");
+        assert_eq!(a.screen, Screen::Procs);
+        assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
+        // A device that goes away takes the selection back into the list.
+        tx.send(Msg::Gpu(vec![dev("a", Vec::new())])).unwrap();
+        a.pump();
+        assert_eq!(a.view_of(Screen::Gpu).sel, [0, 0, 0]);
     }
 
     #[test]

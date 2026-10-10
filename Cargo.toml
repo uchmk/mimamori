@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -22,10 +22,17 @@ png = "0.18"
 # `cargo build` so Cargo.lock follows. It depends on nothing but egui.
 tsumugi-layout = { git = "https://github.com/uchmk/tsumugi", rev = "085c421f5c3c738f9d5782c39aae68d31ee7db37", features = ["egui", "serde"] }
 
+# NVIDIA's management library, loaded at run time: without the driver it is
+# simply not there and no NVIDIA device is listed from it. macOS has no NVML.
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+nvml-wrapper = { version = "0.13", default-features = false }
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Performance",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
 ] }
