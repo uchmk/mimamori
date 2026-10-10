@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.27.0] - 2026-10-10
+
+### 変更
+
+- キーの書き方（`<C-a>`・`<A-S-Up>`・`<P-e>`）の読み取り・表示と、egui のキーの出来事の変換を、tsumugi の workspace の共有クレート
+  `tsumugi-keys` に移した。キーの意味は変わらない。keymap の層（`[main]` など）とコマンドは mimamori に残す。
+
 ## [0.26.0] - 2026-10-10
 
 ### 変更

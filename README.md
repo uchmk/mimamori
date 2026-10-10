@@ -89,7 +89,9 @@ backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
 `[help]`, `[confirm]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
 add before and after it. `on_mac` gives a binding its own keys on macOS, and
 `<P-…>` is the primary modifier (Cmd on macOS, Ctrl elsewhere). The built-in
-keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml).
+keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml). The key
+notation is the crate `tsumugi-keys` in tsumugi's workspace, so it reads the
+same in uchmk's other apps.
 
 ```toml
 [main]

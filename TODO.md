@@ -92,7 +92,10 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `tsumugi-i18n`（tsumugi v0.78.0）: 設定の置き場所・`common.toml` の `language` の読み書き・言語の決め方・表・表とソースの検査。
   tsumugi の設定画面の General → Language が `common.toml` に書く。mimamori はこのクレートで読む（v0.26.0）。
   filer はまだ画面の文字を表に通していないので、filer の i18n は別の仕事（filer の TODO に積むのは filer のセッションで）
-- [ ] keymap の読み込み（`config/keys.rs`・`keymap.rs`）も共有のクレートにするか、filer と見比べて決める。
+- [x] keymap の読み込み（`config/keys.rs`・`keymap.rs`）も共有のクレートにするか、filer と見比べて決める。
+  → キーの書き方（`keys.rs`）だけを `tsumugi-keys`（tsumugi v0.80.0）にした。filer の `keys.rs` とほぼ同じで、違いは `P-` だけだったため。
+  `keymap.rs` は filer（yazi のセクションが多く 669 行）と mimamori（228 行）で層もコマンドも違うので各アプリに残す。
+  filer が使うときは `mods.command` を `mods.ctrl` に畳んでから `from_egui` を呼ぶ（v0.27.0）
 
 ## 4. リモート
 

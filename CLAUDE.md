@@ -70,7 +70,7 @@
 | `src/svcctl.rs` | サービスの開始・停止・再起動（確認の後、1 回ごとのスレッドで。Windows は SCM、Linux は `systemctl`、macOS は `launchctl`。権限不足とエラーの読み替えは純粋な関数） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
 | `src/model.rs` | 履歴のリングバッファ（60 秒）と最新の値 |
-| `src/config/` | `keys.rs`（キーの文字列）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`theme.rs`（filer の色） |
+| `src/config/` | `keys.rs`（キーの文字列。中身は `tsumugi-keys` の再エクスポート、`rev` は `tsumugi-layout` と揃える）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`theme.rs`（filer の色） |
 | `src/i18n.rs`, `src/lang/` | `tr()` と言語の表（`en.toml`・`ja.toml`）、ヘルプの説明の `tr_desc()`。表・言語の決め方・`common.toml` の読み方・テストの検査は `tsumugi-i18n`（tsumugi の workspace のクレート、`rev` は `tsumugi-layout` と揃える） |
 | `src/fonts.rs` | CJK のフォント（OS のフォントをスレッドで読み、egui のフォントの後ろに足す） |
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
