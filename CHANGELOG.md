@@ -4,6 +4,15 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.22.0] - 2026-10-10
+
+### 追加
+
+- gpu·npu の画面（Windows）: NVIDIA 以外の GPU でも温度・ファン・クロックを出すようにした。D3DKMT の `D3DKMTQueryAdapterInfo`
+  （タスク マネージャーの GPU の温度の出どころ）から読む。ドライバーが持たない値は今までどおり理由を出す。電力は出ない。
+  - NVIDIA の GPU は NVML の値が優先で、NVML が無いときも温度とクロックは D3DKMT から出る。
+  - GPU の温度は sensors の画面にも出る。
+
 ## [0.21.0] - 2026-10-10
 
 ### 追加

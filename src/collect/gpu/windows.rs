@@ -9,7 +9,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use super::{Device, Field, GpuProc, Kind, Why};
+use super::{Device, Fan, Field, GpuProc, Kind, Why};
 
 /// An adapter as DXGI lists it.
 #[derive(Clone, Debug, Default)]
@@ -29,6 +29,47 @@ pub struct Adapter {
 /// The LUID a DXGI adapter is called by in the counters.
 pub fn luid_name(high: i32, low: u32) -> String {
     format!("luid_0x{:08x}_0x{low:08x}", high as u32)
+}
+
+/// The LUID back out of a device id (`luid:0x00000000_0x0000d1a5`).
+pub fn luid_parts(id: &str) -> Option<(i32, u32)> {
+    let (high, low) = id.strip_prefix("luid:0x")?.split_once("_0x")?;
+    Some((u32::from_str_radix(high, 16).ok()? as i32, u32::from_str_radix(low, 16).ok()?))
+}
+
+/// What D3DKMT says of an adapter's sensors: the same source as Task
+/// Manager's GPU temperature. Zero where the driver reports nothing.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Perf {
+    /// Tenths of a degree.
+    pub temp: u32,
+    /// From the caps: zero when the driver keeps no temperature.
+    pub temp_max: u32,
+    pub fan_rpm: u32,
+    /// From the caps: zero when the driver keeps no fan speed.
+    pub fan_max: u32,
+    /// The first engine's clock, Hz.
+    pub freq: u64,
+}
+
+/// Lay what D3DKMT gave over a device from the counters.
+pub fn apply_perf(d: &mut Device, p: &Perf) {
+    let mut filled = Vec::new();
+    if p.temp_max > 0 && p.temp > 0 {
+        d.temp = Some(p.temp as f32 / 10.0);
+        filled.push(Field::Temp);
+    }
+    if p.fan_max > 0 {
+        d.fan = Some(Fan::Rpm(p.fan_rpm));
+    }
+    if p.freq >= 1_000_000 {
+        d.clock = Some((p.freq / 1_000_000) as u32);
+        filled.push(Field::Clock);
+    }
+    if !filled.is_empty() || d.fan.is_some() {
+        d.source = "pdh+d3dkmt";
+    }
+    d.why.retain(|(f, _)| !filled.contains(f));
 }
 
 /// `luid_0x…_0x…` out of an instance name, lowercase.
@@ -221,6 +262,22 @@ mod tests {
         assert_eq!(luid_of("_Total"), None);
         assert_eq!(luid_name(0, 0xD1A5), "luid_0x00000000_0x0000d1a5");
         assert_eq!(luid_name(-1, 1), "luid_0xffffffff_0x00000001");
+    }
+
+    #[test]
+    fn d3dkmt_fills_what_the_driver_keeps() {
+        assert_eq!(luid_parts("luid:0x00000000_0x0000d1a5"), Some((0, 0xd1a5)));
+        assert_eq!(luid_parts("luid:0xffffffff_0x00000001"), Some((-1, 1)));
+        assert_eq!(luid_parts("nvml:0"), None);
+        let devs = fold(&[amd()], &[eng(1, AMD, 0, "3D", 1.0)], &[], &[], &[]);
+        let mut d = devs[0].clone();
+        apply_perf(&mut d, &Perf { temp: 543, temp_max: 1100, fan_rpm: 0, fan_max: 3300, freq: 2_430_000_000 });
+        assert_eq!((d.temp, d.fan, d.clock, d.source), (Some(54.3), Some(Fan::Rpm(0)), Some(2430), "pdh+d3dkmt"));
+        assert_eq!(d.why, vec![(Field::Power, Why::WinSensors)]);
+        // A driver that keeps nothing: the counters' device as it was.
+        let mut bare = devs[0].clone();
+        apply_perf(&mut bare, &Perf { temp: 400, ..Perf::default() });
+        assert_eq!(bare, devs[0]);
     }
 
     #[test]

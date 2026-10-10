@@ -75,7 +75,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] AMD の GL ドライバーで落ちる件（filer の TODO と同じ `atio6axx.dll`）。filer で原因が分かったら同じ対策を入れる。今は `config.toml` の `backend = "dx12"` で避けられる。
 - [x] macOS の GPU: IOKit の `IOAccelerator` の `PerformanceStatistics`（使用率・VRAM）。Pure Rust の `objc2-io-kit` で読めるか確かめる。
   → `objc2-io-kit` で読める。Apple silicon は使用率・Renderer / Tiler・使用中の統合メモリ、AMD は VRAM とセンサーも（v0.21.0）
-- [ ] Windows の GPU のセンサー（温度・クロック）を NVIDIA 以外でも: D3DKMT の `D3DKMTQueryAdapterInfo`（Task Manager の温度の出どころ）。
+- [x] Windows の GPU のセンサー（温度・クロック）を NVIDIA 以外でも: D3DKMT の `D3DKMTQueryAdapterInfo`（Task Manager の温度の出どころ）。
+  → `gpu/kmt.rs` が LUID でアダプターを開き、温度・ファン・最初のエンジンのクロックを毎回聞く。NVML の値が優先（v0.22.0）
 - [ ] Linux の Intel GPU の使用率: `/proc/<pid>/fdinfo` の `drm-engine-*`（i915 / xe が出す）から、全体とプロセスごとの使用率を出す。amdgpu も同じ形でプロセスごとが取れる。
 - [ ] NVML のプロセスごとの使用率（`process_utilization_stats`）。今はメモリだけ。
 - [ ] GPU·NPU の実機の確認 `【実機】`（TESTING.md 3a）。

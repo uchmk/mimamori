@@ -13,6 +13,8 @@
 
 #[cfg(target_os = "macos")]
 mod ioaccel;
+#[cfg(windows)]
+mod kmt;
 #[cfg(any(target_os = "linux", test))]
 pub mod linux;
 #[cfg(any(target_os = "macos", test))]
@@ -53,10 +55,9 @@ impl Field {
     }
 }
 
-/// hwmon gives the speed (Linux), NVML a share of the most; macOS's AMD
+/// hwmon and D3DKMT give the speed, NVML a share of the most; macOS's AMD
 /// driver either.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum Fan {
     Rpm(u32),
     Percent(u32),
@@ -72,7 +73,8 @@ pub enum Why {
     NoBusy,
     /// No hwmon sensor for it.
     NoSensor,
-    /// Windows' counters carry no sensors; NVML fills them for NVIDIA.
+    /// Windows: the driver gives D3DKMT no such reading; NVML fills them for
+    /// NVIDIA.
     WinSensors,
     /// No memory of its own reported (integrated parts use system memory).
     NoVram,
@@ -244,7 +246,7 @@ fn order(mut devs: Vec<Device>) -> Vec<Device> {
 }
 
 /// Windows: the sensors NVML gives laid over the counters' NVIDIA adapters,
-/// matched by name, else in order. NVML devices with no adapter are left out
+/// matched by name, else in order; what NVML lacks stays as D3DKMT gave it. NVML devices with no adapter are left out
 /// (the counters list every adapter the OS drives).
 #[cfg(any(windows, test))]
 pub fn merge_nvml(devs: &mut [Device], nv: Vec<Device>) {
@@ -256,10 +258,10 @@ pub fn merge_nvml(devs: &mut [Device], nv: Vec<Device>) {
         let Some(i) = by_name.or_else(first) else { continue };
         taken[i] = true;
         let d = &mut devs[i];
-        d.temp = n.temp;
-        d.fan = n.fan;
-        d.power = n.power;
-        d.clock = n.clock;
+        d.temp = n.temp.or(d.temp);
+        d.fan = n.fan.or(d.fan);
+        d.power = n.power.or(d.power);
+        d.clock = n.clock.or(d.clock);
         d.source = "pdh+nvml";
         d.why.retain(|(f, _)| !matches!(f, Field::Temp | Field::Power | Field::Clock));
     }
@@ -274,6 +276,8 @@ pub struct Sampler {
     busy: linux::Busy,
     #[cfg(windows)]
     pdh: Option<pdh::Reader>,
+    #[cfg(windows)]
+    kmt: kmt::Reader,
 }
 
 impl Sampler {
@@ -285,6 +289,8 @@ impl Sampler {
             busy: linux::Busy::default(),
             #[cfg(windows)]
             pdh: pdh::Reader::open(),
+            #[cfg(windows)]
+            kmt: kmt::Reader::default(),
         }
     }
 
@@ -301,6 +307,7 @@ impl Sampler {
     #[cfg(windows)]
     pub fn sample(&mut self) -> Vec<Device> {
         let mut devs = self.pdh.as_mut().map(|p| p.read()).unwrap_or_default();
+        self.kmt.fill(&mut devs);
         if let Some(nv) = &self.nv {
             merge_nvml(&mut devs, nv.read());
         }

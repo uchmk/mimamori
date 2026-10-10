@@ -144,7 +144,7 @@ The gpu·npu screen reads, without linking anything at build time:
 
 | OS | GPUs | NPUs |
 | --- | --- | --- |
-| Windows | The `GPU Engine` and `GPU Adapter Memory` performance counters (PDH) for usage, engines, memory and per-process use, named through DXGI | One with an MCDM driver, the kind Task Manager shows, from the same counters |
+| Windows | The `GPU Engine` and `GPU Adapter Memory` performance counters (PDH) for usage, engines, memory and per-process use, named through DXGI; temperature, fan and clock from D3DKMT (`D3DKMTQueryAdapterInfo`, what Task Manager shows) where the driver keeps them, and from NVML for NVIDIA | One with an MCDM driver, the kind Task Manager shows, from the same counters |
 | Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
 | macOS | IOKit's `IOAccelerator` services and their `PerformanceStatistics`: Apple silicon has usage, the renderer and tiler engines and the unified memory in use; Intel GPUs have usage; AMD cards also VRAM and, on some, temperature, fan, power and clock. No per-process use; the SMC's GPU temperatures are on the sensors screen | The Neural Engine reports no usage to other programs |
 
@@ -185,7 +185,7 @@ The sensors screen reads:
 
 | OS | Sensors |
 | --- | --- |
-| Windows | The ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH), without administrator. Fans and the cores' own temperatures need the board maker's driver, so the screen says so; NVIDIA GPUs add their temperature and fan from NVML, and the drives theirs from the disk reading |
+| Windows | The ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH), without administrator. Fans and the cores' own temperatures need the board maker's driver, so the screen says so; GPUs add their temperature and fan from D3DKMT (and NVML for NVIDIA), and the drives theirs from the disk reading |
 | Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice. A drive with no hwmon chip (SATA without `drivetemp`) adds the temperature smartctl read |
 | macOS | The SMC itself, through the `AppleSMC` user client: the temperatures with a known key, named (`TC0P` is "CPU proximity" on Intel Macs; Apple silicon's `Tp…` / `Te…` / `Tg…` families are numbered "CPU 1", "GPU 1"…), and every fan with its least and most rpm. On Apple silicon also the HID temperatures sysinfo reads, under their own chip with friendlier names ("CPU die 3", "SSD", "Battery") |
 
@@ -199,7 +199,8 @@ The sys screen reads:
 
 On Windows and Linux, NVIDIA cards are read through NVML, loaded from the
 driver at run time (`nvml.dll` / `libnvidia-ml.so.1`); without it they are
-listed from sysfs on Linux with nothing read, and have no sensors on Windows.
+listed from sysfs on Linux with nothing read, and on Windows keep only what
+D3DKMT gives (temperature, fan and clock, no power).
 
 `mimamori --keys SCRIPT` presses keys once the window is up (as filer's
 `--keys`), and `scripts/xrun.sh` runs it on a virtual X display and keeps the
