@@ -53,7 +53,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   NVIDIA の GPU は NVML の温度とファンを足し、amdgpu のように OS が並べているものは PCI のアドレスで重ねない（v0.9.0）。
 - [x] sensors: macOS のファンと、SMC のキーで読める温度の名前（`TC0P` などを「CPU proximity」に）。今は sysinfo の components の温度だけ。
   → `AppleSMC` を直に読み、名前の付いた温度とファン（最小・最大つき）を出す。Apple silicon の HID の温度にも名前（v0.17.0）
-- [ ] sensors: Windows のファンとコアの温度。メーカーのドライバーか、LibreHardwareMonitor のようなカーネルドライバーが要る（署名・管理者・同梱の是非を QUESTIONS で決めてから）。今は ACPI の熱ゾーンだけ。
+- [ ] sensors: Windows のファンとコアの温度。メーカーのドライバーか、LibreHardwareMonitor のようなカーネルドライバーが要る（署名・管理者・同梱の是非を QUESTIONS で決めてから）。今は ACPI の熱ゾーンだけ。（要確認: Q2）
 - [ ] sensors の実機の確認 `【実機】`（TESTING.md 3e）。
 - [x] sys（`0`）: OS・BIOS・メモリのスロットなど、変わらない情報。
   Windows と Linux はファームウェアの SMBIOS の表を自分で読む（`smbios.rs`、純粋な関数）。Windows は `GetSystemFirmwareTable('RSMB')` で管理者が要らない。
@@ -100,7 +100,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 ## 4. リモート
 
 - [ ] 見本の「設計」タブのとおり、ほかの機械のエージェント（同じバイナリの `--agent`）から `Msg` を受けて fleet の画面に並べる。
-  通信の形（TLS と鍵の置き方）は QUESTIONS.md で決めてから。
+  通信の形（TLS と鍵の置き方）は QUESTIONS.md で決めてから。（要確認: Q1）
 
 ## 5. 配布
 

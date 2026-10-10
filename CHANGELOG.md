@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.27.1] - 2026-10-10
+
+### 追加
+
+- QUESTIONS.md（持ち主への確認事項）。Q1 は fleet のエージェントとの通信の形（SSH / Tailscale だけ・rustls・Noise）、
+  Q2 は Windows のファンとコアの温度の読み方（HWiNFO と LibreHardwareMonitor を読む・PawnIO・今のまま）。
+
 ## [0.27.0] - 2026-10-10
 
 ### 変更
