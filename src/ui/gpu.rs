@@ -268,7 +268,17 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     let info = if procs.is_empty() { String::new() } else { procs.len().to_string() };
     let body = panel(&cx.pen, bottom, tr("gpu.procs"), &info, cx.focused(Pane::Right));
     if procs.is_empty() {
-        para(&cx.pen, body, body.top(), tr(if d.source == "sysfs" { "gpu.procs_none_sysfs" } else { "gpu.procs_none" }), DIM);
+        para(
+            &cx.pen,
+            body,
+            body.top(),
+            tr(match d.source {
+                "sysfs" => "gpu.procs_none_sysfs",
+                "iokit" => "gpu.procs_none_iokit",
+                _ => "gpu.procs_none",
+            }),
+            DIM,
+        );
         return;
     }
     cx.scroll_list(Pane::Right, body, procs.len(), |cx, row, i| {

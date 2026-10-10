@@ -4,6 +4,16 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.21.0] - 2026-10-10
+
+### 追加
+
+- gpu·npu の画面（macOS）: GPU を IOKit の `IOAccelerator` から読むようにした。今までは「まだ作っていない」と出していた。
+  - `PerformanceStatistics` から使用率（`Device Utilization %`、AMD は `GPU Activity(%)`）、Apple silicon の Renderer と Tiler、
+    使用中のメモリ（Apple silicon は統合メモリなので「Shared」）、AMD のカードの VRAM・温度・ファン・電力・クロックを出す。
+  - 名前は Apple silicon がアクセラレーターの `model`（`Apple M2 Pro`）、Intel の Mac の GPU は PCI の装置の `model` と ID。
+  - 取れない値は理由を出す（統計に無い・センサーが無い。SMC の GPU の温度は sensors の画面にある）。プロセスごとの使用は無い。
+
 ## [0.20.0] - 2026-10-10
 
 ### 追加

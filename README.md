@@ -146,7 +146,7 @@ The gpu·npu screen reads, without linking anything at build time:
 | --- | --- | --- |
 | Windows | The `GPU Engine` and `GPU Adapter Memory` performance counters (PDH) for usage, engines, memory and per-process use, named through DXGI | One with an MCDM driver, the kind Task Manager shows, from the same counters |
 | Linux | `/sys/class/drm`: amdgpu has usage, VRAM and hwmon sensors; i915 / xe have the clock and sensors but no busy counter | `/sys/class/accel`: `intel_vpu` has usage and clock; `amdxdna` is listed only |
-| macOS | Not yet (IOKit) | The Neural Engine reports no usage to other programs |
+| macOS | IOKit's `IOAccelerator` services and their `PerformanceStatistics`: Apple silicon has usage, the renderer and tiler engines and the unified memory in use; Intel GPUs have usage; AMD cards also VRAM and, on some, temperature, fan, power and clock. No per-process use; the SMC's GPU temperatures are on the sensors screen | The Neural Engine reports no usage to other programs |
 
 The svc screen reads:
 

@@ -47,7 +47,8 @@ back to `[ ]`.
 - [ ] 3a.6 Linux, Intel iGPU (i915 or xe): the device is listed with its clock; usage says why it is missing (no busy counter).
 - [ ] 3a.7 Linux, NVIDIA with the proprietary driver: the card comes from NVML (`Source` says `nvml`), once, not also from sysfs; its processes are listed with their memory.
 - [ ] 3a.8 Linux, Intel NPU (`intel_vpu`): `NPU0` shows usage while an OpenVINO job runs on it, and its clock.
-- [ ] 3a.9 macOS: the left column says `No GPU` / `No NPU` with the reasons (not built yet; the Neural Engine reports nothing).
+- [ ] 3a.9 macOS, Apple silicon: the GPU is listed as the chip (`Apple M2 Pro`) with vendor `Apple`; usage, `Renderer` and `Tiler` follow a game or a video export within a second or two and roughly match Activity Monitor's GPU History; `Shared` shows the memory in use and dedicated says why it is missing; `Source` says `iokit`; the left column still says `No NPU` with the reason.
+- [ ] 3a.11 macOS, Intel Mac (with an AMD card if there is one): each GPU is listed once with its name and PCI ids; the AMD card shows VRAM used of its total and, where the driver gives them, temperature, fan, power and clock; the Intel iGPU shows usage or says why it is missing.
 - [ ] 3a.10 A machine with two GPUs (an iGPU and a dGPU): both are listed, `j` / `k` switch between them, and the crumb names the selected one.
 
 ## 3b. Services (`6`)

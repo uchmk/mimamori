@@ -4,14 +4,19 @@
 //! `/sys/class/accel`), the `GPU Engine` and `GPU Adapter Memory`
 //! performance counters on Windows, and NVIDIA's NVML on both where the
 //! driver ships it (loaded at run time; without it NVIDIA devices show what
-//! the OS alone says). macOS lists nothing yet. What a source cannot give is
-//! `None`, and the reason is kept beside it so the screen can say why.
+//! the OS alone says), and IOKit's `IOAccelerator` services on macOS. What a
+//! source cannot give is `None`, and the reason is kept beside it so the
+//! screen can say why.
 
-// macOS reads nothing yet; the types are there for the screen.
-#![cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
+// Other OSes read nothing; the types are there for the screen.
+#![cfg_attr(not(any(target_os = "linux", windows, target_os = "macos")), allow(dead_code))]
 
+#[cfg(target_os = "macos")]
+mod ioaccel;
 #[cfg(any(target_os = "linux", test))]
 pub mod linux;
+#[cfg(any(target_os = "macos", test))]
+pub mod mac;
 #[cfg(any(windows, target_os = "linux"))]
 mod nvidia;
 #[cfg(windows)]
@@ -48,9 +53,10 @@ impl Field {
     }
 }
 
-/// hwmon gives the speed (Linux), NVML a share of the most.
+/// hwmon gives the speed (Linux), NVML a share of the most; macOS's AMD
+/// driver either.
 #[derive(Clone, Copy, Debug, PartialEq)]
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum Fan {
     Rpm(u32),
     Percent(u32),
@@ -72,6 +78,10 @@ pub enum Why {
     NoVram,
     /// The NPU driver reports little beyond that it is there.
     NpuLittle,
+    /// The accelerator's statistics carry no utilisation (macOS).
+    MacStats,
+    /// The accelerator's statistics carry no sensors (macOS).
+    MacSensors,
     MacGpu,
     MacNpu,
     LinuxGpu,
@@ -83,13 +93,15 @@ pub enum Why {
 
 impl Why {
     #[cfg(test)]
-    pub const ALL: [Why; 13] = [
+    pub const ALL: [Why; 15] = [
         Self::NoNvml,
         Self::NoBusy,
         Self::NoSensor,
         Self::WinSensors,
         Self::NoVram,
         Self::NpuLittle,
+        Self::MacStats,
+        Self::MacSensors,
         Self::MacGpu,
         Self::MacNpu,
         Self::LinuxGpu,
@@ -107,6 +119,8 @@ impl Why {
             Self::WinSensors => "gpu.why.win_sensors",
             Self::NoVram => "gpu.why.no_vram",
             Self::NpuLittle => "gpu.why.npu_little",
+            Self::MacStats => "gpu.why.mac_stats",
+            Self::MacSensors => "gpu.why.mac_sensors",
             Self::MacGpu => "gpu.why.mac_gpu",
             Self::MacNpu => "gpu.why.mac_npu",
             Self::LinuxGpu => "gpu.why.linux_gpu",
@@ -140,7 +154,8 @@ pub struct Device {
     /// `1002:744c` where the PCI ids are known.
     pub pci: Option<String>,
     pub driver: Option<String>,
-    /// Where the readings came from: `sysfs`, `pdh`, `nvml`, `pdh+nvml`.
+    /// Where the readings came from: `sysfs`, `pdh`, `nvml`, `pdh+nvml`,
+    /// `iokit`.
     pub source: &'static str,
     /// Percent, the busiest engine's.
     pub usage: Option<f32>,
@@ -292,7 +307,12 @@ impl Sampler {
         order(devs)
     }
 
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(target_os = "macos")]
+    pub fn sample(&mut self) -> Vec<Device> {
+        order(mac::devices(&ioaccel::read()))
+    }
+
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     pub fn sample(&mut self) -> Vec<Device> {
         order(Vec::new())
     }

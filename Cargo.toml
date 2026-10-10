@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.20.0"
+version = "0.21.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
