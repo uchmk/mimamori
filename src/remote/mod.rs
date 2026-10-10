@@ -9,6 +9,7 @@
 pub mod agent;
 pub mod client;
 pub mod proto;
+pub mod wire;
 
 use std::time::{Duration, Instant, SystemTime};
 
@@ -120,6 +121,8 @@ impl Peer {
             }
             Event::Latency(d) => self.latency = Some(d),
             Event::Down(why) => self.link = Link::Down(why),
+            // The machine's own screens take these (`App::pump`).
+            Event::Msg(_) => {}
         }
     }
 

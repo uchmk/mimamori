@@ -11,12 +11,15 @@ use std::io::{self, Read, Write};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+use crate::collect::Msg;
+
 /// Where the agent listens on 127.0.0.1 unless `[agent] port` says otherwise.
 pub const PORT: u16 = 7313;
 /// Raised whenever a message changes shape.
-pub const PROTO: u16 = 1;
-/// A frame larger than this is not ours (another service on the port).
-pub const MAX_FRAME: usize = 1 << 20;
+pub const PROTO: u16 = 2;
+/// A frame larger than this is not ours (another service on the port). The
+/// process list of a busy machine is the largest that is.
+pub const MAX_FRAME: usize = 16 << 20;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ToAgent {
@@ -25,6 +28,9 @@ pub enum ToAgent {
     },
     /// Answered with [`FromAgent::Pong`] carrying the same number.
     Ping(u64),
+    /// What the viewer shows of this machine now; the default (nothing) is
+    /// the fleet card alone.
+    Watch(Want),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -33,6 +39,19 @@ pub enum FromAgent {
     /// Every sampling interval.
     Summary(Summary),
     Pong(u64),
+    /// A sampler reading, while the viewer [watches](ToAgent::Watch).
+    Msg(Box<Msg>),
+}
+
+/// What a viewer shows of the agent's machine.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Want {
+    /// Inside the machine's screens: every reading they draw from.
+    pub detail: bool,
+    /// On its svc screen.
+    pub services: bool,
+    /// On its net screen.
+    pub conns: bool,
 }
 
 /// Who the agent is, sent once when the viewer connects.

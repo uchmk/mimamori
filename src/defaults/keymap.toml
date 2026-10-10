@@ -19,6 +19,8 @@ keymap = [
     { on = "9", run = "screen sensors", desc = "Sensors" },
     { on = "0", run = "screen sys", desc = "System" },
     { on = "F", run = "fleet", desc = "Fleet: every machine" },
+    { on = "]", run = "machine next", desc = "Next machine (this one, then the hosts that are up)" },
+    { on = "[", run = "machine prev", desc = "Previous machine" },
     { on = "<Tab>", run = "screen next", desc = "Next screen" },
     { on = "<BackTab>", run = "screen prev", desc = "Previous screen" },
 

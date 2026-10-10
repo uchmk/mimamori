@@ -428,7 +428,14 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
     } else {
         format!("{} › {detail}", tr(app.screen.label_key()))
     };
-    pen.text(pos2(r.left() + 12.0, r.center().y), &pen.fit(&s, r.width() - 24.0), theme::dim());
+    let mut x = r.left() + 12.0;
+    // Another machine's screens start with its name.
+    if let Some(p) = app.away_peer().filter(|_| !app.fleet) {
+        let room = (r.right() - 12.0 - x) / 2.0;
+        x = pen.text(pos2(x, r.center().y), &pen.fit(&p.name, room), theme::cyan()).right();
+        x = pen.text(pos2(x, r.center().y), " › ", theme::dim()).right();
+    }
+    pen.text(pos2(x, r.center().y), &pen.fit(&s, r.right() - 12.0 - x), theme::dim());
 }
 
 fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
@@ -448,7 +455,17 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
     let bw = pen.width(badge) + 16.0;
     let b = Rect::from_center_size(pos2(r.left() + 6.0 + bw / 2.0, y), vec2(bw, 18.0));
     pill(pen, b, badge, color, theme::bg());
-    let x = b.right() + 10.0;
+    let mut x = b.right() + 10.0;
+    // Whose screens these are, red once the connection is lost.
+    let away = app.away.as_ref().zip(app.away_peer());
+    if let Some((a, p)) = away {
+        let (s, c) = if a.lost { (trf("status.lost", &[&p.name]), theme::red()) } else { (p.name.clone(), theme::cyan()) };
+        let s = pen.fit(&s, (r.width() / 4.0).max(pen.cw * 6.0));
+        let w = pen.width(&s) + 16.0;
+        let pr = Rect::from_center_size(pos2(x + w / 2.0, y), vec2(w, 18.0));
+        pill(pen, pr, &s, c, theme::bg());
+        x = pr.right() + 10.0;
+    }
 
     // The right side first, so the left knows its room.
     let m = &app.model;
@@ -483,11 +500,16 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         pen.text(pos2(x, y), &pen.fit(t, room), theme::yellow());
         ui.ctx().request_repaint_after(TOAST.saturating_sub(at.elapsed()));
     } else {
-        let state = tr(if app.paused { "status.paused" } else { "status.sampling" });
-        let mut s = format!("{} · {state}", trf("status.interval", &[&fmt_interval(app.interval)]));
+        // Another machine samples at its own pace.
+        let (interval, paused) = match away {
+            Some((_, p)) => (p.interval().as_secs_f32(), false),
+            None => (app.interval, app.paused),
+        };
+        let state = tr(if paused { "status.paused" } else { "status.sampling" });
+        let mut s = format!("{} · {state}", trf("status.interval", &[&fmt_interval(interval)]));
         if !app.filter.is_empty() {
             s += &format!(" · /{}", app.filter);
         }
-        pen.text(pos2(x, y), &pen.fit(&s, room), if app.paused { theme::yellow() } else { theme::dim() });
+        pen.text(pos2(x, y), &pen.fit(&s, room), if paused { theme::yellow() } else { theme::dim() });
     }
 }

@@ -1,5 +1,6 @@
 //! The sampler: one thread that reads the machine through sysinfo on its own
-//! schedule (CPU, memory, GPUs, network interfaces, disks and sensors every interval, processes every other) and sends
+//! schedule (CPU, memory, GPUs, network interfaces, disks and sensors every interval, processes every other
+//! or as [`Ctl::Procs`] says) and sends
 //! each reading to the UI, waking it. The UI steers it with [`Ctl`]: the
 //! interval, pause, whether services or sockets are wanted. Dropping the
 //! receiver ends the thread. The hardware (`hw`) is read once on a thread of
@@ -19,12 +20,19 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
+use serde::{Deserialize, Serialize};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind, Users};
 
 use topo::Topology;
 
+/// A name the sampler knows at compile time (a source, a vendor, a bus).
+/// An alias, not `&'static str` written out: serde would then make every
+/// type holding one readable only from `'static` bytes. A viewer reads them
+/// back through `remote::wire::name`.
+pub type Name = &'static str;
+
 /// What does not change while running, read once at startup.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Static {
     pub host: String,
     pub os: String,
@@ -36,7 +44,7 @@ pub struct Static {
     pub topo: Topology,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Mem {
     pub total: u64,
     pub used: u64,
@@ -45,7 +53,7 @@ pub struct Mem {
     pub swap_used: u64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Proc {
     pub pid: u32,
     pub ppid: Option<u32>,
@@ -65,7 +73,9 @@ pub struct Proc {
     pub status: String,
 }
 
-#[derive(Debug)]
+/// Also what the fleet agent streams to a viewer that watches its machine:
+/// variants are only ever added at the end.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Msg {
     Static(Box<Static>),
     /// Per logical CPU in sysinfo's order: usage in percent, clock in MHz.
@@ -106,8 +116,9 @@ pub enum Ctl {
     Services(bool),
     /// Read sockets (at once, then every [`NET_EVERY`]) or stop reading them.
     Net(bool),
-    /// Sample processes (the default) or stop: the fleet agent sends none.
-    Procs(bool),
+    /// Sample processes every this many rounds (2 in the window); 0 stops:
+    /// the fleet agent reads them only while a viewer watches.
+    Procs(u32),
 }
 
 /// How often services are read while wanted: listing them spawns `systemctl`
@@ -167,7 +178,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
     let mut sensors = sensors::Reader::new();
     let mut net_next: Option<Instant> = None;
     let mut paused = false;
-    let mut want_procs = true;
+    let mut procs_every: u32 = 2;
     // The first CPU reading needs a gap after the first refresh.
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
     let mut tick: u64 = 0;
@@ -203,8 +214,10 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
                 net_next = on.then(|| Instant::now() + NET_EVERY);
                 continue;
             }
-            Ok(Ctl::Procs(on)) => {
-                want_procs = on;
+            Ok(Ctl::Procs(n)) => {
+                procs_every = n;
+                // A new watcher gets them on the next round.
+                tick = 0;
                 continue;
             }
             Err(RecvTimeoutError::Disconnected) => return,
@@ -251,7 +264,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
         if !send(Msg::Gpu(devs)) || !send(Msg::Nics(nics.read())) || !send(Msg::Disks(disk)) || !send(Msg::Sensors(temps)) {
             return;
         }
-        if want_procs && tick.is_multiple_of(2) {
+        if procs_every > 0 && tick.is_multiple_of(u64::from(procs_every)) {
             let (procs, total_threads) = procs.sample(&mut sys);
             if !send(Msg::Procs { procs, total_threads }) {
                 return;

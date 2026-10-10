@@ -18,12 +18,13 @@ pub mod mac;
 #[cfg(any(windows, test))]
 pub mod windows;
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
 /// What an interface is, as far as the OS lets on.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 // Other OSes read no sockets and guess kinds from names alone.
 #[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum Kind {
@@ -56,7 +57,7 @@ impl Kind {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Nic {
     /// The interface name (`eth0`, `en0`) or Windows' alias (`Wi-Fi`).
     pub name: String,
@@ -218,7 +219,7 @@ pub fn guess_kind(name: &str) -> Kind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum Proto {
     Tcp,
@@ -243,7 +244,7 @@ impl Proto {
 }
 
 /// A TCP socket's state; UDP has none.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(not(any(windows, target_os = "linux", target_os = "macos")), allow(dead_code))]
 pub enum State {
     Listen,
@@ -307,7 +308,7 @@ impl State {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Conn {
     pub proto: Proto,
     pub local: SocketAddr,
@@ -341,7 +342,7 @@ pub fn on_nic(c: &Conn, n: Option<&Nic>) -> bool {
 }
 
 /// Why the list of sockets is short or empty.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum Note {
     /// Some sockets' processes are another user's: their PIDs need root.
@@ -364,11 +365,12 @@ impl Note {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Conns {
     pub list: Vec<Conn>,
     /// `/proc/net`, `iphlpapi`, `netstat`.
-    pub source: &'static str,
+    #[serde(deserialize_with = "crate::remote::wire::name")]
+    pub source: crate::collect::Name,
     pub note: Option<Note>,
 }
 

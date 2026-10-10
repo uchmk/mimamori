@@ -1,0 +1,247 @@
+//! The sampler's messages on the wire: reading back the few `&'static str`
+//! fields, keeping process lines short, and which viewer wants which
+//! message. Pure, so every OS tests it.
+
+use std::sync::Mutex;
+
+use serde::{Deserialize, Deserializer};
+
+use super::proto::Want;
+use crate::collect::{Msg, Proc};
+
+/// Names kept for good (each `&'static str` an agent sends: a source, a
+/// vendor, a bus). They are a handful of words; past this many, or past
+/// [`NAME_MAX`] bytes, an agent is sending something else and gets `?`.
+const NAMES_MAX: usize = 256;
+const NAME_MAX: usize = 64;
+
+static NAMES: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+
+/// `s` as a `&'static str`, leaking each new name once.
+pub fn intern(s: &str) -> &'static str {
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(n) = names.iter().find(|n| **n == s) {
+        return n;
+    }
+    if s.len() > NAME_MAX || names.len() >= NAMES_MAX {
+        return "?";
+    }
+    let n: &'static str = Box::leak(s.to_string().into_boxed_str());
+    names.push(n);
+    n
+}
+
+/// For `#[serde(deserialize_with)]` on a `&'static str` field.
+pub fn name<'de, D: Deserializer<'de>>(d: D) -> Result<&'static str, D::Error> {
+    Ok(intern(&String::deserialize(d)?))
+}
+
+/// For `#[serde(deserialize_with)]` on an `Option<&'static str>` field.
+pub fn opt_name<'de, D: Deserializer<'de>>(d: D) -> Result<Option<&'static str>, D::Error> {
+    Ok(Option::<String>::deserialize(d)?.map(|s| intern(&s)))
+}
+
+/// A process's command line and path past this many bytes are cut: a few
+/// run with whole scripts on theirs.
+pub const LINE_MAX: usize = 512;
+
+fn cut(s: &mut String) {
+    if s.len() > LINE_MAX {
+        let mut at = LINE_MAX;
+        while !s.is_char_boundary(at) {
+            at -= 1;
+        }
+        s.truncate(at);
+    }
+}
+
+pub fn trim_procs(procs: &mut [Proc]) {
+    for p in procs {
+        cut(&mut p.cmd);
+        if let Some(e) = &mut p.exe {
+            cut(e);
+        }
+    }
+}
+
+/// Sample processes every this many rounds, so a viewer gets them about
+/// every 4 seconds (and at most every other round, as the window does).
+pub fn procs_every(interval: f32) -> u32 {
+    (4.0 / interval.max(0.1)).ceil().max(2.0) as u32
+}
+
+/// Which viewers a message goes to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// Every reading the screens draw from: those who watch the machine.
+    Detail,
+    /// Only those on its svc screen.
+    Services,
+    /// Only those on its net screen.
+    Conns,
+    /// What does not change: everyone who watches, and kept for those who
+    /// start watching later.
+    Static,
+}
+
+pub fn route(m: &Msg) -> Route {
+    match m {
+        Msg::Static(_) | Msg::Hardware(_) => Route::Static,
+        Msg::Svc(_) => Route::Services,
+        Msg::Conns(_) => Route::Conns,
+        _ => Route::Detail,
+    }
+}
+
+impl Want {
+    /// Whether a viewer that wants this gets `r`.
+    pub fn takes(self, r: Route) -> bool {
+        match r {
+            Route::Detail | Route::Static => self.detail,
+            Route::Services => self.detail && self.services,
+            Route::Conns => self.detail && self.conns,
+        }
+    }
+}
+
+/// What the sampler has to read for all the viewers together.
+pub fn union(wants: impl IntoIterator<Item = Want>) -> Want {
+    wants.into_iter().fold(Want::default(), |a, w| Want {
+        detail: a.detail || w.detail,
+        services: a.services || (w.detail && w.services),
+        conns: a.conns || (w.detail && w.conns),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collect::{Mem, Static, disk, gpu, hw, net, sensors, svc, topo};
+    use crate::remote::proto;
+
+    fn every_msg() -> Vec<Msg> {
+        let topo = topo::Topology { groups: Vec::new(), logical: 4, source: "sysfs" };
+        let st = Static {
+            host: "nas".into(),
+            os: "Linux".into(),
+            kernel: "6.1".into(),
+            arch: "x86_64".into(),
+            brand: "CPU".into(),
+            boot_time: 7,
+            topo,
+        };
+        let proc = Proc {
+            pid: 1,
+            ppid: None,
+            name: "init".into(),
+            cpu: 1.5,
+            mem: 4096,
+            threads: Some(1),
+            user: Some("root".into()),
+            cmd: "/sbin/init".into(),
+            exe: None,
+            start: 3,
+            status: "Sleep".into(),
+        };
+        let dev = gpu::Device {
+            id: "drm:card0".into(),
+            vendor: Some("AMD"),
+            source: "sysfs+fdinfo",
+            usage: Some(40.0),
+            fan: Some(gpu::Fan::Rpm(1200)),
+            why: vec![(gpu::Field::Temp, gpu::Why::NoSensor)],
+            ..gpu::Device::default()
+        };
+        let conn = net::Conn {
+            proto: net::Proto::Tcp6,
+            local: "[::1]:22".parse().unwrap(),
+            remote: Some("127.0.0.1:5000".parse().unwrap()),
+            state: net::State::Established,
+            pid: Some(9),
+        };
+        let drive = disk::Drive { id: "sda".into(), bus: Some("sata"), busy: Some(3.0), ..disk::Drive::default() };
+        vec![
+            Msg::Static(Box::new(st)),
+            Msg::Cpu { usage: vec![1.0, 2.0], freq_mhz: vec![3000, 3100], total: 1.5, load: Some((0.1, 0.2, 0.3)) },
+            Msg::Mem(Mem { total: 16, used: 4, available: 12, swap_total: 2, swap_used: 1 }),
+            Msg::Procs { procs: vec![proc], total_threads: Some(9) },
+            Msg::Gpu(vec![dev]),
+            Msg::Svc(svc::Services {
+                list: vec![svc::Service { name: "sshd".into(), ..svc::Service::default() }],
+                source: "systemd",
+                note: None,
+            }),
+            Msg::Nics(vec![net::Nic { name: "eth0".into(), ..net::Nic::default() }]),
+            Msg::Disks(disk::Disks { drives: vec![drive], volumes: Vec::new(), note: Some(disk::Note::NoDiskstats) }),
+            Msg::Sensors(sensors::Sensors {
+                list: vec![sensors::Sensor { id: "hwmon0/temp1".into(), ..sensors::Sensor::default() }],
+                note: None,
+            }),
+            Msg::Conns(net::Conns { list: vec![conn], source: "/proc/net", note: Some(net::Note::OtherUsers) }),
+            Msg::Hardware(Box::new(hw::Hardware { source: "SMBIOS 3.3".into(), ..hw::Hardware::default() })),
+        ]
+    }
+
+    #[test]
+    fn every_message_goes_round() {
+        for m in every_msg() {
+            let back: Msg = proto::decode(&proto::frame(&m)[4..]).unwrap();
+            assert_eq!(back, m);
+        }
+    }
+
+    #[test]
+    fn names_are_kept_once_and_bounded() {
+        let a = intern("wire-test-name");
+        assert!(std::ptr::eq(a, intern("wire-test-name")));
+        assert_eq!(intern(&"x".repeat(NAME_MAX + 1)), "?");
+    }
+
+    #[test]
+    fn long_lines_are_cut_on_a_character() {
+        let mut p = vec![Proc {
+            pid: 1,
+            ppid: None,
+            name: String::new(),
+            cpu: 0.0,
+            mem: 0,
+            threads: None,
+            user: None,
+            cmd: format!("a{}", "é".repeat(LINE_MAX)),
+            exe: Some("short".into()),
+            start: 0,
+            status: String::new(),
+        }];
+        trim_procs(&mut p);
+        assert!(p[0].cmd.len() <= LINE_MAX && p[0].cmd.len() >= LINE_MAX - 1, "{}", p[0].cmd.len());
+        assert_eq!(p[0].exe.as_deref(), Some("short"));
+    }
+
+    #[test]
+    fn processes_come_about_every_four_seconds() {
+        assert_eq!(procs_every(1.0), 4);
+        assert_eq!(procs_every(0.5), 8);
+        assert_eq!(procs_every(2.0), 2);
+        assert_eq!(procs_every(10.0), 2);
+    }
+
+    #[test]
+    fn each_message_goes_where_it_is_wanted() {
+        let routes: Vec<Route> = every_msg().iter().map(route).collect();
+        assert_eq!(routes[0], Route::Static);
+        assert_eq!(routes[1], Route::Detail);
+        assert_eq!(routes[5], Route::Services);
+        assert_eq!(routes[9], Route::Conns);
+        assert_eq!(routes[10], Route::Static);
+        let watch = Want { detail: true, ..Want::default() };
+        let svc = Want { services: true, ..watch };
+        assert!(watch.takes(Route::Detail) && !watch.takes(Route::Services));
+        assert!(svc.takes(Route::Services) && !svc.takes(Route::Conns));
+        assert!(!Want::default().takes(Route::Static));
+        // Services without watching the machine read nothing.
+        let stray = Want { services: true, ..Want::default() };
+        assert_eq!(union([stray]), Want::default());
+        assert_eq!(union([watch, svc]), svc);
+        assert_eq!(union([]), Want::default());
+    }
+}

@@ -28,7 +28,9 @@ mod pdh;
 #[cfg(any(windows, test))]
 pub mod windows;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind {
     #[default]
     Gpu,
@@ -36,7 +38,7 @@ pub enum Kind {
 }
 
 /// A reading a device may lack, for the screen's "not available" list.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Field {
     Usage,
     Vram,
@@ -59,14 +61,14 @@ impl Field {
 
 /// hwmon and D3DKMT give the speed, NVML a share of the most; macOS's AMD
 /// driver either.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Fan {
     Rpm(u32),
     Percent(u32),
 }
 
 /// Why something is not shown. Each OS uses only its own.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum Why {
     /// An NVIDIA card without NVML (the driver's management library).
@@ -137,7 +139,7 @@ impl Why {
 }
 
 /// One process's share of a device.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GpuProc {
     pub pid: u32,
     /// Percent of the busiest engine it uses.
@@ -146,7 +148,7 @@ pub struct GpuProc {
     pub mem: Option<u64>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Device {
     /// Stable while running: `drm:card0`, `accel:accel0`, `luid:…`, `nvml:0`.
     pub id: String,
@@ -154,7 +156,8 @@ pub struct Device {
     /// As the driver names it; empty when it does not, and the screen says
     /// "vendor GPU" instead.
     pub name: String,
-    pub vendor: Option<&'static str>,
+    #[serde(deserialize_with = "crate::remote::wire::opt_name")]
+    pub vendor: Option<crate::collect::Name>,
     /// `1002:744c` where the PCI ids are known.
     pub pci: Option<String>,
     /// The PCI address, `0000:03:00.0`, where it is known (Linux, NVML).
@@ -162,7 +165,8 @@ pub struct Device {
     pub driver: Option<String>,
     /// Where the readings came from: `sysfs`, `sysfs+fdinfo`, `pdh`,
     /// `pdh+d3dkmt`, `nvml`, `pdh+nvml`, `iokit`.
-    pub source: &'static str,
+    #[serde(deserialize_with = "crate::remote::wire::name")]
+    pub source: crate::collect::Name,
     /// Percent, the busiest engine's.
     pub usage: Option<f32>,
     /// Per engine type, percent, in a fixed order.

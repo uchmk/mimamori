@@ -28,10 +28,12 @@ pub mod windows;
 #[cfg(windows)]
 mod zones;
 
+use serde::{Deserialize, Serialize};
+
 use crate::collect::{disk, gpu};
 
 /// What a sensor measures.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Kind {
     /// Degrees Celsius.
     #[default]
@@ -65,7 +67,7 @@ impl Kind {
 }
 
 /// Why the list is empty or short.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Note {
     /// Nothing to read: a virtual machine, a container, or no driver for
     /// the chip.
@@ -92,7 +94,7 @@ impl Note {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Sensor {
     /// Unique while running: `hwmon2/temp1`, the zone's instance name.
     pub id: String,
@@ -117,7 +119,7 @@ pub struct Sensor {
     pub pci: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Sensors {
     pub list: Vec<Sensor>,
     pub note: Option<Note>,

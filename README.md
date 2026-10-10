@@ -13,6 +13,7 @@ inside each tile.
 
 > **v0.19** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
 > **v0.31** adds the fleet: other machines' summaries on one screen, over SSH or Tailscale (see [Fleet](#fleet)).
+> **v0.35** lets you enter another machine's screens from its card, and switch machines with `[` / `]`.
 > What is still missing on each OS is in [TODO.md](TODO.md).
 
 ## Screens
@@ -29,7 +30,7 @@ inside each tile.
 | `8` | disk     | The drives, each with its read and write traffic over the last minute, and the totals of all of them; every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's read, write and busy graphs, SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
 | `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own |
-| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the uptime or when it was last seen, the agent's version and what it allows. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on this machine's card goes back to its screens. See [Fleet](#fleet) |
+| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the uptime or when it was last seen, the agent's version and what it allows. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`.
@@ -52,7 +53,8 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column). On net: every socket, or only the listening ones (TCP `LISTEN` and unconnected UDP). On svc (Windows): services, or drivers |
 | `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem. On svc it stops the selected service instead |
 | `S`, `R` | On svc: start, restart the selected service, after asking. Windows asks the Service Control Manager (run yagura as administrator); Linux runs `systemctl` (root or polkit); macOS runs `launchctl kickstart` / `kill` in the domain the list came from (system jobs need `sudo`); a job that is not loaded is loaded from its plist first (`launchctl bootstrap`), while a disabled one is left disabled and the toast says the `launchctl enable` line. A start on a running service, or a stop on a stopped one, only says so |
-| `F` | The fleet screen, and back (`Esc` or a screen key also leave it). On it, `h` `j` `k` `l` and the arrows move between cards, `gg` / `G` to the first and last. `x`, `S`, `R` on another machine's card say what its agent allows; acting on another machine comes later |
+| `F` | The fleet screen, and back (`Esc` or a screen key also leave it). On it, `h` `j` `k` `l` and the arrows move between cards, `gg` / `G` to the first and last, `Enter` into the selected machine's screens. `x`, `S`, `R` on another machine's card say what its agent allows; acting on another machine comes later |
+| `]`, `[` | Next, previous machine: this one, then each `[[host]]` that is up. The screen stays the same, so `2` then `]` `]` compares the CPUs of the machines. While another machine shows, the crumb starts with its name and the status bar has a cyan pill with it (red `lost` when its link drops) |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
 | `y` | Copy: on fleet's hint the sample `[[host]]` (three lines of TOML, pasted as they are), on another machine's card its address |
@@ -171,6 +173,7 @@ What `run` can say in a keymap:
 | `tree` | Procs as a tree, or a flat list |
 | `scope`, `scope all`, `scope mine` | Switch procs' scope, or set it |
 | `fleet` | The fleet screen, and back |
+| `machine next`, `machine prev` | The next or previous machine's screens (this one, then the `[[host]]` that are up) |
 | `copy` | Copy the sample `[[host]]` (fleet's hint) or the card's address |
 | `settings` | The settings screen, and back |
 | `page next`, `page prev`, `search` | The settings screen's keys (`[settings]`): turn the page, go to the search |
@@ -207,10 +210,21 @@ name = "pi"
 addr = "pi.tail1234.ts.net"    # through tailscale serve
 ```
 
-The agent samples like the window does (`interval`, without the process
-list) and sends a summary each round: CPU, memory, the first GPU's usage and the
-hottest temperature, with its host name, OS, CPU, uptime and version once at
-the start. The viewer keeps one thread per host, pings it every 5 s for the
+The agent samples like the window does (`interval`) and sends a summary each
+round: CPU, memory, the first GPU's usage and the hottest temperature, with its
+host name, OS, CPU, uptime and version once at the start.
+
+`Enter` on a card (or `[` / `]` from any screen) shows that machine's screens:
+the viewer then asks its agent for every reading the window draws from, and the
+agent streams them as they are sampled (protocol 2). Only what is watched is
+sampled: processes about every 4 seconds while someone watches the machine,
+services only while its svc screen shows, sockets only while its net screen
+shows; what does not change (the system, the hardware) is kept and sent at once
+to each new viewer. Several viewers share one sampler. This machine keeps
+sampling in the background, so `[` / `]` back to it finds its last minute.
+Ending a process and acting on services come later for another machine,
+and pause and the interval are its own (change them there); on its screens
+those keys say so. The viewer keeps one thread per host, pings it every 5 s for the
 round trip, marks it slow over 200 ms or after three missed summaries, and
 connects again after 2 s, doubling to 30 s while it stays down. The messages
 are [postcard](https://crates.io/crates/postcard) (serde's compact binary
@@ -218,8 +232,9 @@ form) with a protocol number, so a viewer and an agent that speak different
 protocols say so instead of misreading each other.
 
 The agent is view only. `[agent] allow = ["kill", "service"]` is read and
-shown on its card, but acting on another machine (and entering its screens)
-comes in a later version. On Windows, `yagura.exe --agent` run from a
+shown on its card, but acting on another machine comes in a later version.
+A v0.35 viewer and a v0.31–v0.34 agent do not connect (the card says which
+side to update). On Windows, `yagura.exe --agent` run from a
 console writes there; run it at logon with Task Scheduler to keep it up.
 
 ## Languages

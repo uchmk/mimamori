@@ -20,11 +20,12 @@ pub mod smbios;
 mod windows;
 
 use crossbeam_channel::Sender;
+use serde::{Deserialize, Serialize};
 
 use super::Msg;
 
 /// A maker's part: the system or the board.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Part {
     pub vendor: String,
     pub name: String,
@@ -35,7 +36,7 @@ pub struct Part {
     pub sku: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Bios {
     pub vendor: String,
     pub version: String,
@@ -50,7 +51,7 @@ pub struct Bios {
 }
 
 /// How the memory checks itself. macOS only ever says it is off.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(target_os = "macos", allow(dead_code))]
 pub enum Ecc {
     None,
@@ -76,7 +77,7 @@ impl Ecc {
 }
 
 /// A processor socket, filled, as the firmware describes it.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Cpu {
     /// Where it sits on the board: `AM5`, `CPU 1`.
     pub socket: String,
@@ -95,7 +96,7 @@ pub struct Cpu {
 }
 
 /// A memory slot, filled or not.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Slot {
     /// Where it is on the board: `DIMM A1`, `ChannelA-DIMM0`.
     pub locator: String,
@@ -120,7 +121,7 @@ pub struct Slot {
 }
 
 /// Why the slots are missing or the facts are few.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Note {
     /// Linux: the SMBIOS table is root's to read.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -147,7 +148,7 @@ impl Note {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Hardware {
     pub system: Part,
     pub board: Part,

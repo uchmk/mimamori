@@ -27,10 +27,11 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
 use sysinfo::DiskRefreshKind;
 
 /// Solid state or spinning, where the OS says.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Kind {
     Ssd,
     Hdd,
@@ -60,7 +61,7 @@ impl Kind {
 }
 
 /// Why the drive list is empty or short.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Note {
     /// Another OS: the drives are not read; each volume shows its own
     /// traffic.
@@ -92,7 +93,7 @@ impl Note {
 }
 
 /// What SMART says of a drive as a whole.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Health {
     Good,
     /// The drive predicts its own failure, or has a critical warning.
@@ -112,7 +113,7 @@ impl Health {
 }
 
 /// Why a drive has no health.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Why {
     /// Not asked yet: the first check is under way.
     Pending,
@@ -154,7 +155,7 @@ impl Why {
 }
 
 /// A drive's temperature in degrees Celsius.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Temp {
     pub value: f32,
     /// Where the drive warns.
@@ -171,7 +172,7 @@ pub struct Temp {
 /// What a drive's SMART data says beyond its health: how worn it is and the
 /// counts that go up before a drive fails. Each is `None` where the drive
 /// keeps no such count.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Smart {
     /// Percent of the rated endurance used (NVMe can go past 100).
     pub life_used: Option<u32>,
@@ -253,7 +254,7 @@ pub fn ata_attrs(buf: &[u8]) -> Option<(Option<f32>, Smart)> {
 
 /// A physical drive (or what the OS shows as one: a virtual disk, an LVM or
 /// RAID device).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Drive {
     /// `sda`, `nvme0n1`; Windows' disk number.
     pub id: String,
@@ -262,7 +263,8 @@ pub struct Drive {
     /// The model the drive reports; empty when there is none.
     pub model: String,
     pub kind: Kind,
-    pub bus: Option<&'static str>,
+    #[serde(deserialize_with = "crate::remote::wire::opt_name")]
+    pub bus: Option<crate::collect::Name>,
     pub size: Option<u64>,
     pub removable: bool,
     /// Bytes since boot, where the OS keeps a count (not Windows).
@@ -283,7 +285,7 @@ pub struct Drive {
 }
 
 /// A mounted file system.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Volume {
     /// `/`, `C:\`.
     pub mount: String,
@@ -313,7 +315,7 @@ impl Volume {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Disks {
     pub drives: Vec<Drive>,
     pub volumes: Vec<Volume>,

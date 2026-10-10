@@ -16,7 +16,8 @@ use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
 use crate::persist::Saver;
 use crate::prefs::{Prefs, Reload};
-use crate::remote::{self, Peer, client::Event, proto};
+use crate::remote::proto::{self, Want};
+use crate::remote::{self, Link, Peer, client::Event};
 use crate::screen::{Pane, Screen};
 use crate::svcctl::{self, Action};
 
@@ -89,6 +90,18 @@ impl SortCol {
         let i = Self::ALL.iter().position(|&c| c == self).unwrap_or(0);
         Self::ALL[(i + 1) % Self::ALL.len()]
     }
+}
+
+/// Inside another machine's screens: what is kept of this one's meanwhile.
+pub struct Away {
+    /// The machine, by its index in `peers`.
+    pub peer: usize,
+    /// This machine's model, still fed by its sampler.
+    pub home: Model,
+    home_views: HashMap<Screen, View>,
+    home_me: Option<String>,
+    /// The connection dropped while inside; the last readings stay.
+    pub lost: bool,
 }
 
 /// Where each screen's cursor is: the focused column and a row per column.
@@ -185,6 +198,15 @@ pub struct App {
     /// The `[[host]]` machines; card 0 is this one, card `i` is `peers[i - 1]`.
     pub peers: Vec<Peer>,
     fleet_rx: Option<Receiver<(usize, Event)>>,
+    /// What each host's watcher is told to send, by its index in `peers`.
+    fleet_wants: Vec<Sender<Want>>,
+    /// What each host was last told to send.
+    sent_remote: Vec<Want>,
+    /// Whether this machine's sampler was last told to read services and
+    /// sockets.
+    sent_local: (bool, bool),
+    /// Inside another machine's screens (`Enter` on its card, `[` / `]`).
+    pub away: Option<Away>,
     /// The card selected.
     pub fleet_sel: usize,
     /// Cards in a row, as last drawn.
@@ -207,8 +229,7 @@ impl App {
             screen: Screen::Ovw,
             layouts,
             drag: None,
-            // Sys opens on its slots; its left column is a page to scroll.
-            views: HashMap::from([(Screen::Sys, View { focus: Pane::Mid.index(), ..View::default() })]),
+            views: new_views(),
             visible: [1; 3],
             mode: Mode::Normal,
             pending: Vec::new(),
@@ -245,6 +266,10 @@ impl App {
             fleet: false,
             peers: Vec::new(),
             fleet_rx: None,
+            fleet_wants: Vec::new(),
+            sent_remote: Vec::new(),
+            sent_local: (false, false),
+            away: None,
             fleet_sel: 0,
             fleet_cols: 1,
             prefs: Prefs::empty(),
@@ -252,10 +277,23 @@ impl App {
         }
     }
 
-    /// The `[[host]]` machines and their watchers' events.
-    pub fn set_fleet(&mut self, peers: Vec<Peer>, rx: Receiver<(usize, Event)>) {
+    /// The `[[host]]` machines, their watchers' events and what tells each
+    /// watcher what to send.
+    pub fn set_fleet(&mut self, peers: Vec<Peer>, (rx, wants): (Receiver<(usize, Event)>, Vec<Sender<Want>>)) {
+        self.sent_remote = vec![Want::default(); peers.len()];
         self.peers = peers;
         self.fleet_rx = Some(rx);
+        self.fleet_wants = wants;
+    }
+
+    /// This machine's model, also while inside another's.
+    pub fn home(&self) -> &Model {
+        self.away.as_ref().map_or(&self.model, |a| &a.home)
+    }
+
+    /// The machine whose screens show, unless it is this one.
+    pub fn away_peer(&self) -> Option<&Peer> {
+        self.away.as_ref().and_then(|a| self.peers.get(a.peer))
     }
 
     /// The fleet card selected, unless it is this machine's.
@@ -350,9 +388,11 @@ impl App {
                     self.set_interval(interval);
                 }
                 if self.prefs.settings.hosts != old.hosts {
+                    // The machine inside may be gone or another now.
+                    self.go_home();
                     let hosts = self.prefs.settings.hosts.clone();
-                    let rx = remote::client::spawn(&hosts, self.wake.clone());
-                    self.set_fleet(hosts.iter().map(Peer::new).collect(), rx);
+                    let fleet = remote::client::spawn(&hosts, self.wake.clone());
+                    self.set_fleet(hosts.iter().map(Peer::new).collect(), fleet);
                     self.fleet_sel = self.fleet_sel.min(self.peers.len());
                 }
                 self.relanguage();
@@ -363,19 +403,21 @@ impl App {
 
     /// Fold in what the sampler sent and bring the lists up to date.
     pub fn pump(&mut self) {
-        let (mut svc_dirty, mut net_dirty) = (false, false);
+        let mut dirty = (false, false);
         while let Ok(m) = self.rx.try_recv() {
-            match m {
-                // The net filter matches process names too.
-                Msg::Procs { .. } => (self.dirty, net_dirty) = (true, true),
-                Msg::Svc(_) => svc_dirty = true,
-                Msg::Conns(_) => net_dirty = true,
-                // An interface's addresses may change under its narrowing.
-                Msg::Nics(_) if self.net_nic.is_some() => net_dirty = true,
-                _ => {}
+            match &mut self.away {
+                // Kept up to date for the way back and this machine's card.
+                Some(a) => a.home.apply(m),
+                None => self.take(m, &mut dirty),
             }
-            self.model.apply(m);
         }
+        if let Some(rx) = &self.fleet_rx {
+            let events: Vec<(usize, Event)> = rx.try_iter().collect();
+            for (i, e) in events {
+                self.peer_event(i, e, &mut dirty);
+            }
+        }
+        let (svc_dirty, net_dirty) = dirty;
         if svc_dirty {
             self.refresh_svc();
         }
@@ -414,13 +456,6 @@ impl App {
         while let Ok(r) = self.prefs.rx.try_recv() {
             self.reload(r);
         }
-        if let Some(rx) = &self.fleet_rx {
-            while let Ok((i, e)) = rx.try_recv() {
-                if let Some(p) = self.peers.get_mut(i) {
-                    p.apply(e);
-                }
-            }
-        }
         if self.dirty {
             self.dirty = false;
             self.refresh_rows();
@@ -430,6 +465,151 @@ impl App {
         // for another frame forever.
         if self.toast.as_ref().is_some_and(|(_, at)| at.elapsed() >= TOAST) {
             self.toast = None;
+        }
+    }
+
+    /// Fold a reading into the screens' model, noting the lists it changes
+    /// (services, sockets).
+    fn take(&mut self, m: Msg, (svc, net): &mut (bool, bool)) {
+        match m {
+            // The net filter matches process names too.
+            Msg::Procs { .. } => (self.dirty, *net) = (true, true),
+            Msg::Svc(_) => *svc = true,
+            Msg::Conns(_) => *net = true,
+            // An interface's addresses may change under its narrowing.
+            Msg::Nics(_) if self.net_nic.is_some() => *net = true,
+            _ => {}
+        }
+        self.model.apply(m);
+    }
+
+    /// News from a host's watcher: its card's, and its readings while its
+    /// screens show.
+    fn peer_event(&mut self, i: usize, e: Event, dirty: &mut (bool, bool)) {
+        let inside = self.away.as_ref().is_some_and(|a| a.peer == i);
+        match e {
+            Event::Msg(m) if inside => self.take(*m, dirty),
+            Event::Msg(_) => {}
+            e => {
+                let (down, up) = (matches!(e, Event::Down(_)), matches!(e, Event::Up(_)));
+                let Some(p) = self.peers.get_mut(i) else { return };
+                p.apply(e);
+                let name = p.name.clone();
+                if let Some(a) = self.away.as_mut().filter(|_| inside) {
+                    if down && !a.lost {
+                        a.lost = true;
+                        self.toast(trf("toast.remote_lost", &[&name]));
+                    } else if up && a.lost {
+                        // The watcher says again what it wants.
+                        a.lost = false;
+                        self.toast(trf("toast.machine", &[&name]));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Show another machine's screens: card `card` of the fleet (0 is this
+    /// one).
+    pub fn enter_machine(&mut self, card: usize) {
+        let Some(i) = card.checked_sub(1) else {
+            self.go_home();
+            return;
+        };
+        let Some(p) = self.peers.get(i) else { return };
+        if p.link != Link::Up {
+            self.toast(trf("toast.fleet_down", &[&p.name]));
+            return;
+        }
+        let (name, user) = (p.name.clone(), p.hello.as_ref().map(|h| h.user.clone()).filter(|u| !u.is_empty()));
+        let (home, home_views, home_me) = match self.away.take() {
+            Some(a) => (a.home, a.home_views, a.home_me),
+            None => (std::mem::take(&mut self.model), std::mem::replace(&mut self.views, new_views()), self.me.take()),
+        };
+        self.away = Some(Away { peer: i, home, home_views, home_me, lost: false });
+        self.model = Model::default();
+        self.views = new_views();
+        self.me = user;
+        self.fresh_lists();
+        self.fleet = false;
+        self.fleet_sel = card;
+        self.sync_sources();
+        self.toast(trf("toast.machine", &[&name]));
+    }
+
+    /// Back to this machine's screens, where they were left.
+    pub fn go_home(&mut self) {
+        let Some(a) = self.away.take() else { return };
+        self.model = a.home;
+        self.views = a.home_views;
+        self.me = a.home_me;
+        self.fresh_lists();
+        self.fleet = false;
+        self.fleet_sel = 0;
+        self.sync_sources();
+        self.toast(tr("toast.machine_home"));
+    }
+
+    /// The next (`d` > 0) or previous machine: this one, then the hosts that
+    /// are up, round.
+    fn cycle(&mut self, d: i32) {
+        let cur = self.away.as_ref().map_or(0, |a| a.peer + 1);
+        let stops: Vec<usize> =
+            std::iter::once(0).chain((1..=self.peers.len()).filter(|&c| c == cur || self.peers[c - 1].link == Link::Up)).collect();
+        if stops.len() < 2 {
+            self.toast(tr("toast.machine_none"));
+            return;
+        }
+        let at = stops.iter().position(|&c| c == cur).unwrap_or(0) as i32;
+        let n = stops.len() as i32;
+        self.enter_machine(stops[(at + d).rem_euclid(n) as usize]);
+    }
+
+    /// Lists, selections and the filter start over for another model.
+    fn fresh_lists(&mut self) {
+        self.filter.clear();
+        if self.mode == Mode::Filter {
+            self.mode = Mode::Normal;
+        }
+        self.proc_pid = None;
+        self.svc_name = None;
+        self.net_key = None;
+        self.net_nic = None;
+        self.drag = None;
+        self.pending.clear();
+        self.rows.clear();
+        self.tree_lines.clear();
+        self.top_cpu.clear();
+        self.top_mem.clear();
+        self.svc_rows.clear();
+        self.net_rows.clear();
+        self.dirty = true;
+        self.refresh_svc();
+        self.refresh_net();
+    }
+
+    /// Tell the samplers what the screen shown needs: services and sockets
+    /// only while their screen shows, and another machine's readings only
+    /// while inside it.
+    fn sync_sources(&mut self) {
+        let (svc, net) = (self.screen == Screen::Svc, self.screen == Screen::Net);
+        let away = self.away.as_ref().map(|a| a.peer);
+        let local = if away.is_some() { (false, false) } else { (svc, net) };
+        if local.0 != self.sent_local.0 {
+            let _ = self.ctl.send(Ctl::Services(local.0));
+        }
+        if local.1 != self.sent_local.1 {
+            let _ = self.ctl.send(Ctl::Net(local.1));
+        }
+        self.sent_local = local;
+        for (i, tx) in self.fleet_wants.iter().enumerate() {
+            let want = if away == Some(i) { Want { detail: true, services: svc, conns: net } } else { Want::default() };
+            if self.sent_remote.get(i) != Some(&want) {
+                let _ = tx.send(want);
+                if let Some(w) = self.sent_remote.get_mut(i) {
+                    *w = want;
+                }
+            }
         }
     }
 
@@ -823,18 +1003,11 @@ impl App {
     }
 
     pub fn goto(&mut self, s: Screen) {
-        // Services are read only while their screen shows.
-        if (s == Screen::Svc) != (self.screen == Screen::Svc) {
-            let _ = self.ctl.send(Ctl::Services(s == Screen::Svc));
-        }
-        // And sockets while theirs does.
-        if (s == Screen::Net) != (self.screen == Screen::Net) {
-            let _ = self.ctl.send(Ctl::Net(s == Screen::Net));
-        }
         self.screen = s;
         self.drag = None;
         self.pending.clear();
         self.fleet = false;
+        self.sync_sources();
     }
 
     /// One key, through the layer of the current mode.
@@ -989,12 +1162,9 @@ impl App {
             Act::Arrow(Step::Top) => self.fleet_sel = 0,
             Act::Arrow(Step::Bot) => self.fleet_sel = last as usize,
             Act::Focus(d) => self.fleet_sel = to(sel + d as i64),
-            // This machine's card is the screens behind.
-            Act::Enter if self.fleet_sel == 0 => self.fleet = false,
-            Act::Enter => {
-                let name = self.selected_peer().map(|p| p.name.clone()).unwrap_or_default();
-                self.toast(trf("toast.fleet_enter_later", &[&name]));
-            }
+            // The screens behind, when they are the card's machine's.
+            Act::Enter if self.fleet_sel == self.away.as_ref().map_or(0, |a| a.peer + 1) => self.fleet = false,
+            Act::Enter => self.enter_machine(self.fleet_sel),
             Act::Fleet | Act::Escape => self.fleet = false,
             Act::Copy => match self.selected_peer() {
                 None if self.peers.is_empty() => self.copy(remote::host_sample()),
@@ -1030,7 +1200,13 @@ impl App {
             return;
         }
         let built = self.screen.built();
+        let away = self.away_peer().map(|p| p.name.clone());
         match a {
+            Act::Machine(d) => self.cycle(d),
+            // Ending and restarting go through the agent later; its sampling
+            // is its own.
+            Act::Kill | Act::Service(_) if away.is_some() => self.toast(trf("toast.remote_actions_later", &[&away.unwrap_or_default()])),
+            Act::Pause | Act::Interval(_) if away.is_some() => self.toast(trf("toast.remote_sampling", &[&away.unwrap_or_default()])),
             Act::Fleet => {
                 self.fleet = true;
                 self.fleet_sel = self.fleet_sel.min(self.peers.len());
@@ -1307,6 +1483,10 @@ impl App {
         let v = self.view();
         let mut s = String::new();
         s += &format!("screen: {}\n", if self.fleet { "fleet" } else { self.screen.name() });
+        match (&self.away, self.away_peer()) {
+            (Some(a), Some(p)) => s += &format!("machine: {}{}\n", p.name, if a.lost { " (lost)" } else { "" }),
+            _ => s += "machine: this\n",
+        }
         if self.fleet {
             let now = Instant::now();
             let hosts: Vec<String> = self.peers.iter().map(|p| format!("{}={}", p.name, p.status(now).key())).collect();
@@ -1377,6 +1557,12 @@ impl App {
         }
         s
     }
+}
+
+/// The cursors of a model not looked at yet: Sys opens on its slots, its
+/// left column being a page to scroll.
+fn new_views() -> HashMap<Screen, View> {
+    HashMap::from([(Screen::Sys, View { focus: Pane::Mid.index(), ..View::default() })])
 }
 
 /// What tells one socket from another while the list is read again.
@@ -1596,7 +1782,7 @@ mod tests {
         keys(&mut a, "F y");
         assert_eq!(a.copy.take(), Some(remote::host_sample()));
         let (_ftx, frx) = crossbeam_channel::unbounded();
-        a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into() })], frx);
+        a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into() })], (frx, Vec::new()));
         keys(&mut a, "y");
         assert!(a.copy.is_none());
         keys(&mut a, "l y");
@@ -1614,7 +1800,7 @@ mod tests {
         let (mut a, _tx, _ctl) = app();
         let (ftx, frx) = crossbeam_channel::unbounded();
         let host = |n: &str| Peer::new(&Host { name: n.into(), addr: format!("localhost:{}", proto::PORT) });
-        a.set_fleet(vec![host("nas"), host("pi"), host("mac")], frx);
+        a.set_fleet(vec![host("nas"), host("pi"), host("mac")], (frx, Vec::new()));
         keys(&mut a, "3 F");
         assert!(a.fleet && a.report().contains("screen: fleet"), "{}", a.report());
         // Two cards in a row: down goes to the card under.
@@ -1648,6 +1834,86 @@ mod tests {
         // Enter on this machine's card is the screens behind.
         keys(&mut a, "g g <Enter>");
         assert!(!a.fleet && a.screen == Screen::Cpu);
+    }
+
+    #[test]
+    fn enter_on_a_card_shows_that_machines_screens() {
+        use crate::config::settings::Host;
+        use crate::remote::{client::Why, proto::Hello};
+        let (mut a, tx, ctl) = app();
+        let (ftx, frx) = crossbeam_channel::unbounded();
+        let (w0, wants0) = crossbeam_channel::unbounded();
+        let (w1, wants1) = crossbeam_channel::unbounded();
+        let host = |n: &str| Peer::new(&Host { name: n.into(), addr: format!("localhost:{}", proto::PORT) });
+        a.set_fleet(vec![host("nas"), host("pi")], (frx, vec![w0, w1]));
+        let hello = |user: &str| Hello { proto: proto::PROTO, interval: 2.0, user: user.into(), ..Hello::default() };
+        tx.send(Msg::Procs { procs: vec![proc(7, "here", 1.0, 1)], total_threads: None }).unwrap();
+        a.pump();
+        // A machine that is not connected stays a card.
+        keys(&mut a, "5 F l <Enter>");
+        assert!(a.fleet && a.away.is_none());
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.fleet_down", &["nas"])));
+        assert!(wants0.try_recv().is_err());
+        // Up, it opens on the same screen with its own readings only.
+        ftx.send((0, Event::Up(hello("ana")))).unwrap();
+        a.pump();
+        keys(&mut a, "<Enter>");
+        assert!(!a.fleet && a.screen == Screen::Procs);
+        assert_eq!(a.away_peer().map(|p| p.name.as_str()), Some("nas"));
+        assert_eq!((a.me.as_deref(), a.rows.len()), (Some("ana"), 0));
+        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [Want { detail: true, ..Want::default() }]);
+        assert!(wants1.try_recv().is_err());
+        assert!(a.report().contains("machine: nas"), "{}", a.report());
+        ftx.send((0, Event::Msg(Box::new(Msg::Procs { procs: vec![proc(9, "there", 5.0, 1)], total_threads: None })))).unwrap();
+        // This machine's readings go to its card, the other host's to nothing.
+        tx.send(Msg::Procs { procs: vec![proc(8, "here2", 1.0, 1)], total_threads: None }).unwrap();
+        ftx.send((1, Event::Msg(Box::new(Msg::Procs { procs: vec![proc(10, "pi", 5.0, 1)], total_threads: None })))).unwrap();
+        a.pump();
+        assert_eq!(a.selected_proc().map(|p| p.pid), Some(9));
+        assert_eq!(a.home().procs.iter().map(|p| p.pid).collect::<Vec<_>>(), [8]);
+        // Its svc screen asks it for services, not this machine's sampler.
+        let _ = ctl.try_iter().count();
+        keys(&mut a, "6");
+        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [Want { detail: true, services: true, conns: false }]);
+        assert!(ctl.try_recv().is_err());
+        // Acting and sampling stay with that machine.
+        keys(&mut a, "x");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.remote_actions_later", &["nas"])));
+        keys(&mut a, "P");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.remote_sampling", &["nas"])));
+        // Lost, the screens keep its last readings.
+        ftx.send((0, Event::Down(Why::Closed))).unwrap();
+        a.pump();
+        assert!(a.away.as_ref().is_some_and(|w| w.lost));
+        assert!(a.report().contains("machine: nas (lost)"), "{}", a.report());
+        ftx.send((0, Event::Up(hello("ana")))).unwrap();
+        a.pump();
+        assert!(a.away.as_ref().is_some_and(|w| !w.lost));
+        // ] goes round: pi is down, so back to this machine, where it was.
+        keys(&mut a, "]");
+        assert!(a.away.is_none() && a.screen == Screen::Svc);
+        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [Want::default()]);
+        assert!(matches!(ctl.try_iter().collect::<Vec<_>>()[..], [Ctl::Services(true)]));
+        assert_eq!(a.model.procs.iter().map(|p| p.pid).collect::<Vec<_>>(), [8]);
+        assert!(a.report().contains("machine: this"), "{}", a.report());
+        ftx.send((1, Event::Up(hello("")))).unwrap();
+        a.pump();
+        keys(&mut a, "[");
+        assert_eq!(a.away_peer().map(|p| p.name.as_str()), Some("pi"));
+        assert_eq!(a.me, None);
+        keys(&mut a, "[");
+        assert_eq!(a.away_peer().map(|p| p.name.as_str()), Some("nas"));
+        // The machine inside stays a stop while it is down; once out of it,
+        // with every host down, there is nowhere to go.
+        keys(&mut a, "]");
+        ftx.send((0, Event::Down(Why::Closed))).unwrap();
+        ftx.send((1, Event::Down(Why::Closed))).unwrap();
+        a.pump();
+        keys(&mut a, "]");
+        assert!(a.away.is_none());
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.machine_home")));
+        keys(&mut a, "]");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.machine_none")));
     }
 
     #[test]

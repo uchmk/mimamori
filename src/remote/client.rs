@@ -1,14 +1,18 @@
 //! The viewer's side: one thread per `[[host]]`, connecting, reading the
 //! agent's frames and pinging it, and connecting again after a wait that
-//! grows while it stays down.
+//! grows while it stays down. What the viewer wants of a machine (its
+//! readings while its screens are open) goes through a channel per host and
+//! is said again after each reconnect.
 
 use std::io;
 use std::net::{TcpStream, ToSocketAddrs};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{Receiver, RecvTimeoutError, bounded, unbounded};
+use crossbeam_channel::{Receiver, Sender, bounded, never, select, unbounded};
 
-use super::proto::{self, FromAgent, Hello, PROTO, Summary, ToAgent};
+use super::proto::{self, FromAgent, Hello, PROTO, Summary, ToAgent, Want};
+use crate::collect::Msg;
 use crate::config::settings::Host;
 
 const CONNECT: Duration = Duration::from_secs(5);
@@ -26,6 +30,8 @@ pub enum Event {
     /// A ping's round trip.
     Latency(Duration),
     Down(Why),
+    /// One of the agent's readings, while the viewer watches it.
+    Msg(Box<Msg>),
 }
 
 /// Why a host is down, for its card.
@@ -46,13 +52,39 @@ pub enum Why {
     NotAgent,
 }
 
-/// Watch every host; events come tagged with the host's index.
-pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> Receiver<(usize, Event)> {
+/// What a host's thread keeps of the viewer's wants.
+#[derive(Clone)]
+struct Wants {
+    rx: Receiver<Want>,
+    /// The latest, said again after each reconnect.
+    now: Arc<Mutex<Want>>,
+}
+
+impl Wants {
+    fn new(rx: Receiver<Want>) -> Self {
+        Self { rx, now: Arc::default() }
+    }
+
+    fn now(&self) -> Want {
+        *self.now.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn set(&self, w: Want) {
+        *self.now.lock().unwrap_or_else(|e| e.into_inner()) = w;
+    }
+}
+
+/// Watch every host; events come tagged with the host's index, and each
+/// host's sender takes what the viewer wants of it.
+pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> (Receiver<(usize, Event)>, Vec<Sender<Want>>) {
     let (tx, rx) = unbounded();
+    let mut senders = Vec::new();
     for (i, h) in hosts.iter().enumerate() {
+        let (want_tx, want_rx) = unbounded();
+        senders.push(want_tx);
         let (tx, wake, addr) = (tx.clone(), wake.clone(), proto::with_port(&h.addr));
         let spawned = std::thread::Builder::new().name(format!("yagura-host-{i}")).spawn(move || {
-            watch(&addr, &|e| {
+            watch(&addr, &Wants::new(want_rx), &|e| {
                 let ok = tx.send((i, e)).is_ok();
                 if let Some(w) = &wake {
                     w.request_repaint();
@@ -64,14 +96,14 @@ pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> Receiver<(usize, Ev
             eprintln!("yagura: {}: {e}", h.name);
         }
     }
-    rx
+    (rx, senders)
 }
 
 /// Until `emit` says nobody listens.
-fn watch(addr: &str, emit: &dyn Fn(Event) -> bool) {
+fn watch(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) {
     let mut wait = RETRY_MIN;
     loop {
-        let Some((was_up, why)) = session(addr, emit) else { return };
+        let Some((was_up, why)) = session(addr, wants, emit) else { return };
         if !emit(Event::Down(why)) {
             return;
         }
@@ -85,7 +117,7 @@ fn watch(addr: &str, emit: &dyn Fn(Event) -> bool) {
 
 /// One connection: whether it came up and why it ended; `None` when `emit`
 /// failed.
-fn session(addr: &str, emit: &dyn Fn(Event) -> bool) -> Option<(bool, Why)> {
+fn session(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) -> Option<(bool, Why)> {
     let mut s = match connect(addr) {
         Ok(s) => s,
         Err(why) => return Some((false, why)),
@@ -98,30 +130,56 @@ fn session(addr: &str, emit: &dyn Fn(Event) -> bool) -> Option<(bool, Why)> {
         return None;
     }
     let t0 = Instant::now();
-    // Dropped when this returns, which stops the pinger at once.
+    // Dropped when this returns, which stops the writer at once.
     let (_stop, stop_rx) = bounded::<()>(0);
-    if let Ok(mut w) = s.try_clone() {
-        let _ = std::thread::Builder::new().name("yagura-ping".into()).spawn(move || {
-            loop {
-                let n = t0.elapsed().as_micros() as u64;
-                if proto::write_frame(&mut w, &ToAgent::Ping(n)).is_err() {
-                    return;
-                }
-                if let Err(RecvTimeoutError::Disconnected) = stop_rx.recv_timeout(PING_EVERY) {
-                    return;
-                }
-            }
-        });
+    if let Ok(w) = s.try_clone() {
+        let wants = wants.clone();
+        let _ = std::thread::Builder::new().name("yagura-host-out".into()).spawn(move || write(w, t0, &wants, &stop_rx));
     }
     loop {
         let e = match proto::read_frame::<FromAgent>(&mut s) {
             Ok(FromAgent::Summary(sum)) => Event::Summary(sum),
             Ok(FromAgent::Pong(n)) => Event::Latency(t0.elapsed().saturating_sub(Duration::from_micros(n))),
             Ok(FromAgent::Hello(_)) => continue,
+            Ok(FromAgent::Msg(m)) => Event::Msg(m),
             Err(e) => return Some((true, why(&e))),
         };
         if !emit(e) {
             return None;
+        }
+    }
+}
+
+/// The viewer's side of a connection: what it wants (again, after a
+/// reconnect), then each change, and a ping every [`PING_EVERY`].
+fn write(mut w: TcpStream, t0: Instant, wants: &Wants, stop: &Receiver<()>) {
+    let now = wants.now();
+    if now != Want::default() && proto::write_frame(&mut w, &ToAgent::Watch(now)).is_err() {
+        return;
+    }
+    let mut rx = wants.rx.clone();
+    let mut ping = Instant::now();
+    loop {
+        if Instant::now() >= ping {
+            let n = t0.elapsed().as_micros() as u64;
+            if proto::write_frame(&mut w, &ToAgent::Ping(n)).is_err() {
+                return;
+            }
+            ping += PING_EVERY;
+        }
+        select! {
+            recv(stop) -> _ => return,
+            recv(rx) -> want => match want {
+                Ok(want) => {
+                    wants.set(want);
+                    if proto::write_frame(&mut w, &ToAgent::Watch(want)).is_err() {
+                        return;
+                    }
+                }
+                // The window is gone; the reader stops at its next frame.
+                Err(_) => rx = never(),
+            },
+            default(ping.saturating_duration_since(Instant::now())) => {}
         }
     }
 }
@@ -168,9 +226,35 @@ mod tests {
 
     /// One host on `addr`, its events on a channel.
     fn watch_one(addr: String) -> Receiver<Event> {
+        watch_with(addr).0
+    }
+
+    /// The same, and the sender of what the viewer wants.
+    fn watch_with(addr: String) -> (Receiver<Event>, Sender<Want>) {
         let (tx, rx) = unbounded();
-        std::thread::spawn(move || watch(&addr, &|e| tx.send(e).is_ok()));
-        rx
+        let (want_tx, want_rx) = unbounded();
+        std::thread::spawn(move || watch(&addr, &Wants::new(want_rx), &|e| tx.send(e).is_ok()));
+        (rx, want_tx)
+    }
+
+    fn agent(interval: f32) -> String {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let cfg = Config { allow: Vec::new(), interval };
+        std::thread::spawn(move || agent::serve(l, cfg));
+        addr
+    }
+
+    /// The readings that come within `d`, ignoring everything else.
+    fn readings(rx: &Receiver<Event>, d: Duration) -> Vec<Msg> {
+        let end = Instant::now() + d;
+        let mut out = Vec::new();
+        while let Ok(e) = rx.recv_deadline(end) {
+            if let Event::Msg(m) = e {
+                out.push(*m);
+            }
+        }
+        out
     }
 
     fn next(rx: &Receiver<Event>) -> Event {
@@ -198,6 +282,57 @@ mod tests {
         let sum = sum.unwrap();
         assert!(sum.mem_total > 0 && sum.mem_used <= sum.mem_total, "{sum:?}");
         assert!(lat.unwrap() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn readings_come_only_while_watched() {
+        let (rx, want) = watch_with(agent(0.25));
+        assert!(matches!(next(&rx), Event::Up(_)));
+        // Not watching: summaries only.
+        assert!(readings(&rx, Duration::from_millis(800)).is_empty());
+        want.send(Want { detail: true, ..Want::default() }).unwrap();
+        let got = readings(&rx, Duration::from_secs(3));
+        let has = |f: fn(&Msg) -> bool| got.iter().any(f);
+        assert!(has(|m| matches!(m, Msg::Static(_))), "the cached static first");
+        assert!(has(|m| matches!(m, Msg::Cpu { .. })) && has(|m| matches!(m, Msg::Mem(_))));
+        assert!(has(|m| matches!(m, Msg::Procs { .. })), "processes while watched");
+        assert!(!has(|m| matches!(m, Msg::Svc(_) | Msg::Conns(_))), "services and sockets only when asked");
+        want.send(Want { detail: true, conns: true, ..Want::default() }).unwrap();
+        assert!(readings(&rx, Duration::from_secs(3)).iter().any(|m| matches!(m, Msg::Conns(_))));
+        want.send(Want::default()).unwrap();
+        // What was on its way when it stopped may still come.
+        let _ = readings(&rx, Duration::from_millis(500));
+        assert!(readings(&rx, Duration::from_secs(1)).is_empty());
+    }
+
+    #[test]
+    fn the_want_is_said_again_after_a_reconnect() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let (said_tx, said_rx) = unbounded();
+        std::thread::spawn(move || {
+            for s in l.incoming().take(2) {
+                let mut s = s.unwrap();
+                let _ = proto::read_body(&mut s);
+                let _ = proto::write_frame(&mut s, &FromAgent::Hello(Hello { proto: PROTO, ..Hello::default() }));
+                // The first watch on each connection; the first connection
+                // then closes.
+                while let Ok(m) = proto::read_frame::<ToAgent>(&mut s) {
+                    if let ToAgent::Watch(w) = m {
+                        let _ = said_tx.send(w);
+                        break;
+                    }
+                }
+            }
+        });
+        let (rx, want) = watch_with(addr);
+        assert!(matches!(next(&rx), Event::Up(_)));
+        let w = Want { detail: true, services: true, conns: false };
+        want.send(w).unwrap();
+        assert_eq!(said_rx.recv_timeout(Duration::from_secs(5)), Ok(w));
+        assert_eq!(next(&rx), Event::Down(Why::Closed));
+        assert!(matches!(next(&rx), Event::Up(_)));
+        assert_eq!(said_rx.recv_timeout(Duration::from_secs(5)), Ok(w), "said again unasked");
     }
 
     #[test]

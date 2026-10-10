@@ -16,8 +16,10 @@ pub(crate) mod scm;
 #[cfg(any(windows, test))]
 pub mod windows;
 
+use serde::{Deserialize, Serialize};
+
 /// Where a service is, folded from each source's own words.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum State {
     Running,
     // launchctl only knows running or not.
@@ -50,7 +52,7 @@ impl State {
 }
 
 /// When it starts.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Start {
     /// At boot or login.
     Auto,
@@ -72,7 +74,7 @@ impl Start {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Service {
     /// The unit, service or job label; unique within a source.
     pub name: String,
@@ -103,7 +105,7 @@ pub struct Service {
 }
 
 /// Why the list is short or empty.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum Note {
     /// systemd is not PID 1: the unit files are listed, their state unknown.
@@ -132,12 +134,13 @@ impl Note {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Services {
     /// By name.
     pub list: Vec<Service>,
     /// `systemd`, `unit files`, `scm`, `launchctl`.
-    pub source: &'static str,
+    #[serde(deserialize_with = "crate::remote::wire::name")]
+    pub source: crate::collect::Name,
     pub note: Option<Note>,
 }
 

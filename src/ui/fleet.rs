@@ -53,7 +53,8 @@ pub fn why_text(w: &Why) -> String {
         Why::Io(e) => trf("fleet.why.io", &[e]),
         Why::Quiet => tr("fleet.why.quiet").into(),
         Why::Closed => tr("fleet.why.closed").into(),
-        Why::Proto(p) => trf("fleet.why.proto", &[&p.to_string(), &PROTO.to_string()]),
+        // The older side is the one to update.
+        Why::Proto(p) => trf(if *p < PROTO { "fleet.why.proto_old" } else { "fleet.why.proto_new" }, &[&p.to_string(), &PROTO.to_string()]),
         Why::NotAgent => tr("fleet.why.not_agent").into(),
     }
 }
@@ -96,6 +97,12 @@ pub fn draw(cx: &mut Cx, area: Rect) {
     let mut cards = Vec::with_capacity(app.peers.len() + 1);
     cards.push(this_machine(app));
     cards.extend(app.peers.iter().map(|p| peer(p, now)));
+    // The card of the machine whose screens show says so.
+    let here = app.away.as_ref().map_or(0, |a| a.peer + 1);
+    if let Some(c) = cards.get_mut(here) {
+        c.right = [tr("fleet.here"), c.right.as_str()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+        c.right_c = theme::cyan();
+    }
 
     // Whole rows, scrolled so the selected card shows; the hint takes a row
     // of its own under the cards when there are no hosts.
@@ -132,7 +139,7 @@ pub fn draw(cx: &mut Cx, area: Rect) {
 }
 
 fn this_machine(app: &App) -> Card<'_> {
-    let m = &app.model;
+    let m = app.home();
     let st = m.st.as_ref();
     let sum = agent::summary(m);
     // The GPU the summary names, by its history.

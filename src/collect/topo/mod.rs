@@ -10,6 +10,8 @@
 // Other systems draw `fallback`.
 #![cfg_attr(not(any(target_os = "linux", target_os = "macos", windows)), allow(dead_code))]
 
+use serde::{Deserialize, Serialize};
+
 use crate::i18n::tr;
 
 #[cfg(any(target_os = "linux", test))]
@@ -19,7 +21,7 @@ pub mod mac;
 #[cfg(any(windows, test))]
 pub mod windows;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum CoreKind {
     Unknown,
     Performance,
@@ -38,7 +40,7 @@ pub struct CpuInfo {
     pub kind: CoreKind,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Core {
     /// Counted from 0 across the chip: the `C3` on its tile.
     pub id: usize,
@@ -49,7 +51,7 @@ pub struct Core {
 /// Cores sharing a cache (and of one kind): a CCD on Ryzen, the P- or
 /// E-cores on a hybrid Intel chip, a cluster on Apple silicon, the whole chip
 /// on most others.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Group {
     pub label: String,
     /// The shared cache's level (3, or 2 on Apple silicon) and size.
@@ -59,14 +61,15 @@ pub struct Group {
     pub cores: Vec<Core>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Topology {
     pub groups: Vec<Group>,
     pub logical: usize,
     /// Where it came from: `sysfs`, `win32`, `iokit` or `sysctl` (macOS), or
     /// `fallback` when the OS said
     /// nothing usable and each logical CPU is drawn as a core of its own.
-    pub source: &'static str,
+    #[serde(deserialize_with = "crate::remote::wire::name")]
+    pub source: crate::collect::Name,
 }
 
 impl Topology {

@@ -47,6 +47,9 @@ pub enum Act {
     Service(Action),
     /// Every machine of `[[host]]` at once, or back to the screen.
     Fleet,
+    /// The next (+1) or previous (-1) machine: this one, then the
+    /// `[[host]]` that are up.
+    Machine(i32),
     Pause,
     /// One step faster (-1) or slower (+1) sampling.
     Interval(i32),
@@ -125,6 +128,11 @@ pub fn parse(s: &str) -> Result<Act, String> {
             "prev" | "-1" => -1,
             _ => return Err(bad()),
         })),
+        "machine" => Ok(Act::Machine(match need()? {
+            "next" | "+1" | "1" => 1,
+            "prev" | "-1" => -1,
+            _ => return Err(bad()),
+        })),
         "equalize" => none(Act::Equalize),
         "enter" => none(Act::Enter),
         "filter" => none(Act::Filter),
@@ -163,6 +171,9 @@ mod tests {
         assert_eq!(parse("tree"), Ok(Act::Tree));
         assert_eq!(parse("fleet"), Ok(Act::Fleet));
         assert!(parse("fleet nas").is_err());
+        assert_eq!(parse("machine next"), Ok(Act::Machine(1)));
+        assert_eq!(parse("machine prev"), Ok(Act::Machine(-1)));
+        assert!(parse("machine nas").is_err());
         assert_eq!(parse("settings"), Ok(Act::Settings));
         assert_eq!(parse("copy"), Ok(Act::Copy));
         assert_eq!(parse("page next"), Ok(Act::Page(1)));
