@@ -54,24 +54,62 @@ fn pct(v: Option<f32>) -> String {
     v.map_or_else(|| "—".to_string(), |v| format!("{v:.0}%"))
 }
 
-/// `s` broken into lines of at most `w` pixels at the spaces.
+/// `s` broken into lines of at most `w` pixels at the spaces, and between
+/// any two wide characters (Japanese has no spaces to break at).
 fn wrap(pen: &Pen, s: &str, w: f32) -> Vec<String> {
-    let room = ((w / pen.cw).floor() as usize).max(8);
+    wrap_at(s, ((w / pen.cw).floor() as usize).max(8))
+}
+
+/// [`wrap`] in cells.
+fn wrap_at(s: &str, room: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
-    for word in s.split_whitespace() {
-        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > room {
+    let mut used = 0;
+    for (unit, spaced) in units(s) {
+        let n = crate::util::width(unit);
+        let mut gap = usize::from(spaced && !line.is_empty());
+        if !line.is_empty() && used + gap + n > room {
             lines.push(std::mem::take(&mut line));
+            (used, gap) = (0, 0);
         }
-        if !line.is_empty() {
+        if gap == 1 {
             line.push(' ');
         }
-        line.push_str(word);
+        line.push_str(unit);
+        used += gap + n;
     }
     if !line.is_empty() {
         lines.push(line);
     }
     lines
+}
+
+/// The pieces a line may break between: a run of narrow characters, or one
+/// wide character; each with whether a space came before it.
+fn units(s: &str) -> Vec<(&str, bool)> {
+    let mut out = Vec::new();
+    let (mut start, mut spaced) = (None::<usize>, false);
+    for (i, c) in s.char_indices() {
+        let wide = crate::util::cells(c) == 2;
+        if (c.is_whitespace() || wide)
+            && let Some(b) = start.take()
+        {
+            out.push((&s[b..i], spaced));
+            spaced = false;
+        }
+        if c.is_whitespace() {
+            spaced = true;
+        } else if wide {
+            out.push((&s[i..i + c.len_utf8()], spaced));
+            spaced = false;
+        } else if start.is_none() {
+            start = Some(i);
+        }
+    }
+    if let Some(b) = start {
+        out.push((&s[b..], spaced));
+    }
+    out
 }
 
 /// Wrapped text from `y` down, as much as fits; returns the `y` under it.
@@ -294,4 +332,16 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         let x = (row.left() + 6.0 + cx.pen.cw * 8.0).max(pr.right() + cx.pen.cw);
         cx.pen.text(pos2(x, cy), &cx.pen.fit(name, ux - cx.pen.cw * 6.0 - x), FG);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_wraps_at_spaces_and_between_wide_characters() {
+        assert_eq!(wrap_at("no memory of its own", 10), ["no memory", "of its own"]);
+        assert_eq!(wrap_at("専用のメモリが無い", 8), ["専用のメ", "モリが無", "い"]);
+        assert_eq!(wrap_at("sysfs に使用率が無い", 12), ["sysfs に使用", "率が無い"]);
+    }
 }

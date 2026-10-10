@@ -43,7 +43,9 @@
   トーストのように時間で消えるものは、残り時間で起こす（`App::toast_left`）。
 - **キーは keymap 経由**（`src/defaults/keymap.toml`、利用者の `keymap.toml` が上に重なる）。ハードコードしない。
   修飾キーは `<P-…>` が macOS で Cmd、ほかで Ctrl。`on_mac` で macOS だけ別のキーにできる。
-- **画面の文字はすべて `tr("key")` / `trf("key", &[..])` を通す。**英語の表は `src/lang/en.toml`。
+- **画面の文字はすべて `tr("key")` / `trf("key", &[..])` を通す。**英語の表は `src/lang/en.toml`、日本語は `ja.toml`（キーを足したら両方に。
+  テストがキーと `{0}` の数の食い違いを落とす）。既定の keymap の `desc` を変えたら `ja.toml` の `[keydesc]` も直す。
+  幅は `util::width`（全角は 2 桁）で数える。
   言語は `config.toml` → `common.toml`（uchmk のアプリで共通）→ OS の順で決まる。表に無いキーはテストが落とす。
 - **列の大きさは `tsumugi-layout`**（tsumugi の workspace のクレート、`Cargo.toml` の `rev` で固定）。直すときは tsumugi 側で直して `rev` を上げる。
 - **マルチ OS**: OS ごとの処理は `#[cfg(...)]` のモジュールに閉じ込める（例: `collect/topo/linux.rs`・`windows.rs`・`mac.rs`）。
@@ -69,7 +71,8 @@
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
 | `src/model.rs` | 履歴のリングバッファ（60 秒）と最新の値 |
 | `src/config/` | `keys.rs`（キーの文字列）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`theme.rs`（filer の色） |
-| `src/i18n.rs`, `src/lang/` | `tr()` と言語の表 |
+| `src/i18n.rs`, `src/lang/` | `tr()` と言語の表（`en.toml`・`ja.toml`）、ヘルプの説明の `tr_desc()` |
+| `src/fonts.rs` | CJK のフォント（OS のフォントをスレッドで読み、egui のフォントの後ろに足す） |
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
 | `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`sensors.rs`・`sys.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認） |

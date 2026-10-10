@@ -30,7 +30,7 @@ fn group(layer: &[Binding]) -> Vec<(String, String)> {
             None => out.push((keys, b.desc.clone(), b.run.clone())),
         }
     }
-    out.into_iter().map(|(k, d, _)| (k, d)).collect()
+    out.into_iter().map(|(k, d, _)| (k, crate::i18n::tr_desc(&d).to_string())).collect()
 }
 
 fn lines(app: &App) -> Vec<Line> {

@@ -139,4 +139,8 @@ back to `[ ]`.
 - [ ] 5.1 `common.toml` with `language = "en"` and a `mimamori/config.toml` with `interval = 2`: the status bar says `every 2 s`.
 - [ ] 5.2 A `keymap.toml` with `prepend_keymap` adding a key: the key works and appears in `?` help.
 - [ ] 5.3 A broken `config.toml` (bad TOML): mimamori still starts with defaults and says what was wrong.
+- [ ] 5.5 Windows: `language = "ja"` in `common.toml`: tabs, panels, toasts and `?` help are in Japanese and drawn in BIZ UDGothic (or MS Gothic / Yu Gothic / Meiryo), with no boxes; long labels are cut with `…` and do not run into the next column.
+- [ ] 5.6 macOS: the same with Hiragino; and with `language = "auto"` on a Mac set to Japanese, the screens are in Japanese.
+- [ ] 5.7 Linux desktop (X11 and Wayland): the same with Noto Sans CJK (or IPA Gothic); `LANG=ja_JP.UTF-8` with `language = "auto"` gives Japanese.
+- [ ] 5.8 With `language = "en"`, a process or service whose name has Japanese in it (Windows' Japanese service descriptions, a file named in Japanese) reads instead of drawing boxes.
 - [ ] 5.4 Windows, AMD GPU: if the default backend crashes (see TODO 2), `backend = "dx12"` in `config.toml` starts cleanly.

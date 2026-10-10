@@ -74,20 +74,29 @@ impl Pen {
     /// `s` cut to `w` pixels, with `…` where it was cut.
     pub fn fit(&self, s: &str, w: f32) -> String {
         let room = (w / self.cw).floor().max(0.0) as usize;
-        let n = s.chars().count();
-        if n <= room {
+        if crate::util::width(s) <= room {
             return s.to_string();
         }
         if room == 0 {
             return String::new();
         }
-        let mut out: String = s.chars().take(room - 1).collect();
+        // Whole characters up to one cell short, for the `…`.
+        let mut out = String::new();
+        let mut used = 0;
+        for c in s.chars() {
+            let n = crate::util::cells(c);
+            if used + n > room - 1 {
+                break;
+            }
+            used += n;
+            out.push(c);
+        }
         out.push('…');
         out
     }
 
     pub fn width(&self, s: &str) -> f32 {
-        s.chars().count() as f32 * self.cw
+        crate::util::width(s) as f32 * self.cw
     }
 
     /// The same pen drawing only inside `r`.

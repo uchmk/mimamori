@@ -7,6 +7,7 @@
 mod app;
 mod collect;
 mod config;
+mod fonts;
 mod gpu_backend;
 mod i18n;
 mod keyscript;
@@ -189,6 +190,7 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| {
             cc.egui_ctx.set_visuals(theme::visuals());
+            fonts::load_in_background(cc.egui_ctx.clone());
             let (rx, ctl) = collect::spawn(cc.egui_ctx.clone(), Duration::from_secs_f32(interval));
             let mut app = App::new(km, rx, ctl, layouts, saver, interval);
             app.wake = Some(cc.egui_ctx.clone());

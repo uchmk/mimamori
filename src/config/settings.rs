@@ -126,8 +126,8 @@ mod tests {
         assert_eq!(s.interval, 2.0);
         assert_eq!(s.backend.as_deref(), Some("gl"));
         assert_eq!(s.keymap.as_deref(), Some("[main]\n"));
-        // "ja" has no table yet, so it falls back to English.
-        assert_eq!(s.language, "en");
+        // The app's "auto" passes the choice on to the common file.
+        assert_eq!(s.language, "ja");
         assert_eq!(s.warnings.len(), 1, "{:?}", s.warnings);
         assert!(s.warnings[0].contains("colour"));
 

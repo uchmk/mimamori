@@ -85,7 +85,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 ## 3. 言語
 
-- [ ] 日本語の表（`src/lang/ja.toml`）と CJK のフォント（tsumugi の `fonts.rs` の取り方）。
+- [x] 日本語の表（`src/lang/ja.toml`）と CJK のフォント（tsumugi の `fonts.rs` の取り方）。
+  → `fonts.rs` が OS のフォントをスレッドで読んで後ろに足す。全角は 2 桁で数えて切る。ヘルプの説明は `[keydesc]` で訳す（v0.25.0）
 - [ ] `i18n` と `common.toml` の読み込みを tsumugi の workspace の共有クレートに切り出し、filer と tsumugi から使う（tsumugi を `access:"push"` で付け直す）。
   tsumugi の設定画面の言語の欄もそれにつなぐ。
 - [ ] keymap の読み込み（`config/keys.rs`・`keymap.rs`）も共有のクレートにするか、filer と見比べて決める。

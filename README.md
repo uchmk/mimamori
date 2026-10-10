@@ -74,7 +74,7 @@ folder.
 `common.toml`:
 
 ```toml
-language = "auto"   # "auto" follows the OS; "en" (more to come)
+language = "auto"   # "auto" follows the OS; "en" or "ja"
 ```
 
 `config.toml`:
@@ -120,10 +120,19 @@ What `run` can say in a keymap:
 
 ## Languages
 
-Every word on screen goes through one table: [src/lang/en.toml](src/lang/en.toml).
-English is the only one in v0.1; a translation is another file with the same
-keys, and any key it leaves out reads in English. The language is picked from
-`config.toml`, then `common.toml`, then the OS.
+Every word on screen goes through one table: [src/lang/en.toml](src/lang/en.toml)
+for English, [src/lang/ja.toml](src/lang/ja.toml) for Japanese. A translation
+has the same keys, and any key it leaves out reads in English; its
+`[keydesc]` translates the built-in keymap's descriptions in `?` help (one
+you wrote yourself reads as you wrote it). The language is picked from
+`config.toml`, then `common.toml`, then the OS (`ja-JP` is Japanese).
+
+Japanese, and the CJK in process names, service descriptions and volume
+labels whatever the language, is drawn with a system font behind the
+built-in one, read on a thread at startup (the first found of BIZ UDGothic,
+MS Gothic, Yu Gothic and Meiryo on Windows; Hiragino on macOS; Noto Sans CJK
+or IPA Gothic on Linux). A wide character counts as two columns where text
+is cut to fit.
 
 ## Building
 

@@ -46,6 +46,22 @@ pub fn fmt_epoch(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02} {:02}:{:02}", rem / 3600, rem / 60 % 60)
 }
 
+/// How many monospace cells `c` takes: two for the wide characters of
+/// East Asian scripts (kana, kanji, hangul, full-width forms), else one. The
+/// CJK font behind the monospace one draws them about twice as wide, so a
+/// Japanese label is cut where it really ends.
+pub fn cells(c: char) -> usize {
+    let wide = matches!(c as u32,
+        0x1100..=0x115F | 0x2E80..=0x303E | 0x3041..=0x33FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xA000..=0xA4CF
+        | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF | 0xFE30..=0xFE4F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6 | 0x20000..=0x3FFFD);
+    if wide { 2 } else { 1 }
+}
+
+/// The cells `s` takes on screen (see [`cells`]).
+pub fn width(s: &str) -> usize {
+    s.chars().map(cells).sum()
+}
+
 /// A fresh directory of its own under the system's temp directory, so tests
 /// never read the machine's real configuration.
 #[cfg(test)]
@@ -71,6 +87,15 @@ mod tests {
         assert_eq!(fmt_uptime(3 * 86400 + 4 * 3600 + 5), "3d 4h");
         assert_eq!(fmt_uptime(4 * 3600 + 12 * 60), "4h 12m");
         assert_eq!(fmt_uptime(725), "12m 5s");
+    }
+
+    #[test]
+    fn wide_characters_take_two_cells() {
+        assert_eq!(width("cpu"), 3);
+        assert_eq!(width("メモリ"), 6);
+        assert_eq!(width("CPU 使用率"), 10);
+        assert_eq!(width("ＡＢ"), 4);
+        assert_eq!(width("─·…"), 3);
     }
 
     #[test]
