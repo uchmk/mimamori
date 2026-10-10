@@ -14,6 +14,7 @@ mod kill;
 mod model;
 mod persist;
 mod screen;
+mod svcctl;
 mod tree;
 mod ui;
 mod util;

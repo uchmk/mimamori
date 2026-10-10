@@ -50,7 +50,9 @@ keymap = [
     { on = "s", run = "sort", desc = "Next sort column" },
     { on = "t", run = "tree", desc = "Tree of parents and children / list" },
     { on = "u", run = "scope", desc = "Scope: every process / mine; connections: all / listening" },
-    { on = "x", run = "kill", desc = "End the selected process" },
+    { on = "x", run = "kill", desc = "End the process; on svc, stop the service" },
+    { on = "S", run = "service start", desc = "Start the selected service" },
+    { on = "R", run = "service restart", desc = "Restart the selected service" },
     { on = "P", run = "pause", desc = "Pause / resume sampling" },
     { on = "+", run = "interval +", desc = "Sample less often" },
     { on = "=", run = "interval +", desc = "Sample less often" },
@@ -79,12 +81,13 @@ keymap = [
     { on = "<Up>", run = "arrow -1", desc = "Up" },
 ]
 
-# The question before a process is ended (`x`).
+# The question before a process is ended (`x`) or a service is started,
+# stopped or restarted (`S`, `x`, `R` on svc).
 [confirm]
 keymap = [
-    { on = "y", run = "confirm", desc = "End it" },
-    { on = "<Enter>", run = "confirm", desc = "End it" },
-    { on = "n", run = "escape", desc = "Keep it running" },
-    { on = "<Esc>", run = "escape", desc = "Keep it running" },
-    { on = "q", run = "escape", desc = "Keep it running" },
+    { on = "y", run = "confirm", desc = "Yes" },
+    { on = "<Enter>", run = "confirm", desc = "Yes" },
+    { on = "n", run = "escape", desc = "No, leave it as it is" },
+    { on = "<Esc>", run = "escape", desc = "No, leave it as it is" },
+    { on = "q", run = "escape", desc = "No, leave it as it is" },
 ]

@@ -1,6 +1,7 @@
 //! Services (6): which states to show on the left, the list in the middle,
-//! the selected service on the right. Read only: Enter on one that runs
-//! opens its process in procs.
+//! the selected service on the right. Enter on one that runs opens its
+//! process in procs; S, x and R start, stop and restart it after asking
+//! (`svcctl`).
 
 use egui::{Color32, Rect, pos2};
 
@@ -179,10 +180,11 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         (tr("svc.file"), or_dash(&s.file)),
         (tr("svc.source"), app.model.services.source.to_string()),
     ];
-    let y = kv_rows(&cx.pen, body, body.top(), &rows) + GAP;
+    let mut y = kv_rows(&cx.pen, body, body.top(), &rows) + GAP;
     if s.pid.is_some() {
-        para(&cx.pen, body, y, tr("svc.hint"), DIM);
+        y = para(&cx.pen, body, y, tr("svc.hint"), DIM);
     }
+    para(&cx.pen, body, y, tr("svc.control"), DIM);
 }
 
 #[cfg(test)]

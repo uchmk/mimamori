@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.6** has seven screens: overview, cpu, mem, gpu·npu, procs, svc and net. The other three tabs
+> **v0.7** has seven screens: overview, cpu, mem, gpu·npu, procs, svc and net. The other three tabs
 > are there with their final numbers, so the keys will not move, and say
 > "Not yet". See [TODO.md](TODO.md).
 
@@ -24,7 +24,7 @@ inside each tile.
 | `3` | mem      | Used / available / swap; the usage bar and graph; the processes using the most memory |
 | `4` | gpu·npu  | The GPUs and NPUs found, each with its usage over the last minute (and why a missing one is missing); the selected device's usage, engines, dedicated and shared memory and VRAM graph; its temperature, fan, power and clock, the reason for any it cannot read, and the processes using it (`Enter` opens one in procs) |
 | `5` | procs    | Scope and sort; the process list (filter with `/`, sort with `s`, a tree of parents and children with `t`, only your own with `u`, end one with `x`); the selected process's details and graphs |
-| `6` | svc      | Services, read only: Windows' services, systemd's units, launchd's jobs. Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). Read every 5 s, and only while the screen shows |
+| `6` | svc      | Services: Windows' services, systemd's units, launchd's jobs. Show all / running / stopped / failed, with counts by start type; the list (state, name, start, PID; filter with `/`); the selected one's description, state, start, PID, last exit, account, command and file (`Enter` opens its process in procs). `S` starts, `x` stops and `R` restarts the selected one after asking; the question shows the same thing as a command line (`systemctl restart foo.service`, `launchctl kickstart -k gui/501/…`, `Restart-Service foo`). Read every 5 s, and only while the screen shows |
 | `7` | net      | The network interfaces, each with its traffic over the last minute, and counts of the sockets; every TCP and UDP socket (protocol, local and remote address, state, PID, process; filter with `/`, only the listening ones with `u`); the selected interface's received and sent graphs, adapter, kind, link speed, addresses, MAC, MTU and totals, and the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
 | `8`–`0` | disk, sensors, sys | Not yet |
 
@@ -47,7 +47,8 @@ divider) or the keyboard, and are kept per screen in `state.toml`.
 | `s` | Next sort column |
 | `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |
 | `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column). On net: every socket, or only the listening ones (TCP `LISTEN` and unconnected UDP) |
-| `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem |
+| `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem. On svc it stops the selected service instead |
+| `S`, `R` | On svc: start, restart the selected service, after asking. Windows asks the Service Control Manager (run mimamori as administrator); Linux runs `systemctl` (root or polkit); macOS runs `launchctl kickstart` / `kill` in the domain the list came from (system jobs need `sudo`). A start on a running service, or a stop on a stopped one, only says so |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
 | `?` | Help: every key of the keymap |
@@ -109,11 +110,12 @@ What `run` can say in a keymap:
 | `equalize` | Columns back to equal widths |
 | `enter`, `filter`, `sort`, `pause` | As the keys above |
 | `interval +`, `interval -` | Sample less / more often |
-| `kill` | Ask, then end the selected process |
+| `kill` | Ask, then end the selected process; on svc, stop the selected service |
+| `service start`, `service stop`, `service restart` | On svc: ask, then start, stop or restart the selected service |
 | `tree` | Procs as a tree, or a flat list |
 | `scope`, `scope all`, `scope mine` | Switch procs' scope, or set it |
 | `help`, `escape`, `quit` | As the keys above |
-| `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended (`[confirm]`) |
+| `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended or a service is started, stopped or restarted (`[confirm]`) |
 
 ## Languages
 

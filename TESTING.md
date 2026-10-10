@@ -58,6 +58,11 @@ back to `[ ]`.
 - [ ] 3b.5 The left column's rows (All / running / stopped / failed) narrow the list and their counts match it; `/` filters by name or description and the selection stays on the same service while the list refreshes.
 - [ ] 3b.6 `Enter` on a running service opens procs with its process selected; on one without a process the toast says so.
 - [ ] 3b.7 Leaving svc stops the reading (no `systemctl` / `launchctl` in procs a few seconds after going to another screen).
+- [ ] 3b.8 Windows, mimamori run as administrator: `x` on a running service (e.g. `Spooler`) asks "Stop service?" with `Same as: Stop-Service Spooler`; `y` stops it, the toast says stopped and the list shows `stopped` at once. `S` starts it again; `R` on a running one stops and starts it (the PID changes).
+- [ ] 3b.9 Windows, mimamori run without administrator: `x` / `S` / `R` and `y` give the toast "needs administrator — run mimamori as administrator", and the service is unchanged.
+- [ ] 3b.10 Linux with systemd: as an ordinary user on a desktop, `R` and `y` on a system unit brings up the polkit password window; cancelling it gives the "needs root or polkit" toast. Run with `sudo`, `x`, `S` and `R` work and the list follows.
+- [ ] 3b.11 macOS: without `sudo`, `R` on one of the user's own jobs (gui domain) restarts it (the PID changes); with `sudo`, `x` on a system job stops it, and the question says a KeepAlive job starts again by itself.
+- [ ] 3b.12 Every OS: `S` on a running service and `x` on a stopped one only show a toast (no question); `n` / `Esc` / `q` at the question leave the service as it was; `x` on procs still ends a process.
 
 ## 3c. Network (`7`)
 

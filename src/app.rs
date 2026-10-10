@@ -16,6 +16,7 @@ use crate::kill::{self, Outcome, Target};
 use crate::model::Model;
 use crate::persist::Saver;
 use crate::screen::{Pane, Screen};
+use crate::svcctl::{self, Action};
 
 /// The sampling intervals `+` and `-` step through, in seconds.
 pub const INTERVALS: [f32; 6] = [0.5, 1.0, 2.0, 3.0, 5.0, 10.0];
@@ -27,6 +28,13 @@ const NUDGE: f32 = 0.03;
 pub const OVW_TOP: usize = 5;
 const TOP_CPU: usize = 10;
 const TOP_MEM: usize = 15;
+
+/// What the confirm question asks.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Ask {
+    Kill(Target),
+    Svc(svcctl::Target),
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -131,11 +139,14 @@ pub struct App {
     pub paused: bool,
     pub toast: Option<(String, Instant)>,
     pub help_scroll: usize,
-    /// The process the confirm question is about.
-    pub confirm: Option<Target>,
+    /// What the confirm question is about.
+    pub confirm: Option<Ask>,
     kill_tx: Sender<(Target, Outcome)>,
     kill_rx: Receiver<(Target, Outcome)>,
-    /// Repainted when a process has been ended, so the toast shows at once.
+    svc_tx: Sender<(svcctl::Target, svcctl::Outcome)>,
+    svc_rx: Receiver<(svcctl::Target, svcctl::Outcome)>,
+    /// Repainted when a process has been ended or a service has moved, so
+    /// the toast shows at once.
     pub wake: Option<egui::Context>,
     saver: Saver,
     pub quit: bool,
@@ -145,6 +156,7 @@ pub struct App {
 impl App {
     pub fn new(km: Keymap, rx: Receiver<Msg>, ctl: Sender<Ctl>, layouts: HashMap<Screen, Node<Pane>>, saver: Saver, interval: f32) -> Self {
         let (kill_tx, kill_rx) = crossbeam_channel::unbounded();
+        let (svc_tx, svc_rx) = crossbeam_channel::unbounded();
         Self {
             km,
             model: Model::default(),
@@ -179,6 +191,8 @@ impl App {
             confirm: None,
             kill_tx,
             kill_rx,
+            svc_tx,
+            svc_rx,
             wake: None,
             saver,
             quit: false,
@@ -242,6 +256,25 @@ impl App {
                 Outcome::Failed(e) => trf("toast.kill_failed", &[name, &pid, &e]),
             };
             self.toast(s);
+        }
+        while let Ok((t, o)) = self.svc_rx.try_recv() {
+            let n = t.name.as_str();
+            let s = match (o, t.action) {
+                (svcctl::Outcome::Done, Action::Start) => trf("toast.svc_started", &[n]),
+                (svcctl::Outcome::Done, Action::Stop) => trf("toast.svc_stopped", &[n]),
+                (svcctl::Outcome::Done, Action::Restart) => trf("toast.svc_restarted", &[n]),
+                (svcctl::Outcome::Denied, _) if cfg!(windows) => trf("toast.svc_denied_win", &[n]),
+                (svcctl::Outcome::Denied, _) if cfg!(target_os = "macos") => trf("toast.svc_denied_mac", &[n]),
+                (svcctl::Outcome::Denied, _) => trf("toast.svc_denied_linux", &[n]),
+                (svcctl::Outcome::Failed(e), Action::Start) => trf("toast.svc_start_failed", &[n, &e]),
+                (svcctl::Outcome::Failed(e), Action::Stop) => trf("toast.svc_stop_failed", &[n, &e]),
+                (svcctl::Outcome::Failed(e), Action::Restart) => trf("toast.svc_restart_failed", &[n, &e]),
+            };
+            self.toast(s);
+            // Read the list again now rather than at the next interval.
+            if self.screen == Screen::Svc {
+                let _ = self.ctl.send(Ctl::Services(true));
+            }
         }
         if self.dirty {
             self.dirty = false;
@@ -653,9 +686,21 @@ impl App {
         match a {
             Act::Confirm | Act::Enter => {
                 self.mode = Mode::Normal;
-                if let Some(t) = self.confirm.take() {
-                    self.toast(trf("toast.ending", &[&t.name, &t.pid.to_string()]));
-                    kill::spawn(t, self.kill_tx.clone(), self.wake.clone());
+                match self.confirm.take() {
+                    Some(Ask::Kill(t)) => {
+                        self.toast(trf("toast.ending", &[&t.name, &t.pid.to_string()]));
+                        kill::spawn(t, self.kill_tx.clone(), self.wake.clone());
+                    }
+                    Some(Ask::Svc(t)) => {
+                        let key = match t.action {
+                            Action::Start => "toast.svc_starting",
+                            Action::Stop => "toast.svc_stopping",
+                            Action::Restart => "toast.svc_restarting",
+                        };
+                        self.toast(trf(key, &[&t.name]));
+                        svcctl::spawn(t, self.svc_tx.clone(), self.wake.clone());
+                    }
+                    None => {}
                 }
             }
             Act::Escape | Act::Quit => {
@@ -676,7 +721,24 @@ impl App {
             self.toast(tr("toast.kill_self"));
             return;
         }
-        self.confirm = Some(Target { pid: p.pid, name: p.name.clone(), start: p.start });
+        self.confirm = Some(Ask::Kill(Target { pid: p.pid, name: p.name.clone(), start: p.start }));
+        self.mode = Mode::Confirm;
+    }
+
+    /// Ask before starting, stopping or restarting the service under the
+    /// cursor; one already where it would go only gets a toast.
+    fn ask_svc(&mut self, action: Action) {
+        let Some(s) = self.selected_svc() else {
+            self.toast(tr("toast.svc_none"));
+            return;
+        };
+        let name = s.name.clone();
+        if !svcctl::fits(action, s.state) {
+            let key = if action == Action::Start { "toast.svc_already_running" } else { "toast.svc_not_running" };
+            self.toast(trf(key, &[&name]));
+            return;
+        }
+        self.confirm = Some(Ask::Svc(svcctl::Target { action, name }));
         self.mode = Mode::Confirm;
     }
 
@@ -739,7 +801,10 @@ impl App {
                 self.view_mut().focus = Pane::Mid.index();
                 self.mode = Mode::Filter;
             }
+            Act::Kill if self.screen == Screen::Svc => self.ask_svc(Action::Stop),
             Act::Kill => self.ask_kill(),
+            Act::Service(action) if self.screen == Screen::Svc => self.ask_svc(action),
+            Act::Service(_) => self.toast(tr("toast.svc_elsewhere")),
             Act::Sort => {
                 self.sort = self.sort.next();
                 self.refresh_rows();
@@ -917,8 +982,10 @@ impl App {
             .map(|(p, r)| format!("{}={:.0}", p.name(), r.w))
             .collect();
         s += &format!("widths: {}\n", widths.join(" "));
-        if let Some(t) = &self.confirm {
-            s += &format!("confirm: {} {}\n", t.pid, t.name);
+        match &self.confirm {
+            Some(Ask::Kill(t)) => s += &format!("confirm: kill {} {}\n", t.pid, t.name),
+            Some(Ask::Svc(t)) => s += &format!("confirm: {:?} {}\n", t.action, t.name),
+            None => {}
         }
         if let Some((t, _)) = &self.toast {
             s += &format!("toast: {t}\n");
@@ -1100,7 +1167,7 @@ mod tests {
         a.pump();
         keys(&mut a, "5 l x");
         assert_eq!(a.mode, Mode::Confirm);
-        assert_eq!(a.confirm.as_ref().map(|t| t.pid), Some(7));
+        assert!(matches!(&a.confirm, Some(Ask::Kill(t)) if t.pid == 7), "{:?}", a.confirm);
         // Keys of the main layer do nothing while the question is up.
         keys(&mut a, "j 1");
         assert_eq!((a.screen, a.mode), (Screen::Procs, Mode::Confirm));
@@ -1162,6 +1229,57 @@ mod tests {
         assert_eq!(a.screen, Screen::Procs);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
         assert!(matches!(ctl.try_iter().last(), Some(Ctl::Services(false))));
+    }
+
+    #[test]
+    fn on_svc_s_x_and_r_ask_about_the_service_and_n_leaves_it() {
+        let (mut a, tx, _ctl) = app();
+        keys(&mut a, "6 S");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.svc_none")));
+        let svc = |name: &str, state| svc::Service { name: name.into(), state, ..svc::Service::default() };
+        let list = vec![svc("cron", svc::State::Running), svc("dead", svc::State::Failed)];
+        tx.send(Msg::Svc(svc::Services { list, source: "systemd", note: None })).unwrap();
+        a.pump();
+        // Already where it would go: a toast, no question.
+        keys(&mut a, "S");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.svc_already_running", &["cron"]))));
+        keys(&mut a, "x");
+        assert_eq!(a.mode, Mode::Confirm);
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Stop, name: "cron".into() })));
+        keys(&mut a, "<Esc>");
+        assert_eq!((a.mode, a.confirm.clone()), (Mode::Normal, None));
+        keys(&mut a, "l j x");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.svc_not_running", &["dead"]))));
+        keys(&mut a, "R");
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Restart, name: "dead".into() })));
+        keys(&mut a, "n S");
+        assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Start, name: "dead".into() })));
+        keys(&mut a, "q 5 S");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.as_str())), (Mode::Normal, Some(tr("toast.svc_elsewhere"))));
+    }
+
+    #[test]
+    fn y_on_a_service_runs_on_a_thread_and_the_list_is_read_again() {
+        let (mut a, tx, ctl) = app();
+        // A name no OS has: the worker comes back refused or failed.
+        let name = "mimamori-test-no-such-service";
+        let list = vec![svc::Service { name: name.into(), state: svc::State::Running, ..svc::Service::default() }];
+        tx.send(Msg::Svc(svc::Services { list, source: "test", note: None })).unwrap();
+        keys(&mut a, "6");
+        a.pump();
+        keys(&mut a, "x y");
+        assert_eq!((a.mode, a.confirm.clone()), (Mode::Normal, None));
+        let stopping = trf("toast.svc_stopping", &[name]);
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(stopping.clone()));
+        let _: Vec<Ctl> = ctl.try_iter().collect();
+        let until = Instant::now() + Duration::from_secs(20);
+        while a.toast.as_ref().is_some_and(|t| t.0 == stopping) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(20));
+            a.pump();
+        }
+        let toast = a.toast.map(|t| t.0).unwrap_or_default();
+        assert!(toast != stopping && toast.contains(name), "{toast}");
+        assert!(matches!(ctl.try_iter().last(), Some(Ctl::Services(true))));
     }
 
     #[test]

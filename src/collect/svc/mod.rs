@@ -1,5 +1,6 @@
-//! Services: Windows' services, systemd's units, launchd's jobs. Read only
-//! for now, on the sampler thread and only while the svc screen shows.
+//! Services: Windows' services, systemd's units, launchd's jobs, read on the
+//! sampler thread and only while the svc screen shows. Starting and stopping
+//! them is `svcctl`'s.
 //!
 //! Each OS has its own source: the service control manager on Windows,
 //! `systemctl` on Linux (unit files alone when systemd is not running) and
@@ -11,7 +12,7 @@ pub mod linux;
 #[cfg(any(target_os = "macos", test))]
 pub mod mac;
 #[cfg(windows)]
-mod scm;
+pub(crate) mod scm;
 #[cfg(any(windows, test))]
 pub mod windows;
 

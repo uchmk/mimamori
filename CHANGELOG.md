@@ -4,6 +4,25 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.7.0] - 2026-10-10
+
+### 追加
+
+- svc の画面（`6`）で、選んだサービスを `S` で開始、`x` で停止、`R` で再起動できるようにした。どれも先に確かめる窓が出て、
+  サービスの名前・説明・状態・起動の種類・PID と、同じことをするコマンド（`systemctl restart foo.service`・`launchctl kickstart -k gui/501/…`・
+  `Restart-Service foo`）を見せる。`y` / `Enter` で実行、`n` / `Esc` / `q` でそのまま。実行は 1 回ごとのスレッドで行い、終わったら一覧をすぐ読み直す。
+- Windows はサービス コントロール マネージャー（`StartServiceW`・`ControlService`、再起動は止まるのを 30 秒まで待ってから開始）、
+  Linux は `systemctl`（デスクトップなら polkit のパスワードの窓が出る）、macOS は一覧を読んだのと同じドメイン（root なら `system/`、ほかは `gui/<uid>/`）に
+  `launchctl kickstart` / `kill SIGTERM` を送る。
+- 権限が足りないときは OS ごとの言い方でトーストに出す（Windows は管理者として起動する、Linux は root か polkit、macOS はシステムのジョブに `sudo`）。
+  動いているサービスの開始・止まっているサービスの停止は、確かめずにトーストで言うだけ。
+- コマンド `service start` / `service stop` / `service restart` を足した。
+
+### 変更
+
+- **既定キー:** `x`（`kill`）は svc の画面ではサービスの停止になる。ほかの画面では今までどおりプロセスの終了。
+- 確かめる窓（`[confirm]`）のキーの説明を「Yes」/「No, leave it as it is」にした（プロセスとサービスのどちらにも使うため）。
+
 ## [0.6.1] - 2026-10-10
 
 ### 修正

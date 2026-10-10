@@ -3,6 +3,7 @@
 use tsumugi_layout::Toward;
 
 use crate::screen::Screen;
+use crate::svcctl::Action;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Goto {
@@ -40,8 +41,10 @@ pub enum Act {
     /// procs' scope: every process, or only mine (`Some(true)`); `None`
     /// switches to the other.
     Scope(Option<bool>),
-    /// Ask, then end the selected process.
+    /// Ask, then end the selected process; on svc, stop the service.
     Kill,
+    /// Ask, then start, stop or restart the selected service.
+    Service(Action),
     Pause,
     /// One step faster (-1) or slower (+1) sampling.
     Interval(i32),
@@ -100,6 +103,12 @@ pub fn parse(s: &str) -> Result<Act, String> {
             Some("mine") => Some(true),
             Some(_) => return Err(bad()),
         })),
+        "service" => Ok(Act::Service(match need()? {
+            "start" => Action::Start,
+            "stop" => Action::Stop,
+            "restart" => Action::Restart,
+            _ => return Err(bad()),
+        })),
         "equalize" => none(Act::Equalize),
         "enter" => none(Act::Enter),
         "filter" => none(Act::Filter),
@@ -136,6 +145,10 @@ mod tests {
         assert_eq!(parse("scope mine"), Ok(Act::Scope(Some(true))));
         assert_eq!(parse("scope all"), Ok(Act::Scope(Some(false))));
         assert!(parse("scope others").is_err());
+        assert_eq!(parse("service restart"), Ok(Act::Service(Action::Restart)));
+        assert_eq!(parse("service stop"), Ok(Act::Service(Action::Stop)));
+        assert!(parse("service").is_err());
+        assert!(parse("service pause").is_err());
         assert!(parse("screen nowhere").is_err());
         assert!(parse("quit now").is_err());
         assert!(parse("fly").is_err());

@@ -62,11 +62,12 @@
 | `src/collect/svc/` | サービス。`linux.rs`（`systemctl` の出力のパース）、`windows.rs`（SCM の数値を状態に畳む純粋な関数）と `scm.rs`（SCM の呼び出し、設定は 1 分キャッシュ）、`mac.rs`（`launchctl list`）。一覧が短い理由は `Note` |
 | `src/collect/net/` | ネットワーク。インターフェースは sysinfo の数え値に、`linux.rs`（sysfs の種類・速度・ドライバー）と `windows.rs`（IP ヘルパーの表から人が思うアダプターを選ぶ純粋な関数）と `iphlp.rs`（IP ヘルパーの呼び出し）。ソケットは Linux が `/proc/net` と `/proc/*/fd`、Windows が `GetExtendedTcpTable` / `GetExtendedUdpTable`、macOS はまだ（`Note`） |
 | `src/kill.rs` | プロセスの終了（確認の後、1 回ごとのスレッドで。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL） |
+| `src/svcctl.rs` | サービスの開始・停止・再起動（確認の後、1 回ごとのスレッドで。Windows は SCM、Linux は `systemctl`、macOS は `launchctl`。権限不足とエラーの読み替えは純粋な関数） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
 | `src/model.rs` | 履歴のリングバッファ（60 秒）と最新の値 |
 | `src/config/` | `keys.rs`（キーの文字列）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`theme.rs`（filer の色） |
 | `src/i18n.rs`, `src/lang/` | `tr()` と言語の表 |
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
-| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（終了の確認） |
+| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認） |
 | `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る） |
