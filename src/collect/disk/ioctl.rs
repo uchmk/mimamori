@@ -235,7 +235,7 @@ fn check_one(id: &str, bus: Option<&str>) -> Check {
     if bus == Some("NVMe")
         && let Some(log) = nvme_health(&disk)
     {
-        c.add_nvme(log);
+        c.add_log(log, "NVMe health log");
     }
     c
 }

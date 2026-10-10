@@ -37,7 +37,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] disk: Windows で `IOCTL_STORAGE_PREDICT_FAILURE` に答えないドライブ（実機の 3d.8 で分かる）があれば、WMI の `MSFT_PhysicalDisk` の `HealthStatus` と `StorageReliabilityCounter`（管理者）を足す。
 - [x] disk: macOS の NVMe のドライブの温度と SMART の中身（IOKit の `IONVMeSMARTInterface`）。
   → `NVMe SMART Capable` の付いた親の user client を `IOCreatePlugInInterfaceForService` で開き、`SMARTReadData` の 512 バイトを `disk::nvme_log` で読む。sudo は要らない（v0.14.0）。
-- [ ] disk: macOS の SATA のドライブの SMART の中身（`IOATASMARTInterface` の `SMARTReadData` と、温度は属性 194）。今は内蔵の SATA の Mac（古い Intel の Mac）と、SMART を通す外付けのケースだけが対象。
+- [x] disk: macOS の SATA のドライブの SMART の中身（`IOATASMARTInterface` の `SMARTReadData` と、温度は属性 194）。今は内蔵の SATA の Mac（古い Intel の Mac）と、SMART を通す外付けのケースだけが対象。
+  → `SMART Capable` の付いた親の user client で `SMARTReturnStatus` と `SMARTReadData` を読み、属性の表は OS に依らない `disk::ata_attrs` で読む（Windows の `SMART_RCV_DRIVE_DATA` も同じ 512 バイト）。sudo は要らない（v0.15.0）。
 - [x] disk: SMART の中身（使った寿命の %・代替処理済みのセクタ・電源を入れた時間）を右の列に。smartctl は `-j`、Windows は `IOCTL_STORAGE_QUERY_PROPERTY` の `StorageDeviceProtocolSpecificProperty`（NVMe の SMART ログ）。
   → 右の列の温度の下に「Life used」（80% から黄、100% で赤）・「Powered on」・「Lifetime writes」・「Remapped / Pending sectors」・「Media errors」（1 から黄）を、ドライブが答えた分だけ出す。
   Linux は `-j` ではなく今の `smartctl -H -A` の文字を読む（JSON を読むために serde_json を足さないため）。止まったドライブは前の値を残す。

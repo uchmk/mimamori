@@ -115,8 +115,8 @@ pub fn smart_status(plist_bytes: &[u8]) -> Check {
     }
 }
 
-/// Ask `diskutil` about each drive, and read an NVMe drive's health log for
-/// its counts and temperature.
+/// Ask `diskutil` about each drive, and read an NVMe drive's health log or
+/// an ATA drive's SMART data for its counts and temperature.
 #[cfg(target_os = "macos")]
 pub fn check(asks: &[Ask]) -> HashMap<String, Check> {
     asks.iter()
@@ -127,7 +127,12 @@ pub fn check(asks: &[Ask]) -> HashMap<String, Check> {
                 _ => Check::why(Why::Unsupported),
             };
             if let Some(log) = super::iokit::nvme_smart(&a.id).as_ref().and_then(|b| super::nvme_log(b)) {
-                c.add_nvme(log);
+                c.add_log(log, "NVMe health log");
+            } else if let Some((exceeded, data)) = super::iokit::ata_smart(&a.id)
+                && let Some((temp, smart)) = super::ata_attrs(&data)
+            {
+                let health = if exceeded { Health::Failing } else { Health::Good };
+                c.add_log((health, temp, smart), "ATA SMART");
             }
             (a.id.clone(), c)
         })

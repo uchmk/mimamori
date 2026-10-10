@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.14** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
+> **v0.15** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
 > What is still missing on each OS is in [TODO.md](TODO.md).
 
 ## Screens
@@ -176,7 +176,7 @@ change) in a thread of its own, so a slow drive never holds up the screen:
 | --- | --- | --- | --- |
 | Windows | `IOCTL_STORAGE_PREDICT_FAILURE`, skipped while the drive is spun down (`GetDevicePowerState`) so it is left asleep. Some drivers answer it only for an administrator, and the row says so. An NVMe drive's critical warning counts as failing too | `StorageDeviceTemperatureProperty` through `IOCTL_STORAGE_QUERY_PROPERTY`, without administrator: an SSD's every 5 seconds, any other drive's with the minute's check; else the NVMe health log's | NVMe: the SMART / health log through `IOCTL_STORAGE_QUERY_PROPERTY`'s `StorageDeviceProtocolSpecificProperty` (life used, hours, writes, media errors). SATA: not read yet (ATA SMART wants an administrator) |
 | Linux | `smartctl -H -A -n standby` (smartmontools), which leaves a spun-down drive asleep. It needs root or the `disk` group, and the row says so, or that smartctl is not installed; virtual disks (`virtio`, `xen`) have no SMART data | The drive's hwmon chip (`nvme`, `drivetemp`), else what smartctl read | The same smartctl output: NVMe's percentage used, hours, data units written and media errors; ATA's attributes 5 (reallocated), 9 (hours), 197 (pending) and the wear attribute (`Wear_Leveling_Count`, `SSD_Life_Left`…); SCSI's endurance, hours and grown defects. A drive left asleep keeps its last counts |
-| macOS | `diskutil info -plist`'s `SMARTStatus` (internal drives; most USB enclosures pass nothing). An NVMe drive's critical warning counts as failing too | The NVMe health log's | NVMe (the internal SSD, and enclosures that pass it through): the SMART / health log from IOKit's `IONVMeSMARTInterface`, without sudo (life used, hours, writes, media errors). SATA: not read yet |
+| macOS | `diskutil info -plist`'s `SMARTStatus` (internal drives; most USB enclosures pass nothing). An NVMe drive's critical warning, or an ATA attribute past its threshold, counts as failing too | The NVMe health log's; a SATA drive's attribute 194 (190 where there is none) | NVMe (the internal SSD, and enclosures that pass it through): the SMART / health log from IOKit's `IONVMeSMARTInterface`, without sudo (life used, hours, writes, media errors). SATA (older Macs' internal drives, enclosures that pass it through): the attributes from `IOATASMARTInterface`'s `SMARTReadData`, without sudo (hours, remapped, pending, an SSD's life used) |
 
 The sensors screen reads:
 

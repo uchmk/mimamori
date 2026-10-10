@@ -4,6 +4,20 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.15.0] - 2026-10-10
+
+### 追加
+
+- disk の画面（macOS）: SATA のドライブ（古い Intel の Mac の内蔵のドライブと、SMART を通す外付けのケース）の温度と SMART の中身を出す。
+  - IOKit の `IOATASMARTInterface`（`SMART Capable` の付いた装置の user client）で `SMARTReturnStatus` と `SMARTReadData` を読む。sudo は要らない。
+    SMART を有効にする・自己診断を走らせるといった書き込みはしない。
+  - 右の列に「Temperature」（属性 194、無ければ 190）「Powered on」「Remapped sectors」「Pending sectors」と、SSD なら「Life used」が出る。
+  - しきい値を超えた属性があれば故障の印にする。
+
+### 変更
+
+- 属性の表（512 バイト）のパースを OS に依らない `disk::ata_attrs` にし、ログを健康状態に足す処理を `Check::add_log`（`add_nvme` から改名し、温度の出どころを渡す）にした。
+
 ## [0.14.0] - 2026-10-10
 
 ### 追加

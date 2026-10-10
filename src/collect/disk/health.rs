@@ -36,18 +36,19 @@ impl Check {
         Self { why: Some(why), ..Self::default() }
     }
 
-    /// Add what an NVMe drive's health log said (`super::nvme_log`): its
-    /// counts, its temperature where the drive had none, and its health. The
-    /// log's critical warning (spare, temperature, reliability, read only) is
-    /// a failing drive even where the OS's own check said nothing.
+    /// Add what a drive's own SMART data said (an NVMe health log from
+    /// `super::nvme_log`, ATA attributes from `super::ata_attrs`): its counts,
+    /// its temperature where the drive had none, and its health. A failing
+    /// log (NVMe's critical warning, an ATA threshold exceeded) is a failing
+    /// drive even where the OS's own check said nothing.
     #[cfg_attr(not(any(windows, target_os = "macos", test)), allow(dead_code))]
-    pub fn add_nvme(&mut self, (health, value, smart): (Health, Option<f32>, Smart)) {
+    pub fn add_log(&mut self, (health, value, smart): (Health, Option<f32>, Smart), source: &str) {
         self.smart = smart;
         if health == Health::Failing || self.health.is_none() {
             (self.health, self.why) = (Some(health), None);
         }
         if self.temp.is_none() {
-            self.temp = value.map(|value| Temp { value, high: None, crit: None, source: "NVMe health log".into(), chip: None });
+            self.temp = value.map(|value| Temp { value, high: None, crit: None, source: source.into(), chip: None });
         }
     }
 }
@@ -165,20 +166,20 @@ mod tests {
     }
 
     #[test]
-    fn an_nvme_log_adds_its_counts_and_temperature_and_can_only_make_health_worse() {
+    fn a_drive_log_adds_its_counts_and_temperature_and_can_only_make_health_worse() {
         let smart = Smart { life_used: Some(3), ..Smart::default() };
         // macOS: diskutil says nothing for this drive; the log decides.
         let mut c = Check::why(Why::Unsupported);
-        c.add_nvme((Health::Good, Some(38.0), smart.clone()));
+        c.add_log((Health::Good, Some(38.0), smart.clone()), "NVMe health log");
         assert_eq!((c.health, c.why, &c.smart), (Some(Health::Good), None, &smart));
         assert_eq!(c.temp.as_ref().map(|t| (t.value, t.source.as_str())), Some((38.0, "NVMe health log")));
         // A temperature the drive gave already stays.
         let own = Temp { value: 41.0, source: "drive".into(), ..Temp::default() };
         let mut c = Check { health: Some(Health::Failing), temp: Some(own.clone()), ..Check::default() };
-        c.add_nvme((Health::Good, Some(38.0), smart.clone()));
+        c.add_log((Health::Good, Some(38.0), smart.clone()), "NVMe health log");
         assert_eq!((c.health, c.temp), (Some(Health::Failing), Some(own)), "a good log does not clear a failing check");
         let mut c = Check { health: Some(Health::Good), ..Check::default() };
-        c.add_nvme((Health::Failing, None, smart));
+        c.add_log((Health::Failing, None, smart), "NVMe health log");
         assert_eq!((c.health, c.temp), (Some(Health::Failing), None));
     }
 

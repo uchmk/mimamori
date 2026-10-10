@@ -211,6 +211,43 @@ pub fn nvme_log(buf: &[u8]) -> Option<(Health, Option<f32>, Smart)> {
     Some((health, temp, smart))
 }
 
+/// ATA attributes whose normalized value is the life left of an SSD, in
+/// percent, by ID, most specific first: `SSD_Life_Left`, Intel's
+/// `Media_Wearout_Indicator`, Samsung's `Wear_Leveling_Count`, Micron's
+/// `Percent_Lifetime_Remain`, `Remaining_Lifetime_Perc`.
+const ATA_LIFE_LEFT: [u8; 5] = [231, 233, 177, 202, 169];
+
+/// The attribute table of an ATA drive's SMART data (512 bytes from SMART
+/// READ DATA, the same on every OS): 30 entries of 12 bytes from offset 2,
+/// each an ID, two flag bytes, the normalized and worst values, six raw
+/// bytes and a reserved one. The temperature is attribute 194 (190 where
+/// there is no 194), in the raw value's low byte; the counts are 5
+/// (remapped), 9 (hours) and 197 (pending), and the life used comes from the
+/// first of `ATA_LIFE_LEFT` the drive has. Names are not in the data, so the
+/// IDs are read as smartctl's default names for them.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn ata_attrs(buf: &[u8]) -> Option<(Option<f32>, Smart)> {
+    let table = buf.get(2..2 + 30 * 12)?;
+    let attrs: Vec<&[u8]> = table.chunks_exact(12).filter(|a| a[0] != 0).collect();
+    if attrs.is_empty() {
+        return None;
+    }
+    let find = |id: u8| attrs.iter().find(|a| a[0] == id);
+    let raw = |id: u8| find(id).map(|a| u64::from_le_bytes([a[5], a[6], a[7], a[8], a[9], a[10], 0, 0]));
+    // Drives put the lowest and highest seen in the upper raw bytes.
+    let temp = |id: u8| find(id).map(|a| f32::from(a[5])).filter(|t| *t > 0.0 && *t < 125.0);
+    let life_left = ATA_LIFE_LEFT.iter().find_map(|&id| find(id)).map(|a| a[3]).filter(|&v| v <= 100);
+    let smart = Smart {
+        life_used: life_left.map(|left| 100 - u32::from(left)),
+        // Some drives keep minutes or milliseconds in the upper bytes.
+        power_on_hours: raw(9).map(|h| h & 0xFFFF_FFFF),
+        remapped: raw(5),
+        pending: raw(197),
+        ..Smart::default()
+    };
+    Some((temp(194).or_else(|| temp(190)), smart))
+}
+
 /// A physical drive (or what the OS shows as one: a virtual disk, an LVM or
 /// RAID device).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -478,6 +515,37 @@ mod tests {
         let (health, temp, _) = nvme_log(&log).unwrap();
         assert_eq!((health, temp), (Health::Failing, None));
         assert_eq!(nvme_log(&log[..100]), None);
+    }
+
+    #[test]
+    fn ata_smart_data_gives_temperature_wear_hours_and_sector_counts() {
+        let mut data = vec![0u8; 512];
+        let mut put = |slot: usize, id: u8, value: u8, raw: [u8; 6]| {
+            let at = 2 + slot * 12;
+            data[at] = id;
+            data[at + 3] = value;
+            data[at + 4] = value;
+            data[at + 5..at + 11].copy_from_slice(&raw);
+        };
+        put(0, 5, 100, [7, 0, 0, 0, 0, 0]);
+        put(1, 9, 99, [0x61, 0x53, 0, 0, 0x2C, 0x01]); // 21345 h, minutes above
+        put(2, 177, 97, [42, 0, 0, 0, 0, 0]);
+        put(3, 190, 64, [38, 0, 0, 0, 0, 0]);
+        put(4, 194, 64, [36, 0, 21, 0, 49, 0]); // 36 °C, min 21, max 49
+        put(5, 197, 100, [8, 0, 0, 0, 0, 0]);
+        let (temp, smart) = ata_attrs(&data).unwrap();
+        assert_eq!(temp, Some(36.0));
+        let want = Smart { life_used: Some(3), power_on_hours: Some(21345), remapped: Some(7), pending: Some(8), ..Smart::default() };
+        assert_eq!(smart, want);
+        // Without 194 the airflow temperature stands in; a more specific
+        // life attribute wins over Samsung's.
+        data[2 + 4 * 12] = 0;
+        data[2 + 6 * 12] = 231;
+        data[2 + 6 * 12 + 3] = 90;
+        let (temp, smart) = ata_attrs(&data).unwrap();
+        assert_eq!((temp, smart.life_used), (Some(38.0), Some(10)));
+        assert_eq!(ata_attrs(&[0u8; 512]), None, "an empty table is no data");
+        assert_eq!(ata_attrs(&data[..100]), None);
     }
 
     #[test]

@@ -161,38 +161,73 @@ const NVME_SMART_INTERFACE: [u8; 16] = [0xCC, 0xD1, 0xDB, 0x19, 0xFD, 0x9A, 0x4D
 /// `kIOCFPlugInInterfaceID`.
 const PLUGIN_INTERFACE: [u8; 16] = [0xC2, 0x44, 0xE8, 0x58, 0x10, 0x9C, 0x11, 0xD4, 0x91, 0xD4, 0x00, 0x50, 0xE4, 0xC6, 0x42, 0x6F];
 
-/// The head of `IONVMeSMARTInterface`: COM's `IUnknown`, a version, then
-/// the calls, of which only the first is used (the rest are never read).
+/// `kIOATASMARTUserClientTypeID` (`ATASMARTLib.h`): the user client of an
+/// ATA drive that says `SMART Capable`.
+const ATA_SMART_CLIENT: [u8; 16] = [0x24, 0x51, 0x4B, 0x7A, 0x28, 0x04, 0x11, 0xD6, 0x8A, 0x02, 0x00, 0x30, 0x65, 0x70, 0x48, 0x66];
+/// `kIOATASMARTInterfaceID`.
+const ATA_SMART_INTERFACE: [u8; 16] = [0x08, 0xAB, 0xE2, 0x1C, 0x20, 0xD4, 0x11, 0xD6, 0x8D, 0xF6, 0x00, 0x03, 0x93, 0x5A, 0x76, 0xB2];
+
+/// COM's `IUnknown`, at the head of every plug-in interface's table.
 #[repr(C)]
-struct NvmeSmart {
+struct Unknown {
     _reserved: *mut c_void,
     _query_interface: Option<unsafe extern "C-unwind" fn(*mut c_void, CFUUIDBytes, *mut *mut c_void) -> i32>,
     _add_ref: Option<unsafe extern "C-unwind" fn(*mut c_void) -> u32>,
     release: Option<unsafe extern "C-unwind" fn(*mut c_void) -> u32>,
+}
+
+/// The head of `IONVMeSMARTInterface`: `IUnknown`, a version, then the
+/// calls, of which only the first is used (the rest are never read).
+#[repr(C)]
+struct NvmeSmart {
+    _head: Unknown,
     _version: u16,
     _revision: u16,
     /// Fills the 512-byte SMART / health information log.
     smart_read_data: Option<unsafe extern "C-unwind" fn(*mut c_void, *mut u8) -> i32>,
 }
 
-/// An NVMe drive's SMART / health log (512 bytes), from the user client of
-/// the entry above the drive that says `NVMe SMART Capable` (the internal
-/// SSD of a Mac, and NVMe drives in enclosures that pass it through). `None`
-/// for any other drive.
-pub fn nvme_smart(bsd: &str) -> Option<[u8; 512]> {
+/// A call in a table that is never made, kept for the layout.
+type Unused = Option<unsafe extern "C-unwind" fn(*mut c_void, u8) -> i32>;
+
+/// The head of `IOATASMARTInterface`, up to the call that reads the data.
+/// Nothing is turned on or run: only the status and the data are read.
+#[repr(C)]
+struct AtaSmart {
+    _head: Unknown,
+    _version: u16,
+    _revision: u16,
+    _enable_disable_operations: Unused,
+    _enable_disable_autosave: Unused,
+    /// Whether any attribute is past its threshold.
+    smart_return_status: Option<unsafe extern "C-unwind" fn(*mut c_void, *mut u8) -> i32>,
+    _execute_off_line_immediate: Unused,
+    /// Fills the 512-byte SMART READ DATA reply.
+    smart_read_data: Option<unsafe extern "C-unwind" fn(*mut c_void, *mut u8) -> i32>,
+}
+
+/// The entry at or a few steps above a drive's whole-disk media that says
+/// `key`: where its SMART user client is.
+fn capable(bsd: &str, key: &str) -> Option<Obj> {
     let mut at = media(bsd)?;
-    let mut found = false;
     for _ in 0..8 {
         at = parent(at.0)?;
-        if flag(prop(at.0, "NVMe SMART Capable")) {
-            found = true;
-            break;
+        if flag(prop(at.0, key)) {
+            return Some(at);
         }
     }
-    if !found {
-        return None;
-    }
-    let (client, plugin_id, iface_id) = (uuid(NVME_SMART_CLIENT)?, uuid(PLUGIN_INTERFACE)?, uuid(NVME_SMART_INTERFACE)?);
+    None
+}
+
+/// Open the plug-in `client` of a service, ask it for the interface `iface`,
+/// hand that to `f` and release both.
+///
+/// # Safety
+///
+/// `T` is `#[repr(C)]`, starts with `Unknown`, and has the layout of the
+/// interface's table up to its last field.
+unsafe fn with_interface<T, R>(at: &Obj, client: [u8; 16], iface: [u8; 16], f: impl FnOnce(*mut *mut T) -> R) -> Option<R> {
+    let (client, plugin_id, iface_id) = (uuid(client)?, uuid(PLUGIN_INTERFACE)?, uuid(iface)?);
     let mut plugin: *mut *mut IOCFPlugInInterface = std::ptr::null_mut();
     let mut score = 0;
     // SAFETY: a live service and constant UUIDs; the plug-in is written on
@@ -201,26 +236,62 @@ pub fn nvme_smart(bsd: &str) -> Option<[u8; 512]> {
     if !ok || plugin.is_null() {
         return None;
     }
-    let mut iface: *mut *mut NvmeSmart = std::ptr::null_mut();
+    let mut it: *mut *mut T = std::ptr::null_mut();
     // SAFETY: a plug-in IOKit made, whose table starts with `IUnknown`; the
     // interface is written on success and released below.
-    let asked =
-        unsafe { (**plugin).QueryInterface.map(|q| q(plugin.cast(), iface_id.uuid_bytes(), (&raw mut iface).cast())).unwrap_or(-1) };
-    let mut log = [0u8; 512];
-    let mut read = false;
-    if asked == 0 && !iface.is_null() {
-        // SAFETY: the interface the plug-in gave for this UUID, whose table
-        // has the layout of `NvmeSmart`; the log is the 512 bytes it fills.
+    let asked = unsafe { (**plugin).QueryInterface.map(|q| q(plugin.cast(), iface_id.uuid_bytes(), (&raw mut it).cast())).unwrap_or(-1) };
+    let mut out = None;
+    if asked == 0 && !it.is_null() {
+        out = Some(f(it));
+        // SAFETY: the caller's promise that the table starts with `Unknown`.
         unsafe {
-            read = (**iface).smart_read_data.map(|f| f(iface.cast(), log.as_mut_ptr())) == Some(0);
-            if let Some(release) = (**iface).release {
-                release(iface.cast());
+            if let Some(release) = (**it.cast::<*mut Unknown>()).release {
+                release(it.cast());
             }
         }
     }
     // SAFETY: the plug-in made above, not used again.
     unsafe { IODestroyPlugInInterface(plugin) };
-    read.then_some(log)
+    out
+}
+
+/// An NVMe drive's SMART / health log (512 bytes), from the user client of
+/// the entry above the drive that says `NVMe SMART Capable` (the internal
+/// SSD of a Mac, and NVMe drives in enclosures that pass it through). `None`
+/// for any other drive.
+pub fn nvme_smart(bsd: &str) -> Option<[u8; 512]> {
+    let at = capable(bsd, "NVMe SMART Capable")?;
+    let mut log = [0u8; 512];
+    let call = |i: *mut *mut NvmeSmart| {
+        // SAFETY: the interface the plug-in gave; the log is the 512 bytes it
+        // fills.
+        unsafe { (**i).smart_read_data.map(|f| f(i.cast(), log.as_mut_ptr())) == Some(0) }
+    };
+    // SAFETY: `NvmeSmart` has the layout of `IONVMeSMARTInterface`'s head.
+    let read = unsafe { with_interface(&at, NVME_SMART_CLIENT, NVME_SMART_INTERFACE, call) };
+    (read == Some(true)).then_some(log)
+}
+
+/// An ATA drive's SMART data (512 bytes) and whether an attribute is past
+/// its threshold, from the user client of the entry above the drive that
+/// says `SMART Capable` (a SATA drive inside the Mac or on a SATA card; USB
+/// enclosures rarely pass it through). `None` for any other drive, or where
+/// SMART is turned off.
+pub fn ata_smart(bsd: &str) -> Option<(bool, [u8; 512])> {
+    let at = capable(bsd, "SMART Capable")?;
+    let mut data = [0u8; 512];
+    let mut exceeded = 0u8;
+    let call = |i: *mut *mut AtaSmart| {
+        // SAFETY: the interface the plug-in gave; the status is one byte and
+        // the data the 512 bytes it fills.
+        unsafe {
+            let status = (**i).smart_return_status.map(|f| f(i.cast(), &mut exceeded)) == Some(0);
+            status && (**i).smart_read_data.map(|f| f(i.cast(), data.as_mut_ptr())) == Some(0)
+        }
+    };
+    // SAFETY: `AtaSmart` has the layout of `IOATASMARTInterface`'s head.
+    let read = unsafe { with_interface(&at, ATA_SMART_CLIENT, ATA_SMART_INTERFACE, call) };
+    (read == Some(true)).then_some((exceeded != 0, data))
 }
 
 /// The device a mount point was mounted from: `/dev/disk3s1s1`.
