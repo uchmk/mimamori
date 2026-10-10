@@ -316,7 +316,7 @@ impl Sampler {
     #[cfg(target_os = "linux")]
     pub fn sample(&mut self) -> Vec<Device> {
         let root = std::path::Path::new("/sys");
-        let nv = self.nv.as_ref().map(|n| n.read()).unwrap_or_default();
+        let nv = self.nv.as_mut().map(|n| n.read(true)).unwrap_or_default();
         let now = std::time::Instant::now();
         let mut devs = linux::drm(root, !nv.is_empty());
         self.fd.fill(std::path::Path::new("/proc"), &mut devs, now);
@@ -329,8 +329,8 @@ impl Sampler {
     pub fn sample(&mut self) -> Vec<Device> {
         let mut devs = self.pdh.as_mut().map(|p| p.read()).unwrap_or_default();
         self.kmt.fill(&mut devs);
-        if let Some(nv) = &self.nv {
-            merge_nvml(&mut devs, nv.read());
+        if let Some(nv) = &mut self.nv {
+            merge_nvml(&mut devs, nv.read(false));
         }
         order(devs)
     }

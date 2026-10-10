@@ -79,7 +79,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `gpu/kmt.rs` が LUID でアダプターを開き、温度・ファン・最初のエンジンのクロックを毎回聞く。NVML の値が優先（v0.22.0）
 - [x] Linux の Intel GPU の使用率: `/proc/<pid>/fdinfo` の `drm-engine-*`（i915 / xe が出す）から、全体とプロセスごとの使用率を出す。amdgpu も同じ形でプロセスごとが取れる。
   → `gpu/fdinfo.rs` が `/dev/dri` の fd を 5 秒ごとに探し、毎回 fdinfo を読む。sysfs に使用率の無い GPU は fdinfo の合計を使う（v0.23.0）
-- [ ] NVML のプロセスごとの使用率（`process_utilization_stats`）。今はメモリだけ。
+- [x] NVML のプロセスごとの使用率（`process_utilization_stats`）。今はメモリだけ。
+  → 前の回の後の標本を SM・エンコーダー・デコーダーの大きいほうで平均する。Linux だけ（Windows はカウンタが出す）（v0.24.0）
 - [ ] GPU·NPU の実機の確認 `【実機】`（TESTING.md 3a）。
 
 ## 3. 言語

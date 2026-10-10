@@ -198,7 +198,9 @@ The sys screen reads:
 | macOS | `system_profiler -xml SPHardwareDataType SPMemoryDataType`: the chip or CPU and its cores (and an Intel Mac's L3); an Intel Mac lists its slots; Apple silicon has one block of unified memory in the chip's package. Serial numbers are not shown |
 
 On Windows and Linux, NVIDIA cards are read through NVML, loaded from the
-driver at run time (`nvml.dll` / `libnvidia-ml.so.1`); without it they are
+driver at run time (`nvml.dll` / `libnvidia-ml.so.1`). On Linux NVML also
+gives each process's memory and use (its busiest of the SM, encoder and
+decoder, averaged since the last reading; Maxwell or newer); without it they are
 listed from sysfs on Linux with nothing read, and on Windows keep only what
 D3DKMT gives (temperature, fan and clock, no power).
 

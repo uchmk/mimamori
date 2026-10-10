@@ -4,6 +4,15 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.24.0] - 2026-10-10
+
+### 追加
+
+- gpu·npu の画面（Linux、NVIDIA）: GPU を使っているプロセスの使用率も出すようにした（今まではメモリだけ）。NVML の
+  `nvmlDeviceGetProcessUtilization` の標本を、前の回からの分だけ SM・エンコーダー・デコーダーの大きいほうで平均する。
+  一覧は使用率の高い順に並ぶ。Maxwell 以降の GPU で取れる。
+- Windows では NVML からプロセスの一覧を取らないようにした（使わずに捨てていた。プロセスはカウンタから出る）。
+
 ## [0.23.0] - 2026-10-10
 
 ### 追加
