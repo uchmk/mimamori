@@ -11,7 +11,8 @@
 //! `<config dir>` is the OS's (`%APPDATA%`, `~/Library/Application Support`,
 //! `~/.config`); `UCHMK_CONFIG_DIR` points the whole `uchmk` folder elsewhere.
 //! Before v0.33.0 the app was called mimamori and its folder `mimamori/`;
-//! [`load`] moves that folder to `yagura/` the first time it finds it alone.
+//! [`load`] moves that folder to `yagura/` the first time it finds it alone
+//! (or copies it, when another program keeps it from being renamed).
 
 use std::path::{Path, PathBuf};
 
@@ -177,10 +178,8 @@ pub fn load(base: Option<&Path>) -> Settings {
             Ok(l) => common_lang = l,
             Err(e) => warn.push(e),
         }
-        if let Err(e) = move_old_dir(base) {
-            warn.push(e);
-        }
-        let dir = base.join(DIR);
+        let (dir, note) = move_old_dir(base);
+        warn.extend(note);
         if let Some(t) = read_table(&dir.join("config.toml"), &mut warn) {
             for (k, v) in &t {
                 match k.as_str() {
@@ -210,15 +209,52 @@ pub fn load(base: Option<&Path>) -> Settings {
     s
 }
 
-/// Rename `mimamori/` to `yagura/` when only the old one is there, so the
-/// settings, keymap and column widths written before the rename carry over.
-/// With both there, the new one is used and the old one left alone.
-fn move_old_dir(base: &Path) -> Result<(), String> {
-    let (old, new) = (base.join(OLD_DIR), base.join(DIR));
+/// Move `mimamori/` to `yagura/` when only the old one is there, so the
+/// settings, keymap and column widths written before the rename carry over;
+/// the folder to read this time and what to tell. With both there, the new
+/// one is used and the old one left alone.
+fn move_old_dir(base: &Path) -> (PathBuf, Option<String>) {
+    carry_over(&base.join(OLD_DIR), &base.join(DIR), |a, b| std::fs::rename(a, b))
+}
+
+/// `old` renamed to `new`, else copied there and left (Windows will not
+/// rename a folder while a file in it is open, or Explorer or a shell is in
+/// it), else read where it is this time and tried again next time.
+fn carry_over(old: &Path, new: &Path, rename: impl Fn(&Path, &Path) -> std::io::Result<()>) -> (PathBuf, Option<String>) {
     if !old.is_dir() || new.exists() {
-        return Ok(());
+        return (new.to_path_buf(), None);
     }
-    std::fs::rename(&old, &new).map_err(|e| format!("moving {} to {}: {e}", old.display(), new.display()))
+    let Err(e) = rename(old, new) else { return (new.to_path_buf(), None) };
+    match copy_dir(old, new) {
+        Ok(()) => {
+            let note = format!(
+                "could not move {} ({e}), so it was copied to {}; delete the old folder once nothing uses it",
+                old.display(),
+                new.display()
+            );
+            (new.to_path_buf(), Some(note))
+        }
+        Err(c) => {
+            // `new` was not there before: take the half copy away so the next
+            // start tries again.
+            let _ = std::fs::remove_dir_all(new);
+            (old.to_path_buf(), Some(format!("could not move or copy {} to {} ({e}; {c}): read where it is", old.display(), new.display())))
+        }
+    }
+}
+
+fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -250,6 +286,25 @@ mod tests {
         let s = load(Some(&d));
         assert_eq!(s.interval, 2.0);
         assert!(d.join("mimamori/config.toml").is_file() && s.warnings.is_empty(), "{:?}", s.warnings);
+    }
+
+    #[test]
+    fn a_folder_in_use_is_copied_instead() {
+        let d = test_dir("settings-old-in-use");
+        let (old, new) = (d.join("mimamori"), d.join("yagura"));
+        std::fs::create_dir_all(old.join("themes")).unwrap();
+        std::fs::write(old.join("config.toml"), "interval = 2\n").unwrap();
+        std::fs::write(old.join("themes/mine.toml"), "bg = \"#000000\"\n").unwrap();
+        // What Windows says while Explorer shows the folder (os error 32).
+        let busy = |_: &Path, _: &Path| Err(std::io::Error::other("in use"));
+        let (dir, note) = carry_over(&old, &new, busy);
+        assert_eq!(dir, new);
+        assert!(note.is_some_and(|n| n.contains("copied")));
+        assert!(new.join("config.toml").is_file() && new.join("themes/mine.toml").is_file());
+        assert!(old.join("config.toml").is_file(), "the old one stays");
+        // Next time the new one is there and nothing more is said.
+        assert_eq!(carry_over(&old, &new, busy), (new.clone(), None));
+        assert_eq!(load(Some(&d)).interval, 2.0);
     }
 
     #[test]

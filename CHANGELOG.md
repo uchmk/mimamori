@@ -4,6 +4,17 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.33.1] - 2026-10-11
+
+### 修正
+
+- 改名の移行で、古いフォルダー `uchmk/mimamori/` を何かが掴んでいると（Explorer・エディター・そこに cd した端末・動いている
+  mimamori.exe や `mimamori --agent`）、Windows で移せず（os error 32）、毎回既定の設定で起動していた。移せないときは中身を
+  `uchmk/yagura/` に複写して、そちらを読む。古いフォルダーは残すので、掴んでいるものを閉じてから消してよい（設定の画面の Advanced に
+  そう出る）。複写もできなかったときは、その回は古いフォルダーを読む。
+- README の「Building」に、ビルドの出口をその機械だけ別の場所（RAM ディスクなど）にする書き方を足した（clone の
+  `.cargo/config.toml`。git には入らない）。
+
 ## [0.33.0] - 2026-10-11
 
 ### 変更

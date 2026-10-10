@@ -258,6 +258,14 @@ Windows is where it is tested; the macOS builds are only compiled.
 cargo build --release
 ```
 
+To put the build output somewhere else on one machine only (a RAM disk, say), write
+`.cargo/config.toml` in the clone; it is ignored by git, so CI and other machines keep `target/`:
+
+```toml
+[build]
+target-dir = "R:/uchmk/yagura"
+```
+
 Pure Rust apart from the OS's own libraries; the six targets (Windows, macOS
 and Linux on x86_64 and ARM64) need no C toolchain beyond the platform's
 linker. `build.rs` gives `yagura.exe` its icon and version information on

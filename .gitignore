@@ -2,3 +2,6 @@
 
 # What a scripted run's screenshots land in (scripts/xrun.sh).
 /shots/
+
+# A clone's own Cargo settings, such as a build folder elsewhere (README, Building).
+/.cargo/config.toml
