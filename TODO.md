@@ -24,7 +24,12 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
   → 選ぶだけでは絞らない（左の選択はいつもあるので、ほとんどが隠れる）。インターフェースで `Enter` を押すと絞り、どのアドレスにも付いたもの（`0.0.0.0`・`::`）は残す。選択を動かせば追い、`Esc` で外す（v0.7.5）。
 - [ ] net の実機の確認 `【実機】`（TESTING.md 3c）。
-- [ ] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
+- [x] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
+  → 左がドライブ（1 分の読み書き）、真ん中がマウントされたボリューム（容量・使用率・読み書き）、右が選んだドライブのグラフ（読み・書き・ビジー）と型番・種類・バス・容量。
+  Windows は PhysicalDisk のパフォーマンスカウンター（PDH）と `IOCTL_STORAGE_QUERY_PROPERTY`（管理者は要らない）、Linux は `/proc/diskstats` と `/sys/block`、ボリュームはどの OS も sysinfo（v0.8.0）。
+- [ ] disk: macOS のドライブ（IOKit の `IOBlockStorageDriver` の `Statistics`）。今はボリュームだけで、ボリュームごとの読み書きを右に出す。
+- [ ] disk: SMART の状態と温度（Windows は `MSFT_PhysicalDisk` / `StorageReliabilityCounter`、Linux は NVMe の `hwmon` と `smartctl`）。sensors の画面と合わせて決める。
+- [ ] disk の実機の確認 `【実機】`（TESTING.md 3d）。
 - [ ] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
 - [ ] sys（`0`）: OS・BIOS・メモリのスロットなど、変わらない情報。
 

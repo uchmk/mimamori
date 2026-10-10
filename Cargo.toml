@@ -1,6 +1,6 @@
 [package]
 name = "mimamori"
-version = "0.7.5"
+version = "0.8.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -10,7 +10,7 @@ repository = "https://github.com/uchmk/mimamori"
 [dependencies]
 eframe = "0.36"
 egui = "0.36"
-sysinfo = { version = "0.39", default-features = false, features = ["network", "system", "user"] }
+sysinfo = { version = "0.39", default-features = false, features = ["disk", "network", "system", "user"] }
 crossbeam-channel = "0.5"
 serde = { version = "1", features = ["derive"] }
 toml = "1.1"
@@ -42,7 +42,11 @@ windows = { version = "0.62", features = [
     "Win32_NetworkManagement_IpHelper",
     "Win32_NetworkManagement_Ndis",
     "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
     "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_IO",
+    "Win32_System_Ioctl",
     "Win32_System_Performance",
     "Win32_System_Services",
     "Win32_System_SystemInformation",

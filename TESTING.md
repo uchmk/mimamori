@@ -79,6 +79,16 @@ back to `[ ]`.
 - [ ] 3c.10 `Enter` on an interface narrows the sockets to those whose local address is one of its addresses, plus those bound to any address (`0.0.0.0`, `::`); the middle title says the interface's name and a toast says how to undo it. Moving to another interface follows it, and `Esc` shows every socket again. Compare with `netstat -ano` (Windows) / `ss -tuan` (Linux) / `netstat -anv` (macOS) filtered by the interface's IP.
 - [ ] 3c.8 Leaving net stops reading the sockets (mimamori's own CPU in procs drops back a few seconds after going to another screen); coming back shows the last list at once and refreshes it.
 
+## 3d. Disks (`8`)
+
+- [ ] 3d.1 Windows: the drives are `Disk 0`, `Disk 1`… as in Disk Management; the right column's model, bus (`NVMe`, `SATA`, `USB`), kind (`SSD` / `HDD`) and size match Task Manager's Performance → Disk page and `Get-PhysicalDisk`, run as a normal user; `Volumes` lists the drive letters on it.
+- [ ] 3d.2 Windows: copy a large file to a drive; its `Written` graph and the rate in the left column follow Task Manager's disk graph within a second or two, and `Busy` follows its active time.
+- [ ] 3d.3 Windows: the volumes are the drive letters with the size, free space and file system of Explorer's This PC; a USB stick plugged in appears within a second or two (as a removable drive and volume) and goes when ejected.
+- [ ] 3d.4 Linux: the drives match `lsblk -d` without the `loop` devices; an NVMe drive reads `NVMe` and `SSD`, a spinning one `HDD`; the totals since boot match `/proc/diskstats`; `dd if=/dev/zero of=big bs=1M count=2000 oflag=direct` shows in `Written` and `Busy` (compare `iostat -x 1`).
+- [ ] 3d.5 Linux: the volumes match `df -h` for the real file systems; `/` and `/home` on LVM or LUKS (`/dev/mapper/…`) are linked to the drive under them (`Drive` in the volume rows, `Enter` goes there).
+- [ ] 3d.6 macOS: the left column says the drives are not read yet; the volumes match `df -h` / Disk Utility, and selecting one shows its read and written graphs, which move while a large file is copied.
+- [ ] 3d.7 `Enter` on a drive selects its first volume in the middle; `Enter` on a volume selects its drive on the left. A volume over 90 % full shows its `USE%` in red and a red bar on the right; a narrow window drops the device and file system columns first.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

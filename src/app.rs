@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use tsumugi_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc, gpu, net, svc};
+use crate::collect::{Ctl, Msg, Proc, disk, gpu, net, svc};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -390,6 +390,16 @@ impl App {
         self.net_rows.get(sel).and_then(|&i| self.model.conns.list.get(i))
     }
 
+    /// The drive the disk screen has selected.
+    pub fn selected_drive(&self) -> Option<&disk::Drive> {
+        self.model.disks.drives.get(self.view_of(Screen::Disk).sel[0])
+    }
+
+    /// The volume the disk screen has selected.
+    pub fn selected_volume(&self) -> Option<&disk::Volume> {
+        self.model.disks.volumes.get(self.view_of(Screen::Disk).sel[1])
+    }
+
     /// The name of the process with `pid`, if it is in the process list.
     pub fn proc_name(&self, pid: Option<u32>) -> Option<&str> {
         let pid = pid?;
@@ -527,6 +537,8 @@ impl App {
             (Screen::Svc, Pane::Mid) => self.svc_rows.len(),
             (Screen::Net, Pane::Left) => self.model.nics.len(),
             (Screen::Net, Pane::Mid) => self.net_rows.len(),
+            (Screen::Disk, Pane::Left) => self.model.disks.drives.len(),
+            (Screen::Disk, Pane::Mid) => self.model.disks.volumes.len(),
             _ => 0,
         }
     }
@@ -960,6 +972,26 @@ impl App {
                 Some((None, local)) => self.toast(trf("toast.net_no_pid", &[&local.to_string()])),
                 None => {}
             },
+            // A drive: over to its first volume. A volume: back to its drive.
+            (Screen::Disk, Pane::Left) => {
+                let d = &self.model.disks;
+                let id = self.selected_drive().map(|x| x.id.as_str());
+                let first = d.volumes.iter().position(|v| v.drive.is_some() && v.drive.as_deref() == id);
+                let v = self.view_mut();
+                if let Some(i) = first {
+                    v.sel[Pane::Mid.index()] = i;
+                }
+                v.focus = Pane::Mid.index();
+            }
+            (Screen::Disk, Pane::Mid) => {
+                let d = &self.model.disks;
+                let id = self.selected_volume().and_then(|v| v.drive.as_deref());
+                if let Some(i) = d.drives.iter().position(|x| Some(x.id.as_str()) == id) {
+                    let v = self.view_mut();
+                    v.sel[Pane::Left.index()] = i;
+                    v.focus = Pane::Left.index();
+                }
+            }
             _ => {}
         }
     }
@@ -1029,6 +1061,12 @@ impl App {
             let scope = if self.net_listen { "listening" } else { "all" };
             let on = self.net_nic.as_deref().map(|n| format!(", on {n}")).unwrap_or_default();
             s += &format!("conns: {} of {} ({}, {scope}{on})\n", self.net_rows.len(), c.list.len(), c.source);
+        }
+        if self.model.disk_read {
+            let d = &self.model.disks;
+            let drives: Vec<&str> = d.drives.iter().map(|x| x.id.as_str()).collect();
+            let vols: Vec<&str> = d.volumes.iter().map(|v| v.mount.as_str()).collect();
+            s += &format!("disks: {} ({}); volumes: {} ({})\n", drives.len(), drives.join(" "), vols.len(), vols.join(" "));
         }
         if let Some(st) = &self.model.st {
             s += &format!("topology: {} ({})\n", st.topo.summary(), st.topo.source);
@@ -1177,6 +1215,8 @@ mod tests {
         assert_eq!(a.screen, Screen::Svc);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Net);
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Disk);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Ovw);
         tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
@@ -1444,6 +1484,24 @@ mod tests {
         assert_eq!(a.screen, Screen::Procs);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
         assert!(matches!(ctl.try_iter().last(), Some(Ctl::Net(false))));
+    }
+
+    #[test]
+    fn enter_on_the_disk_screen_moves_between_a_drive_and_its_volumes() {
+        let (mut a, tx, _ctl) = app();
+        let drive = |id: &str| disk::Drive { id: id.into(), ..disk::Drive::default() };
+        let vol = |m: &str, d: Option<&str>| disk::Volume { mount: m.into(), drive: d.map(Into::into), ..disk::Volume::default() };
+        let volumes = vec![vol("/", Some("sda")), vol("/boot", Some("sdb")), vol("/home", Some("sdb")), vol("/net", None)];
+        tx.send(Msg::Disks(disk::Disks { drives: vec![drive("sda"), drive("sdb")], volumes, note: None })).unwrap();
+        a.pump();
+        keys(&mut a, "8 j <Enter>");
+        assert_eq!((a.focus(), a.selected_volume().map(|v| v.mount.as_str())), (Pane::Mid, Some("/boot")));
+        keys(&mut a, "k <Enter>");
+        assert_eq!((a.focus(), a.selected_drive().map(|d| d.id.as_str())), (Pane::Left, Some("sda")));
+        // A volume on no known drive stays where it is.
+        keys(&mut a, "l G <Enter>");
+        assert_eq!((a.focus(), a.selected_volume().map(|v| v.mount.as_str())), (Pane::Mid, Some("/net")));
+        assert!(a.report().contains("disks: 2 (sda sdb); volumes: 4"));
     }
 
     #[test]

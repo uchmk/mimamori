@@ -57,10 +57,11 @@
 | --- | --- |
 | `src/main.rs` | eframe の起動、`--keys` の受け付け、フレームごとの `pump` と描画 |
 | `src/app.rs` | アプリの状態と `Act` の実行（画面・フォーカス・選択・絞り込み・並べ替え・列の幅・トースト） |
-| `src/collect/` | 収集のスレッド（cpu / mem / proc / gpu / net のインターフェース、svc と net のソケットは画面が出ている間だけ）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32） |
+| `src/collect/` | 収集のスレッド（cpu / mem / proc / gpu / net のインターフェース / disk、svc と net のソケットは画面が出ている間だけ）。`topo/` は起動時に 1 回取るコアの構成（Linux は sysfs、Windows は Win32） |
 | `src/collect/gpu/` | GPU・NPU。`linux.rs`（drm と accel の sysfs）、`windows.rs`（PDH のカウンタを装置ごとにまとめる純粋な関数）と `pdh.rs`（PDH・DXGI の呼び出し）、`nvidia.rs`（NVML を実行時に読む）。取れない値は `Why` で理由を持つ |
 | `src/collect/svc/` | サービス。`linux.rs`（`systemctl` の出力のパース）、`windows.rs`（SCM の数値を状態に畳み、ドライバーを見分ける純粋な関数）と `scm.rs`（SCM の呼び出し、サービスとドライバー、設定は 1 分キャッシュ）、`mac.rs`（`launchctl list` と `print-disabled`、launchd の plist。plist はファイルの時刻でキャッシュ）。一覧が短い理由は `Note` |
 | `src/collect/net/` | ネットワーク。インターフェースは sysinfo の数え値に、`linux.rs`（sysfs の種類・速度・ドライバー）と `windows.rs`（IP ヘルパーの表から人が思うアダプターを選ぶ純粋な関数）と `iphlp.rs`（IP ヘルパーの呼び出し）、`mac.rs`（`networksetup` のハードウェアポートで種類、`netstat -anvW` のパースでソケット）。ソケットは Linux が `/proc/net` と `/proc/*/fd`、Windows が `GetExtendedTcpTable` / `GetExtendedUdpTable` |
+| `src/collect/disk/` | ディスク。ボリュームはどの OS も sysinfo。ドライブは `linux.rs`（`/proc/diskstats` と `/sys/block` のパース、ボリュームの持ち主のドライブ）、`windows.rs`（PDH のインスタンス名と `STORAGE_DEVICE_DESCRIPTOR` を読む純粋な関数）と `ioctl.rs`（PDH と `IOCTL_STORAGE_QUERY_PROPERTY` の呼び出し）。PDH の配列の読み方は gpu と共有の `collect/pdh.rs` |
 | `src/kill.rs` | プロセスの終了（確認の後、1 回ごとのスレッドで。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL） |
 | `src/svcctl.rs` | サービスの開始・停止・再起動（確認の後、1 回ごとのスレッドで。Windows は SCM、Linux は `systemctl`、macOS は `launchctl`。権限不足とエラーの読み替えは純粋な関数） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
@@ -69,5 +70,5 @@
 | `src/i18n.rs`, `src/lang/` | `tr()` と言語の表 |
 | `src/persist.rs` | `state.toml`（列の幅）の読み書き |
 | `src/keyscript.rs` | `--keys` の台本の実行（キー・クリック・ドラッグ・スクリーンショット・状態の書き出し） |
-| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認） |
+| `src/ui/` | 描画。`overview.rs`・`cpu.rs`・`mem.rs`・`procs.rs`・`gpu.rs`・`svc.rs`・`net.rs`・`disk.rs`・`tiles.rs`（コアのタイル）・`graph.rs`・`help.rs`・`confirm.rs`（プロセスの終了とサービスの操作の確認） |
 | `scripts/` | `verify.sh`（push の前）、`xrun.sh`（Xvfb で起動して撮る） |

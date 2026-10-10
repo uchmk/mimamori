@@ -5,6 +5,7 @@
 
 mod confirm;
 mod cpu;
+mod disk;
 mod gpu;
 mod graph;
 mod help;
@@ -252,6 +253,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Procs => procs::draw(&mut cx, rects),
                     Screen::Svc => svc::draw(&mut cx, rects),
                     Screen::Net => net::draw(&mut cx, rects),
+                    Screen::Disk => disk::draw(&mut cx, rects),
                     _ => {}
                 }
             }
@@ -343,6 +345,13 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
             let socks = if m.conn_read { m.conns.list.len().to_string() } else { "—".to_string() };
             let source = if m.conn_read { m.conns.source } else { "—" };
             trf("crumb.net", &[&m.nics.len().to_string(), &up, &socks, source])
+        }
+        Screen::Disk if !m.disk_read => tr("misc.reading").to_string(),
+        Screen::Disk => {
+            let d = &m.disks;
+            let (rd, wr) = d.rates();
+            let r = |b: f64| fmt_bytes(b as u64);
+            trf("crumb.disk", &[&d.drives.len().to_string(), &d.volumes.len().to_string(), &r(rd), &r(wr)])
         }
         _ => tr("misc.not_yet").to_string(),
     };

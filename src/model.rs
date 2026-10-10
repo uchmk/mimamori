@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, gpu, net, svc};
+use crate::collect::{Mem, Msg, Proc, Static, disk, gpu, net, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -77,6 +77,13 @@ pub struct Model {
     /// The last reading of sockets, kept when the net screen is left.
     pub conns: net::Conns,
     pub conn_read: bool,
+    pub disks: disk::Disks,
+    /// Read and written bytes per second and busy percent per live drive,
+    /// by its id.
+    pub drive_hist: HashMap<String, (Ring, Ring, Ring)>,
+    /// Read and written bytes per second per mounted volume, by mount point.
+    pub vol_hist: HashMap<String, (Ring, Ring)>,
+    pub disk_read: bool,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -149,6 +156,27 @@ impl Model {
             Msg::Conns(c) => {
                 self.conns = c;
                 self.conn_read = true;
+            }
+            Msg::Disks(d) => {
+                let mut hist = std::mem::take(&mut self.drive_hist);
+                hist.retain(|id, _| d.drives.iter().any(|x| x.id == *id));
+                for x in &d.drives {
+                    let (r, w, b) = hist.entry(x.id.clone()).or_default();
+                    r.push(x.read_rate as f32);
+                    w.push(x.write_rate as f32);
+                    b.push(x.busy.unwrap_or(0.0));
+                }
+                self.drive_hist = hist;
+                let mut hist = std::mem::take(&mut self.vol_hist);
+                hist.retain(|m, _| d.volumes.iter().any(|v| v.mount == *m));
+                for v in &d.volumes {
+                    let (r, w) = hist.entry(v.mount.clone()).or_default();
+                    r.push(v.read_rate as f32);
+                    w.push(v.write_rate as f32);
+                }
+                self.vol_hist = hist;
+                self.disks = d;
+                self.disk_read = true;
             }
         }
     }
@@ -235,5 +263,23 @@ mod tests {
         assert!(!m.conn_read);
         m.apply(Msg::Conns(net::Conns { source: "/proc/net", ..net::Conns::default() }));
         assert!(m.conn_read);
+    }
+
+    #[test]
+    fn disk_history_follows_the_live_drives_and_volumes() {
+        let drive =
+            |id: &str, r: f64| disk::Drive { id: id.into(), read_rate: r, write_rate: r * 2.0, busy: Some(5.0), ..disk::Drive::default() };
+        let vol = |m: &str, r: f64| disk::Volume { mount: m.into(), read_rate: r, ..disk::Volume::default() };
+        let mut m = Model::default();
+        m.apply(Msg::Disks(disk::Disks {
+            drives: vec![drive("sda", 1.0), drive("sdb", 2.0)],
+            volumes: vec![vol("/", 3.0), vol("/mnt", 4.0)],
+            note: None,
+        }));
+        m.apply(Msg::Disks(disk::Disks { drives: vec![drive("sda", 10.0)], volumes: vec![vol("/", 30.0)], note: None }));
+        assert!(m.disk_read && !m.drive_hist.contains_key("sdb") && !m.vol_hist.contains_key("/mnt"));
+        let (r, w, b) = &m.drive_hist["sda"];
+        assert_eq!((r.len(), r.last(), w.last(), b.last()), (2, Some(10.0), Some(20.0), Some(5.0)));
+        assert_eq!(m.vol_hist["/"].0.last(), Some(30.0));
     }
 }
