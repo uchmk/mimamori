@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.43.2"
+version = "0.44.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -14,6 +14,8 @@ sysinfo = { version = "0.39", default-features = false, features = ["disk", "net
 crossbeam-channel = "0.5"
 serde = { version = "1", features = ["derive"] }
 toml = "1.1"
+# `--snapshot`: the readings as JSON (pure Rust).
+serde_json = "1"
 dirs = "7"
 png = "0.18"
 # The fleet agent's messages (serde's compact binary form, pure Rust).

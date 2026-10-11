@@ -130,6 +130,7 @@ back to `[ ]`.
 - [ ] 3e.9 Windows: with HWiNFO running (Settings → Shared Memory Support on, as a normal user for yagura), the left column lists HWiNFO's chips (the CPU, the board's chip such as `Nuvoton NCT6798D`, the drives, the GPU) with the same temperatures and fan rpm HWiNFO's sensor window shows (a value in °F in HWiNFO reads in °C here); the source line starts `HWiNFO:`; the note about thermal zones is gone. Quitting HWiNFO drops its chips within a few seconds and the note comes back; starting it again brings them back. — Not run on the PC of uchmk/yagura#8 (no HWiNFO).
 - [ ] 3e.10 Windows: with HWiNFO not running and LibreHardwareMonitor running (as administrator, as it needs), its hardware lists with the temperatures and fans its window shows; the source line starts `LibreHardwareMonitor /`. OpenHardwareMonitor instead reads the same way with `OpenHardwareMonitor` as the source. Starting LibreHardwareMonitor after yagura finds it within about 10 seconds. — Not run on the PC of uchmk/yagura#8 (no LibreHardwareMonitor).
 - [ ] 3e.11 Windows: with HWiNFO or LibreHardwareMonitor running, a GPU or drive the tool lists is not listed a second time from D3DKMT / NVML or the disk reading; one the tool does not list still is. The thermal zones stay listed in both cases. — Not run on the PC of uchmk/yagura#8 (neither tool).
+- [ ] 3e.12 The middle column is the selected sensor's graph (its name as the title, the reading in the corner, the high mark in yellow and the critical mark in red) over the list of sensors; the border drags and double-clicks like disk's. The chip rows on the left have no graph, and the right column has only the details. Moving through the sensors moves the graph; with nothing to read it says `—`.
 - [ ] 3e.6 `Enter` on a chip selects its first sensor in the middle; `Enter` on a sensor selects its chip on the left. Moving through the chips (`j` / `k`, the wheel, a click) moves the middle to each chip's first sensor and the right column follows; moving through the sensors keeps the chip on the left in step. A temperature within 10 °C of its high mark is yellow and past it red; a stopped fan is dim; a narrow window drops the chip, low, critical and high columns in that order. — Windows 11 x64, v0.40.1 (uchmk/yagura#8): `Enter` passed, but moving through the chips left the middle and right columns where they were; v0.41.5 moves them together. Re-test that, the colours and the narrow window.
 
 ## 3f. Sys (`0`)
@@ -185,6 +186,11 @@ back to `[ ]`.
 - [ ] 3h.7 macOS: the USB devices match System Information → USB (names, makers, speeds, what hangs off each hub) and the PCI ones its PCI page (or Thunderbolt / Apple silicon's built-in devices); the driver column names the matched kext class.
 - [ ] 3h.8 Fleet: `Enter` on a v0.43 agent's card, then `D`, shows that machine's devices; an agent older than v0.43 shows `another version` on its card instead (protocol 6).
 - [ ] 3h.9 A narrow window drops the status, then the maker column; long names are cut with `…` and do not run into the next column; with `language = "ja"` the classes on macOS and Linux and every label read in Japanese.
+
+## 3i. Export
+
+- [ ] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from).
+- [ ] 3i.2 `yagura --log-metrics usage.csv --every 2` writes the header and a row every 2 seconds; the numbers match the screens (CPU, memory, the network and disk rates, the busiest GPU, the hottest temperature, the battery on a laptop). Ctrl+C stops it; running it again appends rows without a second header. `--every 0` is refused.
 
 ## 4. Resizing the columns
 

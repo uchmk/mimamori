@@ -4,6 +4,16 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 【人】 は持ち主の作業、【実機】 は実機でしか確かめられないもの（[TESTING.md](TESTING.md) に積む）、（要確認: #N）は `question` の issue で止まっているもの。
 印は裸で書く（バッククォートの中は言及の扱い）。開発のセッションが進められる項目の数は `scripts/todo-open.sh`。
 
+## 0. 次の機能（持ち主と決めた順）
+
+- [x] 値のまとめ出力: `--snapshot`（JSON）と `--log-metrics`（CSV）。v0.44.0。実機の確認は TESTING.md 3i 【実機】。
+- [ ] 履歴の拡張: 1 秒刻みで 5 分を基本に、15 分（5 秒平均）と 1 時間（30 秒平均）まで。システム全体の系列だけ（プロセスごとには持たない）。グラフをダブルクリックでフルサイズ、既定は 5 分、`[` `]` で 5 分 → 15 分 → 1 時間。
+- [ ] 通知: tsumugi の `alert.rs` の OS 側（トースト・バッジ・点滅・音）を ito の `ito-notify` に切り出し、tsumugi は薄い変換にする。yagura は `[notify]` を共有して、しきい値のアラート（CPU・温度・ディスク残り・サービスの停止）を出す。
+- [ ] procs: 優先度（nice / Priority Class）・CPU アフィニティ・開いているファイルとハンドル・プロセスごとのネットワーク量。
+- [ ] コンテナ（Docker / Podman、Linux は cgroup）の CPU とメモリ。
+- [ ] ログインユーザー・電源プラン・ロードアベレージを overview か sys に。
+- [ ] エージェントの Prometheus 互換 `/metrics`。
+
 ## 1. 残りの画面（番号は v0.1 で固定済み）
 
 - [x] procs: プロセスの終了（`x`、確認のオーバーレイを挟む。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL）。

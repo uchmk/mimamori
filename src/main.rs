@@ -7,6 +7,7 @@
 mod app;
 mod collect;
 mod config;
+mod export;
 mod fonts;
 mod gpu_backend;
 mod i18n;
@@ -44,6 +45,8 @@ yagura — a keyboard-driven system monitor
 
 usage: yagura [--keys SCRIPT]
        yagura --agent [--log FILE]
+       yagura --snapshot
+       yagura --log-metrics FILE [--every SECONDS]
        yagura --install-service | --uninstall-service
        yagura --key
 
@@ -60,6 +63,16 @@ usage: yagura [--keys SCRIPT]
                  whose keys `[[agent.viewer]]` lists, directly, over Noise
   --log FILE     with --agent: append what the agent says to FILE as well
                  (Windows has no console to say it to when started at logon)
+  --snapshot     no window: read everything once and print it as JSON (the
+                 system, CPU, memory, processes, GPUs, services, network,
+                 disks, sensors, battery, hardware and devices)
+  --log-metrics FILE
+                 no window: append a CSV row of the main numbers (CPU,
+                 load, memory, network, disk, GPU, hottest temperature,
+                 battery, process count) to FILE every --every seconds
+                 (default 5) until stopped with Ctrl+C
+  --every SECONDS
+                 the gap between rows of --log-metrics
   --install-service
                  start the agent at logon from now on, and now: a systemd
                  user unit on Linux, a LaunchAgent on macOS, the user's Run
@@ -241,6 +254,9 @@ fn main() -> eframe::Result {
     let mut log = None;
     let mut service = None;
     let mut show_key = false;
+    let mut snapshot = false;
+    let mut metrics: Option<PathBuf> = None;
+    let mut every = 5.0_f64;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--version" | "-V" => {
@@ -259,6 +275,21 @@ fn main() -> eframe::Result {
                 };
                 log = Some(PathBuf::from(p));
             }
+            "--snapshot" => snapshot = true,
+            "--log-metrics" => {
+                let Some(p) = args.next() else {
+                    eprintln!("yagura: --log-metrics needs a file");
+                    std::process::exit(2);
+                };
+                metrics = Some(PathBuf::from(p));
+            }
+            "--every" => match args.next().and_then(|v| v.parse::<f64>().ok()).filter(|v| *v >= 1.0 && v.is_finite()) {
+                Some(v) => every = v,
+                None => {
+                    eprintln!("yagura: --every needs a number of seconds, 1 or more");
+                    std::process::exit(2);
+                }
+            },
             "--install-service" => service = Some(true),
             "--key" => show_key = true,
             "--uninstall-service" => service = Some(false),
@@ -290,6 +321,23 @@ fn main() -> eframe::Result {
         let done = if install { service::install(s.port) } else { service::uninstall(s.port) };
         if let Err(e) = done {
             eprintln!("yagura: {e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if snapshot {
+        match export::snapshot() {
+            Ok(json) => println!("{json}"),
+            Err(e) => {
+                eprintln!("yagura --snapshot: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+    if let Some(path) = &metrics {
+        if let Err(e) = export::log_metrics(path, Duration::from_secs_f64(every)) {
+            eprintln!("yagura --log-metrics: {e}");
             std::process::exit(1);
         }
         return Ok(());

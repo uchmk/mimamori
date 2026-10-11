@@ -206,6 +206,23 @@ What `run` can say in a keymap:
 | `help`, `escape`, `quit` | As the keys above |
 | `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended or a service is started, stopped or restarted (`[confirm]`) |
 
+## Export
+
+Two options read the machine without opening a window:
+
+```
+yagura --snapshot > now.json                # everything, once, as JSON
+yagura --log-metrics usage.csv --every 5    # a row every 5 seconds until Ctrl+C
+```
+
+`--snapshot` waits until every source has read (about two seconds) and prints
+the system, CPU, memory, processes, GPUs, services, network (interfaces and
+sockets), disks, sensors, battery, hardware and devices. `--log-metrics`
+appends one row of the main numbers to a CSV (the header is written when the
+file is new): UTC time, CPU %, load average, memory and swap, network and disk
+bytes per second, the busiest GPU %, the hottest temperature, battery % and
+the process count. A number the machine does not give is an empty cell.
+
 ## Fleet
 
 The fleet screen (`F`) shows other machines next to this one. On each of them
