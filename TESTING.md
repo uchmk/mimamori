@@ -223,6 +223,13 @@ back to `[ ]`.
 - [ ] 3l.2 Windows: a normal app reads "Normal"; setting it to "Below normal" in Task Manager shows within 5 s; a service of another user shows `—` (not an error). Setting an affinity in Task Manager shows as ranges (`0-3`).
 - [ ] 3l.3 Linux / macOS: `nice -n 5 sleep 100` reads 5; `taskset -c 0,2 sleep 100` (Linux) reads `0,2`. Inside another machine (fleet) the extra rows are not shown.
 
+## 3n. Prometheus `/metrics`
+
+- [ ] 3n.1 With `[agent] metrics = "127.0.0.1:9314"` in config.toml, `yagura --agent` says `Prometheus scrapes http://127.0.0.1:9314/metrics`; `curl -i http://127.0.0.1:9314/metrics` answers `200` with `text/plain; version=0.0.4`, and the numbers match the sys / cpu / mem / net screens (Windows and Linux or macOS). `curl -i http://127.0.0.1:9314/` is a 404.
+- [ ] 3n.2 `promtool check metrics < page` (from `curl`) reports no problem; a Prometheus with the address under `static_configs` shows the target `UP` and `yagura_cpu_usage_percent` graphs.
+- [ ] 3n.3 A port already taken makes the agent say `cannot serve metrics on …` and exit 1; with `metrics` left out nothing listens on 9314. On a laptop `yagura_battery_charge_percent` is there; on a desktop it is not.
+- [ ] 3n.4 Watch a machine's containers or procs from a viewer (fleet, `Enter` on its card): its `/metrics` then also holds `yagura_container_*` and `yagura_processes`; after the viewer leaves they go again.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

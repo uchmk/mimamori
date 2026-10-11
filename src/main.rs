@@ -15,6 +15,7 @@ mod i18n;
 mod icon;
 mod keyscript;
 mod kill;
+mod metrics;
 mod model;
 mod persist;
 mod prefs;
@@ -63,7 +64,9 @@ usage: yagura [--keys SCRIPT]
                  `tailscale serve --bg --tcp 7313 tcp://localhost:7313`.
                  View only unless `[agent] allow` says otherwise. With
                  `[agent] listen = \"0.0.0.0:7314\"` it also takes viewers
-                 whose keys `[[agent.viewer]]` lists, directly, over Noise
+                 whose keys `[[agent.viewer]]` lists, directly, over Noise;
+                 with `[agent] metrics = \"127.0.0.1:9314\"` it also serves
+                 `/metrics` for Prometheus (plain HTTP)
   --log FILE     with --agent: append what the agent says to FILE as well
                  (Windows has no console to say it to when started at logon)
   --snapshot     no window: read everything once and print it as JSON (the
@@ -379,7 +382,7 @@ fn main() -> eframe::Result {
                 }
             }
         });
-        let cfg = remote::agent::Config { allow: s.allow.clone(), interval: s.interval, direct };
+        let cfg = remote::agent::Config { allow: s.allow.clone(), interval: s.interval, direct, metrics: s.metrics.clone() };
         if let Err(e) = remote::agent::run(s.port, cfg) {
             eprintln!("yagura --agent: 127.0.0.1:{}: {e}", s.port);
             std::process::exit(1);

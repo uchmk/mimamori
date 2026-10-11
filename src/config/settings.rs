@@ -83,6 +83,9 @@ pub struct Settings {
     /// `[agent] listen`: where `--agent` also listens for viewers with a key
     /// (`address:port`).
     pub listen: Option<String>,
+    /// `[agent] metrics`: where `--agent` serves `/metrics` for Prometheus
+    /// (plain HTTP, `address:port`).
+    pub metrics: Option<String>,
     /// `[[agent.viewer]]`: the keys let in there.
     pub viewers: Vec<ViewerKey>,
     /// `[[host]]`: the other machines on the fleet screen.
@@ -106,6 +109,7 @@ impl Default for Settings {
             allow: Vec::new(),
             port: crate::remote::proto::PORT,
             listen: None,
+            metrics: None,
             viewers: Vec::new(),
             hosts: Vec::new(),
             notify: crate::alert::Notify::default(),
@@ -210,6 +214,10 @@ fn agent(v: &toml::Value, s: &mut Settings, warn: &mut Vec<String>) {
             "listen" => match v.as_str().map(str::trim) {
                 Some(a) if !a.is_empty() => s.listen = Some(crate::remote::proto::with_port(a, crate::remote::proto::DIRECT_PORT)),
                 _ => warn.push("config.toml: [agent] `listen` is an address such as \"0.0.0.0:7314\"".into()),
+            },
+            "metrics" => match v.as_str().map(str::trim) {
+                Some(a) if !a.is_empty() => s.metrics = Some(crate::remote::proto::with_port(a, crate::remote::proto::METRICS_PORT)),
+                _ => warn.push("config.toml: [agent] `metrics` is an address such as \"127.0.0.1:9314\"".into()),
             },
             "viewer" => s.viewers = viewers(v, warn),
             other => warn.push(format!("config.toml: unknown setting `agent.{other}`")),
@@ -463,6 +471,29 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_metrics_address() {
+        let d = test_dir("settings-metrics");
+        std::fs::create_dir_all(d.join("yagura")).unwrap();
+        std::fs::write(
+            d.join("yagura/config.toml"),
+            "[agent]
+metrics = \"127.0.0.1\"
+",
+        )
+        .unwrap();
+        assert_eq!(load(Some(&d)).metrics.as_deref(), Some("127.0.0.1:9314"));
+        std::fs::write(
+            d.join("yagura/config.toml"),
+            "[agent]
+metrics = 3
+",
+        )
+        .unwrap();
+        let s = load(Some(&d));
+        assert!(s.metrics.is_none() && s.warnings.iter().any(|w| w.contains("metrics")), "{s:?}");
+    }
+
+    #[test]
     fn reads_the_keys_for_direct_connections() {
         let d = test_dir("settings-direct");
         std::fs::create_dir_all(d.join("yagura")).unwrap();
@@ -479,6 +510,7 @@ mod tests {
         std::fs::write(d.join("yagura/config.toml"), text).unwrap();
         let s = load(Some(&d));
         assert_eq!(s.listen.as_deref(), Some("0.0.0.0:7314"));
+        assert!(s.metrics.is_none());
         assert_eq!(s.viewers, [ViewerKey { name: "laptop".into(), key: [1; 32] }, ViewerKey { name: b[..8].to_string(), key: [2; 32] }]);
         // A bad key leaves its host out; a bad `every` only the pace.
         assert_eq!(

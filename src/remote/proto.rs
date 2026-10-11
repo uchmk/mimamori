@@ -22,6 +22,8 @@ use crate::{kill, svcctl};
 pub const PORT: u16 = 7313;
 /// The port of `[agent] listen`, the direct (Noise) one, when it names none.
 pub const DIRECT_PORT: u16 = 7314;
+/// Where `[agent] metrics` serves `/metrics` when no port is given.
+pub const METRICS_PORT: u16 = 9314;
 /// Raised whenever a message changes shape.
 pub const PROTO: u16 = 7;
 /// A frame larger than this is not ours (another service on the port). The

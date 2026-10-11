@@ -132,6 +132,7 @@ backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
 port = 7313         # listens on 127.0.0.1 only
 allow = []          # "kill", "service": what a fleet viewer may do on this machine (empty: view only)
 listen = "0.0.0.0:7314"   # also take direct connections from the viewers below (none when left out)
+metrics = "127.0.0.1:9314" # also serve /metrics for Prometheus (plain HTTP; none when left out)
 
 [[agent.viewer]]    # a machine that may watch this one directly, once per machine
 name = "laptop"
@@ -403,6 +404,19 @@ connection to the direct port without a key gets nowhere, and the plain
 port stays on 127.0.0.1. The sys screen's agent section shows where it
 listens directly and its key. Let the port through the machine's firewall
 (on Windows it asks the first time the agent listens).
+
+### Prometheus
+
+`[agent] metrics = "127.0.0.1:9314"` (the port is 9314 when left out) also
+makes `yagura --agent` answer `GET /metrics` in Prometheus' text format:
+CPU in total and per logical CPU, the load average, memory and swap, each
+interface's bytes and rates, each volume's size and free space, the disk
+rates, temperatures and fans, each GPU's use, memory and temperature, the
+battery, and, while a viewer is watching procs or containers, the process
+count and the containers. The page is made from the agent's latest readings
+only when it is asked for. It is plain HTTP with no login, so keep it on
+`127.0.0.1` (or behind a firewall or a reverse proxy) unless the network is
+yours; add the address to Prometheus' `scrape_configs` as a static target.
 
 ## Languages
 

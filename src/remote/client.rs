@@ -399,7 +399,7 @@ mod tests {
     fn agent(interval: f32) -> String {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = l.local_addr().unwrap().to_string();
-        let cfg = Config { allow: Vec::new(), interval, direct: None };
+        let cfg = Config { allow: Vec::new(), interval, direct: None, metrics: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         addr
     }
@@ -424,7 +424,7 @@ mod tests {
     fn a_viewer_gets_the_hello_summaries_and_round_trips() {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let (addr, port) = (l.local_addr().unwrap().to_string(), l.local_addr().unwrap().port());
-        let cfg = Config { allow: vec!["kill".into()], interval: 0.5, direct: None };
+        let cfg = Config { allow: vec!["kill".into()], interval: 0.5, direct: None, metrics: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         let rx = watch_one(addr);
         let Event::Up(h) = next(&rx) else { panic!("not up first") };
@@ -451,7 +451,7 @@ mod tests {
     fn a_probe_reads_the_agent_on_this_machine() {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
-        let cfg = Config { allow: vec!["service".into()], interval: 0.25, direct: None };
+        let cfg = Config { allow: vec!["service".into()], interval: 0.25, direct: None, metrics: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         let (h, sum) = probe(port).expect("an agent");
         assert_eq!((h.port, h.allow.as_slice(), h.pid), (port, ["service".to_string()].as_slice(), std::process::id()));
@@ -537,7 +537,7 @@ mod tests {
     fn agent_allowing(allow: &[&str]) -> String {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = l.local_addr().unwrap().to_string();
-        let cfg = Config { allow: allow.iter().map(|a| a.to_string()).collect(), interval: 0.5, direct: None };
+        let cfg = Config { allow: allow.iter().map(|a| a.to_string()).collect(), interval: 0.5, direct: None, metrics: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         addr
     }
@@ -581,7 +581,7 @@ mod tests {
         let w = Want { detail: true, ..Want::default() };
         tx.send(ToHost::Want(w)).unwrap();
         let l = TcpListener::bind(&addr).unwrap();
-        std::thread::spawn(move || agent::serve(l, Config { allow: vec!["kill".into()], interval: 0.25, direct: None }));
+        std::thread::spawn(move || agent::serve(l, Config { allow: vec!["kill".into()], interval: 0.25, direct: None, metrics: None }));
         loop {
             match next(&rx) {
                 Event::Up(_) => break,
@@ -642,7 +642,7 @@ mod tests {
         let public = keys.public;
         let viewers = viewers.into_iter().enumerate().map(|(i, key)| ViewerKey { name: format!("v{i}"), key }).collect();
         let direct = agent::Direct { listen: addr.clone(), keys, viewers };
-        let cfg = Config { allow: Vec::new(), interval: 0.25, direct: Some(direct) };
+        let cfg = Config { allow: Vec::new(), interval: 0.25, direct: Some(direct), metrics: None };
         std::thread::spawn(move || agent::serve_all(plain, Some(l), cfg));
         (addr, public)
     }
@@ -714,11 +714,66 @@ mod tests {
         assert!(matches!(next(&rx), Event::Down(Why::Closed | Why::NotAgent)));
     }
 
+    /// One request to `addr`, the whole answer.
+    fn http(addr: &str, req: &str) -> String {
+        use std::io::{Read, Write};
+        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+        s.write_all(req.as_bytes()).unwrap();
+        let mut out = String::new();
+        let _ = s.read_to_string(&mut out);
+        out
+    }
+
+    #[test]
+    fn the_agent_serves_prometheus_its_page() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let free = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().to_string();
+        let cfg = Config { allow: Vec::new(), interval: 0.25, direct: None, metrics: Some(free.clone()) };
+        std::thread::spawn(move || agent::serve(l, cfg));
+        // The sampler needs a moment before it has a reading to show.
+        let mut page = String::new();
+        for _ in 0..40 {
+            page = http(
+                &free,
+                "GET /metrics HTTP/1.1
+Host: x
+
+",
+            );
+            if page.contains("yagura_memory_total_bytes") && page.contains("yagura_cpu_usage_percent") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        assert!(page.starts_with("HTTP/1.1 200 OK"), "{page}");
+        assert!(page.contains("text/plain; version=0.0.4"));
+        assert!(page.contains("yagura_info{version="), "{page}");
+        assert!(
+            http(
+                &free,
+                "GET /other HTTP/1.1
+
+"
+            )
+            .starts_with("HTTP/1.1 404")
+        );
+        assert!(
+            http(
+                &free,
+                "POST /metrics HTTP/1.1
+
+"
+            )
+            .starts_with("HTTP/1.1 404")
+        );
+    }
+
     #[test]
     fn a_slow_pace_spaces_the_summaries() {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = l.local_addr().unwrap().to_string();
-        std::thread::spawn(move || agent::serve(l, Config { allow: Vec::new(), interval: 0.25, direct: None }));
+        std::thread::spawn(move || agent::serve(l, Config { allow: Vec::new(), interval: 0.25, direct: None, metrics: None }));
         let rx = watch_target(Target { addr, every: Some(1.0), ..Target::default() });
         assert!(matches!(next(&rx), Event::Up(_)));
         let end = Instant::now() + Duration::from_millis(3300);

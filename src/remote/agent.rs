@@ -54,6 +54,8 @@ pub struct Config {
     pub interval: f32,
     /// `[agent] listen`, when it is set.
     pub direct: Option<Direct>,
+    /// `[agent] metrics`: `address:port` to serve `/metrics` on.
+    pub metrics: Option<String>,
 }
 
 /// Where and to whom the agent answers directly.
@@ -153,8 +155,73 @@ pub fn serve_all(plain: TcpListener, direct: Option<TcpListener>, cfg: Config) -
         let hub = hub_tx.clone();
         std::thread::Builder::new().name("yagura-direct".into()).spawn(move || accept(&l, &hub, Some(&Arc::new(d))))?;
     }
+    if let Some(addr) = &cfg.metrics {
+        match TcpListener::bind(addr) {
+            Ok(l) => {
+                say(format_args!("yagura agent: Prometheus scrapes http://{}/metrics", l.local_addr()?));
+                let hub = hub_tx.clone();
+                std::thread::Builder::new().name("yagura-metrics".into()).spawn(move || scrape(&l, &hub))?;
+            }
+            Err(e) => {
+                say(format_args!("yagura agent: cannot serve metrics on {addr}: {e}"));
+                return Err(e);
+            }
+        }
+    }
     accept(&plain, &hub_tx, None);
     Ok(())
+}
+
+/// How long a scraper may take to send its request.
+const SCRAPE: Duration = Duration::from_secs(5);
+
+/// Answer `GET /metrics` on `l`, one scraper at a time (they are few and quick).
+fn scrape(l: &TcpListener, hub: &Sender<HubIn>) {
+    for s in l.incoming().flatten() {
+        let _ = s.set_read_timeout(Some(SCRAPE));
+        let _ = s.set_write_timeout(Some(SCRAPE));
+        let _ = answer_scrape(&s, hub);
+        let _ = s.shutdown(Shutdown::Both);
+    }
+}
+
+fn answer_scrape(mut s: &TcpStream, hub: &Sender<HubIn>) -> io::Result<()> {
+    // The request line is all that matters; the headers are left unread.
+    let mut buf = [0u8; 1024];
+    let n = s.read(&mut buf)?;
+    let (status, ctype, body) = match page(&buf[..n], hub) {
+        Some(p) => ("200 OK", "text/plain; version=0.0.4; charset=utf-8", p),
+        None => (
+            "404 Not Found",
+            "text/plain",
+            "only /metrics is here
+"
+            .to_string(),
+        ),
+    };
+    write!(
+        s,
+        "HTTP/1.1 {status}
+Content-Type: {ctype}
+Content-Length: {}
+Connection: close
+
+{body}",
+        body.len()
+    )
+}
+
+/// The page for a `GET /metrics` request, from the hub.
+fn page(req: &[u8], hub: &Sender<HubIn>) -> Option<String> {
+    let line = std::str::from_utf8(req).ok()?.lines().next()?;
+    let mut w = line.split(' ');
+    let (method, path) = (w.next()?, w.next()?);
+    if method != "GET" || path.split('?').next() != Some("/metrics") {
+        return None;
+    }
+    let (tx, rx) = unbounded();
+    hub.send(HubIn::Metrics(tx)).ok()?;
+    rx.recv_timeout(SCRAPE).ok()
 }
 
 /// A thread for each viewer that connects to `l`.
@@ -180,6 +247,8 @@ enum HubIn {
     /// Seconds between this viewer's summaries.
     Pace(u64, f32),
     Leave(u64),
+    /// A scrape: the page goes on the sender.
+    Metrics(Sender<String>),
     /// A viewer at `who` asks for `act`; the answer goes on `tx`.
     Act {
         id: u64,
@@ -360,6 +429,9 @@ fn hub(cfg: &Config, port: u16, direct: Option<SocketAddr>, ins: &Receiver<HubIn
                         }
                     }
                     Ok(HubIn::Leave(id)) => viewers.retain(|v| v.id != id),
+                    Ok(HubIn::Metrics(tx)) => {
+                        let _ = tx.send(crate::metrics::render(&model));
+                    }
                     Ok(HubIn::Act { id, who, act, tx }) => {
                         let job = check(&cfg.allow, &act, &model, std::process::id());
                         do_job(id, who, act, job, tx, re_tx.clone());
