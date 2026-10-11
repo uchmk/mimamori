@@ -31,12 +31,24 @@ impl Edit {
             Self::Allow(list) => set_key(text, Some("agent"), "allow", &quote_list(list)),
             Self::Port(p) => set_key(text, Some("agent"), "port", &p.to_string()),
             Self::Hosts(hosts) => {
-                let blocks: Vec<Vec<(&str, String)>> =
-                    hosts.iter().map(|h| vec![("name", quote(&h.name)), ("addr", quote(&h.addr))]).collect();
+                let blocks: Vec<Vec<(&str, String)>> = hosts.iter().map(host_block).collect();
                 set_tables(text, "host", &blocks)
             }
         }
     }
+}
+
+/// One `[[host]]`'s keys; the screen edits the name and the address, the
+/// key and the pace go back as they were read.
+fn host_block(h: &Host) -> Vec<(&'static str, String)> {
+    let mut out = vec![("name", quote(&h.name)), ("addr", quote(&h.addr))];
+    if let Some(k) = &h.key {
+        out.push(("key", quote(&crate::remote::noise::encode(k))));
+    }
+    if let Some(every) = h.every {
+        out.push(("every", format!("{every:?}")));
+    }
+    out
 }
 
 /// yagura's config.toml for the `uchmk` folder `base`.
@@ -59,7 +71,7 @@ mod tests {
     use crate::util::test_dir;
 
     fn host(name: &str, addr: &str) -> Host {
-        Host { name: name.into(), addr: addr.into() }
+        Host { name: name.into(), addr: addr.into(), ..Host::default() }
     }
 
     #[test]
@@ -94,13 +106,14 @@ mod tests {
         let d = test_dir("edit-save");
         save(&d, &Edit::Interval(5.0)).unwrap();
         save(&d, &Edit::Backend("gl".into())).unwrap();
-        save(&d, &Edit::Hosts(vec![host("nas", "localhost:7314")])).unwrap();
+        let keyed = Host { key: Some([7; 32]), every: Some(5.0), ..host("far", "far.example") };
+        save(&d, &Edit::Hosts(vec![host("nas", "localhost:7314"), keyed.clone()])).unwrap();
         save(&d, &Edit::Allow(vec!["kill".into(), "service".into()])).unwrap();
         let s = settings::load(Some(&d));
         assert!(s.warnings.is_empty(), "{:?}", s.warnings);
         assert_eq!(s.interval, 5.0);
         assert_eq!(s.backend.as_deref(), Some("gl"));
-        assert_eq!(s.hosts, [host("nas", "localhost:7314")]);
+        assert_eq!(s.hosts, [host("nas", "localhost:7314"), keyed], "the key and the pace go back");
         assert_eq!(s.allow, ["kill", "service"]);
     }
 }

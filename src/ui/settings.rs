@@ -28,6 +28,8 @@ struct Asked {
     interval: Option<f32>,
     copy: Option<String>,
     open_folder: bool,
+    /// The fleet page was shown: read this machine's key.
+    key: bool,
     toast: Option<String>,
 }
 
@@ -61,6 +63,11 @@ fn index() -> Vec<(usize, &'static str)> {
         "settings.copy_tailscale",
         "settings.copy_host",
         "settings.copy_config",
+        "settings.direct",
+        "settings.key",
+        "settings.copy_viewer",
+        "settings.copy_listen",
+        "settings.copy_keyed_host",
     ] {
         v.push((FLEET, tr(k)));
     }
@@ -87,6 +94,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     let prefs = &mut app.prefs;
     let (settings, common, themes, base) = (&prefs.settings, &prefs.common, &prefs.themes, prefs.base.as_deref());
     let drafts = &mut prefs.drafts;
+    let key = &prefs.key;
     let config = base.map(crate::config::edit::config_path);
     let out = ito_prefs::show(ui, ito_theme::colors(), &mut prefs.state, &nav, keys, |ui, page, l| match page {
         GENERAL => {
@@ -187,7 +195,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 if row(ui, l, tr("settings.add_host"), tr("settings.add_host_note"), |ui| button(ui, l, tr("settings.add"))) {
                     let mut list = hosts.clone();
                     let n = list.len() + 1;
-                    list.push(Host { name: format!("host{n}"), addr: format!("localhost:{}", proto::PORT) });
+                    list.push(Host { name: format!("host{n}"), addr: format!("localhost:{}", proto::PORT), ..Host::default() });
                     asked.edits.push(Edit::Hosts(list));
                 }
             });
@@ -210,6 +218,33 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                     if row(ui, l, tr(key), &shown, |ui| button(ui, l, tr("settings.copy"))) {
                         asked.copy = Some(text);
                     }
+                }
+            });
+            asked.key = true;
+            section(ui, l, tr("settings.direct"), |ui| match key {
+                Some(Ok((public, host))) => {
+                    let lines = [
+                        ("settings.key", public.clone()),
+                        ("settings.copy_viewer", remote::noise::viewer_snippet(host, public)),
+                        ("settings.copy_listen", remote::noise::listen_snippet()),
+                        ("settings.copy_keyed_host", remote::noise::host_snippet(host, public)),
+                    ];
+                    for (k, (key, text)) in lines.into_iter().enumerate() {
+                        if k > 0 {
+                            sep(ui, l);
+                        }
+                        let shown = text.trim_end().replace('\n', "  ");
+                        if row(ui, l, tr(key), &shown, |ui| button(ui, l, tr("settings.copy"))) {
+                            asked.copy = Some(text);
+                        }
+                    }
+                }
+                Some(Err(e)) => {
+                    row(ui, l, tr("settings.key"), "", |_| ());
+                    status(ui, e, l.c.err);
+                }
+                None => {
+                    row(ui, l, tr("settings.key"), tr("settings.key_reading"), |_| ());
                 }
             });
         }
@@ -268,6 +303,9 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     }
     if asked.open_folder {
         app.prefs.open(false);
+    }
+    if asked.key {
+        app.prefs.ask_key();
     }
     app.prefs.common_change(asked.common);
     for e in asked.edits {

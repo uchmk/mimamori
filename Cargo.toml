@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.40.1"
+version = "0.41.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -35,6 +35,11 @@ ito-theme = { git = "https://github.com/uchmk/ito", rev = "2a1fe9c08ff0b7e4ca77b
 ito-prefs = { git = "https://github.com/uchmk/ito", rev = "2a1fe9c08ff0b7e4ca77bbc43d83fe89078d0857" }
 # The clock's local time (pure Rust).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# The fleet's direct connections: the Noise handshake and ciphers (pure
+# Rust; "std" is left off, it would bring ring and its C), and the keys
+# written as base64 in config.toml.
+snow = { version = "0.10", default-features = false, features = ["use-chacha20poly1305", "use-blake2", "use-curve25519", "use-getrandom"] }
+base64 = { version = "0.23", default-features = false, features = ["std"] }
 
 # NVIDIA's management library, loaded at run time: without the driver it is
 # simply not there and no NVIDIA device is listed from it. macOS has no NVML.

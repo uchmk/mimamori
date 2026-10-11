@@ -1,12 +1,15 @@
 //! `yagura --agent`: no window, the same sampler, and a summary for every
-//! viewer connected to 127.0.0.1.
+//! viewer connected to 127.0.0.1, or directly to `[agent] listen` with a key
+//! the agent knows ([`super::noise`]).
 //!
 //! One hub thread folds the sampler's messages into a [`Model`] and hands
 //! each viewer the frames through its own short channel; a viewer that falls
 //! behind misses summaries rather than holding the others up. A viewer that
 //! watches the machine (`ToAgent::Watch`) also gets the sampler's readings,
 //! starting with the latest of each; processes, services and sockets are
-//! read only while somebody wants them.
+//! read only while somebody wants them. After the first summary each viewer
+//! gets only what changed ([`proto::Delta`]), as often as it asked
+//! ([`ToAgent::Pace`]).
 //!
 //! A viewer may also ask the agent to end a process or start, stop or
 //! restart a service ([`ToAgent::Act`]). The agent decides from its own
@@ -15,20 +18,22 @@
 //! [`FromAgent::Done`].
 
 use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::mem::Discriminant;
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, TrySendError, bounded, select, unbounded};
 
+use super::noise::{self, Keys};
 use super::proto::{self, Act, Done, FromAgent, Hello, PROTO, Refusal, Summary, ToAgent, Want, Warn};
 use super::wire::{self, Route};
 use crate::collect::svc::State;
 use crate::collect::{self, Ctl, Msg, gpu};
+use crate::config::settings::ViewerKey;
 use crate::model::Model;
 use crate::{kill, svcctl};
 
@@ -48,6 +53,19 @@ pub struct Config {
     pub allow: Vec<String>,
     /// Seconds between samples.
     pub interval: f32,
+    /// `[agent] listen`, when it is set.
+    pub direct: Option<Direct>,
+}
+
+/// Where and to whom the agent answers directly.
+#[derive(Clone, Debug)]
+pub struct Direct {
+    /// `address:port`.
+    pub listen: String,
+    /// This machine's.
+    pub keys: Keys,
+    /// `[[agent.viewer]]`.
+    pub viewers: Vec<ViewerKey>,
 }
 
 /// The `--log` file, when given.
@@ -92,19 +110,61 @@ pub fn run(port: u16, cfg: Config) -> io::Result<()> {
     say(format_args!(
         "yagura agent: reach it with `ssh -L {port}:localhost:{port} <this host>` or `tailscale serve --bg --tcp {port} tcp://localhost:{port}`"
     ));
-    serve(listener, cfg)
+    let direct = match &cfg.direct {
+        None => None,
+        Some(d) => match TcpListener::bind(&d.listen) {
+            Ok(l) => {
+                say(format_args!(
+                    "yagura agent: viewers with a key connect directly to {} (key {})",
+                    l.local_addr()?,
+                    noise::encode(&d.keys.public)
+                ));
+                if d.viewers.is_empty() {
+                    say(format_args!(
+                        "yagura agent: no [[agent.viewer]] keys yet, so nobody gets in directly; `yagura --key` on the viewer prints its own"
+                    ));
+                }
+                Some(l)
+            }
+            Err(e) => {
+                say(format_args!("yagura agent: cannot listen on {}: {e}", d.listen));
+                return Err(e);
+            }
+        },
+    };
+    serve_all(listener, direct, cfg)
 }
 
-/// Serve viewers on `listener` (the tests pass one on port 0).
+/// Serve plain viewers on `listener` (the tests pass one on port 0).
+#[cfg(test)]
 pub fn serve(listener: TcpListener, cfg: Config) -> io::Result<()> {
-    let port = listener.local_addr()?.port();
+    serve_all(listener, None, cfg)
+}
+
+/// Serve plain viewers on `plain` and, with `cfg.direct`, viewers with a key
+/// on `direct`.
+pub fn serve_all(plain: TcpListener, direct: Option<TcpListener>, cfg: Config) -> io::Result<()> {
+    let port = plain.local_addr()?.port();
     let (hub_tx, hub_rx) = unbounded();
-    std::thread::Builder::new().name("yagura-agent".into()).spawn(move || hub(&cfg, port, &hub_rx))?;
-    for conn in listener.incoming() {
+    let direct = direct.zip(cfg.direct.clone());
+    let at = direct.as_ref().and_then(|(l, _)| l.local_addr().ok());
+    let hub_cfg = cfg.clone();
+    std::thread::Builder::new().name("yagura-agent".into()).spawn(move || hub(&hub_cfg, port, at, &hub_rx))?;
+    if let Some((l, d)) = direct {
+        let hub = hub_tx.clone();
+        std::thread::Builder::new().name("yagura-direct".into()).spawn(move || accept(&l, &hub, Some(&Arc::new(d))))?;
+    }
+    accept(&plain, &hub_tx, None);
+    Ok(())
+}
+
+/// A thread for each viewer that connects to `l`.
+fn accept(l: &TcpListener, hub: &Sender<HubIn>, direct: Option<&Arc<Direct>>) {
+    for conn in l.incoming() {
         match conn {
             Ok(s) => {
-                let hub = hub_tx.clone();
-                let spawned = std::thread::Builder::new().name("yagura-viewer".into()).spawn(move || viewer(s, &hub));
+                let (hub, direct) = (hub.clone(), direct.cloned());
+                let spawned = std::thread::Builder::new().name("yagura-viewer".into()).spawn(move || viewer(s, &hub, direct.as_deref()));
                 if let Err(e) = spawned {
                     say(format_args!("yagura agent: {e}"));
                 }
@@ -112,13 +172,14 @@ pub fn serve(listener: TcpListener, cfg: Config) -> io::Result<()> {
             Err(e) => say(format_args!("yagura agent: {e}")),
         }
     }
-    Ok(())
 }
 
 /// What a viewer thread tells the hub.
 enum HubIn {
     Join(u64, Sender<Frame>),
     Want(u64, Want),
+    /// Seconds between this viewer's summaries.
+    Pace(u64, f32),
     Leave(u64),
     /// A viewer at `who` asks for `act`; the answer goes on `tx`.
     Act {
@@ -133,6 +194,41 @@ struct Viewer {
     id: u64,
     tx: Sender<Frame>,
     want: Want,
+    /// Between its summaries, and when the next is due.
+    every: Duration,
+    next: Instant,
+    /// The summary it last got, which the next delta is made against;
+    /// `None` when it missed one, so it gets the whole of the next.
+    base: Option<Summary>,
+}
+
+impl Viewer {
+    /// `s` if one is due by the round after this (`half` a round early is
+    /// on time); false when it is gone.
+    fn offer(&mut self, s: &Summary, now: Instant, half: Duration) -> bool {
+        if now + half < self.next {
+            return true;
+        }
+        let msg = match &self.base {
+            Some(b) => FromAgent::Delta(b.diff(s)),
+            None => FromAgent::Summary(s.clone()),
+        };
+        match self.tx.try_send(Arc::new(proto::frame(&msg))) {
+            Ok(()) => {
+                self.base = Some(s.clone());
+                self.next = now + self.every;
+            }
+            Err(TrySendError::Full(_)) => self.base = None,
+            Err(TrySendError::Disconnected(_)) => return false,
+        }
+        true
+    }
+}
+
+/// A viewer's pace as the agent keeps it: within the limits and no faster
+/// than the agent samples; `None` for nonsense.
+fn pace(secs: f32, interval: Duration) -> Option<Duration> {
+    secs.is_finite().then(|| Duration::from_secs_f32(secs.clamp(proto::PACE_MIN, proto::PACE_MAX)).max(interval))
 }
 
 /// The latest frame of each reading, for a viewer that starts watching.
@@ -186,16 +282,17 @@ fn msg_frame(m: &Msg) -> Option<Frame> {
     (f.len() <= 4 + proto::MAX_FRAME).then(|| Arc::new(f))
 }
 
-fn hub(cfg: &Config, port: u16, ins: &Receiver<HubIn>) {
+fn hub(cfg: &Config, port: u16, direct: Option<SocketAddr>, ins: &Receiver<HubIn>) {
+    let interval = Duration::from_secs_f32(cfg.interval);
     // `ctl` stays alive here: the sampler stops when it is dropped.
-    let (rx, ctl) = collect::spawn(None, Duration::from_secs_f32(cfg.interval));
+    let (rx, ctl) = collect::spawn(None, interval);
     // Processes, services and sockets only while somebody watches.
     let _ = ctl.send(Ctl::Procs(0));
     let mut reading = Want::default();
     let procs_kind = std::mem::discriminant(&Msg::Procs { procs: Vec::new(), total_threads: None });
     let mut model = Model::default();
     let mut hello: Option<Frame> = None;
-    let mut last: Option<Frame> = None;
+    let mut last: Option<Summary> = None;
     let mut cache = Cache::default();
     let mut viewers: Vec<Viewer> = Vec::new();
     // A service request that finished: read the services again at once.
@@ -212,28 +309,38 @@ fn hub(cfg: &Config, port: u16, ins: &Receiver<HubIn>) {
                     send(&mut viewers, &f, |w| w.takes(r));
                 }
                 model.apply(m);
-                let f = if first {
-                    let f: Frame = Arc::new(proto::frame(&FromAgent::Hello(hello_of(&model, cfg, port))));
+                if first {
+                    let f: Frame = Arc::new(proto::frame(&FromAgent::Hello(hello_of(&model, cfg, port, direct))));
                     hello = Some(f.clone());
-                    f
+                    send(&mut viewers, &f, |_| true);
                 } else if round {
                     let s = Summary { viewers: viewers.len().min(usize::from(u16::MAX)) as u16, ..summary(&model) };
-                    let f: Frame = Arc::new(proto::frame(&FromAgent::Summary(s)));
-                    last = Some(f.clone());
-                    f
+                    let now = Instant::now();
+                    viewers.retain_mut(|v| v.offer(&s, now, interval / 2));
+                    last = Some(s);
                 } else {
                     continue;
-                };
-                send(&mut viewers, &f, |_| true);
+                }
             }
             recv(ins) -> m => {
                 match m {
                     Ok(HubIn::Join(id, tx)) => {
                         // One who comes before the hello gets it with everyone else.
-                        for f in hello.iter().chain(&last) {
+                        if let Some(f) = &hello {
                             let _ = tx.try_send(f.clone());
                         }
-                        viewers.push(Viewer { id, tx, want: Want::default() });
+                        let now = Instant::now();
+                        let mut v = Viewer { id, tx, want: Want::default(), every: interval, next: now, base: None };
+                        if let Some(s) = &last {
+                            v.offer(s, now, Duration::ZERO);
+                        }
+                        viewers.push(v);
+                    }
+                    Ok(HubIn::Pace(id, secs)) => {
+                        if let (Some(v), Some(every)) = (viewers.iter_mut().find(|v| v.id == id), pace(secs, interval)) {
+                            v.every = every;
+                            v.next = v.next.min(Instant::now() + every);
+                        }
                     }
                     Ok(HubIn::Want(id, w)) => {
                         if let Some(v) = viewers.iter_mut().find(|v| v.id == id) {
@@ -343,7 +450,7 @@ fn send(viewers: &mut Vec<Viewer>, f: &Frame, to: impl Fn(Want) -> bool) {
     viewers.retain(|v| !to(v.want) || !matches!(v.tx.try_send(f.clone()), Err(TrySendError::Disconnected(_))));
 }
 
-fn hello_of(m: &Model, cfg: &Config, port: u16) -> Hello {
+fn hello_of(m: &Model, cfg: &Config, port: u16, direct: Option<SocketAddr>) -> Hello {
     let st = m.st.as_ref();
     let text = |f: fn(&collect::Static) -> &String| st.map(f).cloned().unwrap_or_default();
     Hello {
@@ -359,6 +466,8 @@ fn hello_of(m: &Model, cfg: &Config, port: u16) -> Hello {
         interval: cfg.interval,
         pid: std::process::id(),
         port,
+        direct: direct.map(|a| a.to_string()).unwrap_or_default(),
+        key: cfg.direct.as_ref().filter(|_| direct.is_some()).map(|d| noise::encode(&d.keys.public)).unwrap_or_default(),
     }
 }
 
@@ -386,12 +495,22 @@ pub fn summary(m: &Model) -> Summary {
     }
 }
 
-/// One viewer: its hello, then frames out and pings in until either side
-/// stops.
-fn viewer(s: TcpStream, hub: &Sender<HubIn>) {
+/// One viewer: the handshake when it connects directly, its hello, then
+/// frames out and pings in until either side stops.
+fn viewer(s: TcpStream, hub: &Sender<HubIn>, direct: Option<&Direct>) {
     let peer = s.peer_addr().map(|a| a.to_string()).unwrap_or_default();
-    if let Err(e) = talk(&s, &peer, hub) {
-        say(format_args!("yagura agent: {peer}: {e}"));
+    let _ = s.set_nodelay(true);
+    let halves = match direct {
+        None => noise::plain(&s).map(|(r, w)| (peer.clone(), r, w)),
+        Some(d) => noise::respond(&s, &d.keys, |k| d.viewers.iter().find(|v| v.key == *k).map(|v| format!("{} ({peer})", v.name))),
+    };
+    match halves {
+        Ok((who, r, w)) => {
+            if let Err(e) = talk(&s, r, w, &who, hub) {
+                say(format_args!("yagura agent: {who}: {e}"));
+            }
+        }
+        Err(e) => say(format_args!("yagura agent: {peer}: {e}")),
     }
     let _ = s.shutdown(Shutdown::Both);
 }
@@ -405,11 +524,10 @@ impl Drop for Leave<'_> {
     }
 }
 
-fn talk(s: &TcpStream, who: &str, hub: &Sender<HubIn>) -> io::Result<()> {
+/// A viewer's frames over `r` and `w`, the halves of `s`.
+fn talk(s: &TcpStream, mut r: impl Read, mut w: impl Write + Send + 'static, who: &str, hub: &Sender<HubIn>) -> io::Result<()> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let _ = s.set_nodelay(true);
     s.set_read_timeout(Some(QUIET))?;
-    let mut r = s.try_clone()?;
     let first = proto::read_body(&mut r)?;
     match proto::head(&first) {
         Some((0, p)) if p != PROTO => say(format_args!("yagura agent: a viewer speaks protocol {p}, this agent {PROTO}")),
@@ -417,10 +535,9 @@ fn talk(s: &TcpStream, who: &str, hub: &Sender<HubIn>) -> io::Result<()> {
         _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "not a yagura viewer")),
     }
     let (tx, rx) = bounded::<Frame>(QUEUE);
-    let mut w = s.try_clone()?;
     std::thread::Builder::new().name("yagura-viewer-out".into()).spawn(move || {
         for f in rx {
-            if io::Write::write_all(&mut w, &f).is_err() {
+            if w.write_all(&f).and_then(|()| w.flush()).is_err() {
                 break;
             }
         }
@@ -439,6 +556,11 @@ fn talk(s: &TcpStream, who: &str, hub: &Sender<HubIn>) -> io::Result<()> {
             }
             ToAgent::Watch(w) => {
                 if hub.send(HubIn::Want(id, w)).is_err() {
+                    return Ok(());
+                }
+            }
+            ToAgent::Pace(secs) => {
+                if hub.send(HubIn::Pace(id, secs)).is_err() {
                     return Ok(());
                 }
             }
@@ -484,6 +606,46 @@ mod tests {
 
     fn service(action: Action, name: &str, driver: bool) -> Act {
         Act::Service { action, name: name.into(), driver }
+    }
+
+    #[test]
+    fn a_pace_is_kept_within_the_limits() {
+        let second = Duration::from_secs(1);
+        assert_eq!(pace(10.0, second), Some(Duration::from_secs(10)));
+        assert_eq!(pace(0.1, Duration::from_millis(200)), Some(Duration::from_millis(500)));
+        // Never faster than the agent samples, nor slower than a minute.
+        assert_eq!(pace(0.5, Duration::from_secs(2)), Some(Duration::from_secs(2)));
+        assert_eq!(pace(1e9, second), Some(Duration::from_secs(60)));
+        assert_eq!(pace(f32::NAN, second), None);
+        assert_eq!(pace(f32::INFINITY, second), None);
+    }
+
+    #[test]
+    fn a_viewer_gets_deltas_on_its_pace_and_the_whole_after_a_miss() {
+        let (tx, rx) = bounded(1);
+        let t0 = Instant::now();
+        let every = Duration::from_secs(10);
+        let mut v = Viewer { id: 0, tx, want: Want::default(), every, next: t0, base: None };
+        let half = Duration::from_millis(500);
+        let s = |cpu: f32| Summary { cpu, ..Summary::default() };
+        let got = |rx: &Receiver<Frame>| proto::decode::<FromAgent>(&rx.try_recv().unwrap()[4..]).unwrap();
+        assert!(v.offer(&s(1.0), t0, half));
+        assert_eq!(got(&rx), FromAgent::Summary(s(1.0)));
+        // Not due for ten seconds; half a round early is on time.
+        assert!(v.offer(&s(2.0), t0 + Duration::from_secs(5), half));
+        assert!(rx.is_empty());
+        assert!(v.offer(&s(3.0), t0 + Duration::from_millis(9600), half));
+        assert!(matches!(got(&rx), FromAgent::Delta(d) if d.cpu == Some(3.0)));
+        // One that does not fit is missed, and the next is whole.
+        let t = t0 + Duration::from_secs(20);
+        v.tx.try_send(Arc::new(Vec::new())).unwrap();
+        assert!(v.offer(&s(4.0), t, half));
+        assert!(v.base.is_none());
+        rx.try_recv().unwrap();
+        assert!(v.offer(&s(5.0), t, half));
+        assert_eq!(got(&rx), FromAgent::Summary(s(5.0)));
+        drop(rx);
+        assert!(!v.offer(&s(6.0), t + every, half), "gone");
     }
 
     #[test]

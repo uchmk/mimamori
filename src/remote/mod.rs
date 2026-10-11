@@ -1,13 +1,16 @@
 //! The fleet: other machines' yagura, each run as `yagura --agent`.
 //!
-//! The agent listens on 127.0.0.1 only and has no keys or passwords of its
-//! own: the viewer reaches it through `ssh -L` or `tailscale serve`, which
-//! already say who may connect and encrypt the way. [`proto`] is what they
-//! say, [`agent`] the listening side, [`client`] one thread per host on the
-//! viewer's side, and [`Peer`] what the fleet screen draws from.
+//! The agent listens on 127.0.0.1 for plain connections, which the viewer
+//! makes through `ssh -L` or `tailscale serve` (they already say who may
+//! connect and encrypt the way). With `[agent] listen` it also takes direct
+//! ones across the network, from the viewers whose keys it lists, over the
+//! Noise protocol ([`noise`]). [`proto`] is what they say, [`agent`] the
+//! listening side, [`client`] one thread per host on the viewer's side, and
+//! [`Peer`] what the fleet screen draws from.
 
 pub mod agent;
 pub mod client;
+pub mod noise;
 pub mod proto;
 pub mod wire;
 
@@ -18,7 +21,6 @@ use crate::model::Ring;
 use client::{Event, Why};
 use proto::{Hello, Summary};
 
-/// A round trip slower than this marks the card slow.
 /// The command that serves this machine to the fleet screens of others.
 pub const AGENT_LINE: &str = "yagura --agent";
 
@@ -37,6 +39,7 @@ pub fn host_sample() -> String {
     format!("[[host]]\nname = \"nas\"\naddr = \"localhost:{}\"\n", proto::PORT)
 }
 
+/// A round trip slower than this marks the card slow.
 pub const SLOW: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Debug, PartialEq)]
@@ -148,7 +151,7 @@ mod tests {
     use super::*;
 
     fn peer() -> Peer {
-        Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into() })
+        Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into(), ..Host::default() })
     }
 
     #[test]

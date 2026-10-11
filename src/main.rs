@@ -45,6 +45,7 @@ yagura — a keyboard-driven system monitor
 usage: yagura [--keys SCRIPT]
        yagura --agent [--log FILE]
        yagura --install-service | --uninstall-service
+       yagura --key
 
   --keys SCRIPT  press these keys once the window is up, as kura's --keys
                  (`<Wait:ms>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`,
@@ -54,7 +55,9 @@ usage: yagura [--keys SCRIPT]
                  of other machines, on 127.0.0.1:7313 only (`[agent] port`);
                  reach it through `ssh -L 7313:localhost:7313 HOST` or
                  `tailscale serve --bg --tcp 7313 tcp://localhost:7313`.
-                 View only unless `[agent] allow` says otherwise
+                 View only unless `[agent] allow` says otherwise. With
+                 `[agent] listen = \"0.0.0.0:7314\"` it also takes viewers
+                 whose keys `[[agent.viewer]]` lists, directly, over Noise
   --log FILE     with --agent: append what the agent says to FILE as well
                  (Windows has no console to say it to when started at logon)
   --install-service
@@ -63,6 +66,9 @@ usage: yagura [--keys SCRIPT]
                  key on Windows. Needs no administrator
   --uninstall-service
                  stop that agent and remove what --install-service added
+  --key          print this machine's public key (made the first time) and
+                 what to add to the other machine's config.toml for a direct
+                 connection
   --version      print the version
   --help         print this
 
@@ -224,6 +230,7 @@ fn attach_console() {
 #[cfg(not(windows))]
 fn attach_console() {}
 
+/// This machine's name, for `--key`'s examples.
 fn main() -> eframe::Result {
     let mut args = std::env::args().skip(1).peekable();
     if args.peek().is_some() {
@@ -233,6 +240,7 @@ fn main() -> eframe::Result {
     let mut agent = false;
     let mut log = None;
     let mut service = None;
+    let mut show_key = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--version" | "-V" => {
@@ -252,6 +260,7 @@ fn main() -> eframe::Result {
                 log = Some(PathBuf::from(p));
             }
             "--install-service" => service = Some(true),
+            "--key" => show_key = true,
             "--uninstall-service" => service = Some(false),
             "--keys" => {
                 let Some(s) = args.next() else {
@@ -285,6 +294,20 @@ fn main() -> eframe::Result {
         }
         return Ok(());
     }
+    if show_key {
+        let Some(dir) = &s.dir else {
+            eprintln!("yagura --key: this machine has no config folder to keep a key in");
+            std::process::exit(1);
+        };
+        match remote::noise::load_or_make(dir) {
+            Ok(keys) => print!("{}", remote::noise::howto(&keys.public, &remote::noise::key_path(dir), &remote::noise::host_name())),
+            Err(e) => {
+                eprintln!("yagura --key: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
     if agent {
         if let Some(path) = &log
             && let Err(e) = remote::agent::log_to(path)
@@ -295,7 +318,17 @@ fn main() -> eframe::Result {
         for w in &s.warnings {
             eprintln!("yagura: {w}");
         }
-        let cfg = remote::agent::Config { allow: s.allow.clone(), interval: s.interval };
+        let direct = s.listen.as_ref().map(|listen| {
+            let keys = s.dir.as_deref().ok_or_else(|| "this machine has no config folder to keep a key in".to_string());
+            match keys.and_then(|d| remote::noise::load_or_make(d).map_err(|e| e.to_string())) {
+                Ok(keys) => remote::agent::Direct { listen: listen.clone(), keys, viewers: s.viewers.clone() },
+                Err(e) => {
+                    eprintln!("yagura --agent: [agent] listen: {e}");
+                    std::process::exit(1);
+                }
+            }
+        });
+        let cfg = remote::agent::Config { allow: s.allow.clone(), interval: s.interval, direct };
         if let Err(e) = remote::agent::run(s.port, cfg) {
             eprintln!("yagura --agent: 127.0.0.1:{}: {e}", s.port);
             std::process::exit(1);
@@ -346,7 +379,8 @@ fn main() -> eframe::Result {
             cc.egui_ctx.set_zoom_factor(app.prefs.common.scale_or_one());
             if !hosts.is_empty() {
                 let peers = hosts.iter().map(remote::Peer::new).collect();
-                app.set_fleet(peers, remote::client::spawn(&hosts, Some(cc.egui_ctx.clone())));
+                let fleet = remote::client::spawn(&hosts, app.prefs.settings.dir.clone(), Some(cc.egui_ctx.clone()));
+                app.set_fleet(peers, fleet);
             }
             // One line in the status bar; the whole list went to stderr.
             if let Some(first) = warnings.first() {

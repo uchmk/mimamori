@@ -17,6 +17,9 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::remote::noise::{self, Key};
+use crate::remote::proto::{PACE_MAX, PACE_MIN};
+
 pub const INTERVAL_MIN: f32 = 0.5;
 pub const INTERVAL_MAX: f32 = 10.0;
 pub const BACKENDS: [&str; 5] = ["auto", "gl", "vulkan", "dx12", "metal"];
@@ -36,11 +39,25 @@ pub fn own_dir(base: &Path) -> PathBuf {
 }
 
 /// A machine on the fleet screen: `[[host]] name = "nas", addr = "localhost:7314"`.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Host {
     pub name: String,
-    /// `host` or `host:port`; the port defaults to the agent's.
+    /// `host` or `host:port`; the port defaults to the agent's (the direct
+    /// one with a `key`).
     pub addr: String,
+    /// The agent's public key: connect to its `[agent] listen` directly,
+    /// over Noise, rather than to a tunnel.
+    pub key: Option<Key>,
+    /// Seconds between its summaries, for a thin line; the agent's interval
+    /// when `None`.
+    pub every: Option<f32>,
+}
+
+/// A viewer let in directly: `[[agent.viewer]] name = "laptop", key = "…"`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ViewerKey {
+    pub name: String,
+    pub key: Key,
 }
 
 #[derive(Clone, Debug)]
@@ -63,6 +80,11 @@ pub struct Settings {
     pub allow: Vec<String>,
     /// `[agent] port`: where `--agent` listens on 127.0.0.1.
     pub port: u16,
+    /// `[agent] listen`: where `--agent` also listens for viewers with a key
+    /// (`address:port`).
+    pub listen: Option<String>,
+    /// `[[agent.viewer]]`: the keys let in there.
+    pub viewers: Vec<ViewerKey>,
     /// `[[host]]`: the other machines on the fleet screen.
     pub hosts: Vec<Host>,
     pub warnings: Vec<String>,
@@ -79,6 +101,8 @@ impl Default for Settings {
             dir: None,
             allow: Vec::new(),
             port: crate::remote::proto::PORT,
+            listen: None,
+            viewers: Vec::new(),
             hosts: Vec::new(),
             warnings: Vec::new(),
         }
@@ -111,7 +135,46 @@ fn string(t: &toml::Table, key: &str, file: &str, warn: &mut Vec<String>) -> Opt
     }
 }
 
-/// `[agent]`: `allow = ["kill", "service"]`, `port = 7313`.
+/// A key in base64, or why not.
+fn key(t: &toml::Table, file: &str, warn: &mut Vec<String>) -> Result<Option<Key>, ()> {
+    let Some(text) = string(t, "key", file, warn) else { return Ok(None) };
+    match noise::decode(&text) {
+        Some(k) => Ok(Some(k)),
+        None => {
+            warn.push(format!("{file}: `key` is not a key (44 characters of base64, as `yagura --key` prints it)"));
+            Err(())
+        }
+    }
+}
+
+/// `[[agent.viewer]]`: each with a `name` and a `key`.
+fn viewers(v: &toml::Value, warn: &mut Vec<String>) -> Vec<ViewerKey> {
+    let Some(list) = v.as_array() else {
+        warn.push("config.toml: `agent.viewer` must be [[agent.viewer]] tables".into());
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (i, x) in list.iter().enumerate() {
+        let file = format!("config.toml [[agent.viewer]] {}", i + 1);
+        let Some(t) = x.as_table() else {
+            warn.push(format!("{file} must be a table"));
+            continue;
+        };
+        for k in t.keys().filter(|k| !["key", "name"].contains(&k.as_str())) {
+            warn.push(format!("{file}: unknown setting `{k}`"));
+        }
+        let name = string(t, "name", &file, warn).filter(|n| !n.trim().is_empty());
+        match key(t, &file, warn) {
+            Ok(Some(key)) => out.push(ViewerKey { name: name.unwrap_or_else(|| noise::encode(&key)[..8].to_string()), key }),
+            Ok(None) => warn.push(format!("{file}: needs a `key`")),
+            Err(()) => {}
+        }
+    }
+    out
+}
+
+/// `[agent]`: `allow = ["kill", "service"]`, `port = 7313`, `listen =
+/// "0.0.0.0:7314"` and `[[agent.viewer]]`.
 fn agent(v: &toml::Value, s: &mut Settings, warn: &mut Vec<String>) {
     let Some(t) = v.as_table() else {
         warn.push("config.toml: `agent` must be a table".into());
@@ -138,12 +201,18 @@ fn agent(v: &toml::Value, s: &mut Settings, warn: &mut Vec<String>) {
                 Some(p) if (1..=65535).contains(&p) => s.port = p as u16,
                 _ => warn.push("config.toml: [agent] `port` is a number from 1 to 65535".into()),
             },
+            "listen" => match v.as_str().map(str::trim) {
+                Some(a) if !a.is_empty() => s.listen = Some(crate::remote::proto::with_port(a, crate::remote::proto::DIRECT_PORT)),
+                _ => warn.push("config.toml: [agent] `listen` is an address such as \"0.0.0.0:7314\"".into()),
+            },
+            "viewer" => s.viewers = viewers(v, warn),
             other => warn.push(format!("config.toml: unknown setting `agent.{other}`")),
         }
     }
 }
 
-/// `[[host]]`: each with a `name` and an `addr`.
+/// `[[host]]`: each with an `addr`, and a `name`, `key` and `every` if it
+/// likes.
 fn hosts(v: &toml::Value, warn: &mut Vec<String>) -> Vec<Host> {
     let Some(list) = v.as_array() else {
         warn.push("config.toml: `host` must be [[host]] tables".into());
@@ -159,13 +228,24 @@ fn hosts(v: &toml::Value, warn: &mut Vec<String>) -> Vec<Host> {
         let file = format!("config.toml [[host]] {n}");
         let addr = string(t, "addr", &file, warn);
         let name = string(t, "name", &file, warn);
-        for k in t.keys().filter(|k| !["addr", "name"].contains(&k.as_str())) {
+        for k in t.keys().filter(|k| !["addr", "every", "key", "name"].contains(&k.as_str())) {
             warn.push(format!("{file}: unknown setting `{k}`"));
         }
+        // A host with a bad key is left out rather than reached some other way.
+        let Ok(key) = key(t, &file, warn) else { continue };
+        let every = match t.get("every").map(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64))) {
+            None => None,
+            Some(Some(f)) if (PACE_MIN as f64..=PACE_MAX as f64).contains(&f) => Some(f as f32),
+            Some(_) => {
+                warn.push(format!("{file}: `every` is seconds from {PACE_MIN} to {PACE_MAX}"));
+                None
+            }
+        };
         match addr.filter(|a| !a.trim().is_empty()) {
             Some(addr) => {
                 let addr = addr.trim().to_string();
-                out.push(Host { name: name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| addr.clone()), addr });
+                let name = name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| addr.clone());
+                out.push(Host { name, addr, key, every });
             }
             None => warn.push(format!("{file}: needs an `addr`")),
         }
@@ -371,5 +451,37 @@ mod tests {
         let s = load(Some(&d));
         assert!(s.allow.is_empty() && s.hosts.is_empty() && s.warnings.is_empty(), "{s:?}");
         assert_eq!(s.port, crate::remote::proto::PORT);
+        assert!(s.listen.is_none() && s.viewers.is_empty());
+    }
+
+    #[test]
+    fn reads_the_keys_for_direct_connections() {
+        let d = test_dir("settings-direct");
+        std::fs::create_dir_all(d.join("yagura")).unwrap();
+        let (a, b) = (noise::encode(&[1; 32]), noise::encode(&[2; 32]));
+        let text = format!(
+            "[agent]\nlisten = \"0.0.0.0\"\n\n\
+             [[agent.viewer]]\nname = \"laptop\"\nkey = \"{a}\"\n\n\
+             [[agent.viewer]]\nkey = \"{b}\"\n\n\
+             [[agent.viewer]]\nname = \"bad\"\nkey = \"short\"\n\n\
+             [[host]]\nname = \"nas\"\naddr = \"nas.lan\"\nkey = \"{a}\"\nevery = 10\n\n\
+             [[host]]\nname = \"bad key\"\naddr = \"x\"\nkey = \"short\"\n\n\
+             [[host]]\naddr = \"slow\"\nevery = 600\n"
+        );
+        std::fs::write(d.join("yagura/config.toml"), text).unwrap();
+        let s = load(Some(&d));
+        assert_eq!(s.listen.as_deref(), Some("0.0.0.0:7314"));
+        assert_eq!(s.viewers, [ViewerKey { name: "laptop".into(), key: [1; 32] }, ViewerKey { name: b[..8].to_string(), key: [2; 32] }]);
+        // A bad key leaves its host out; a bad `every` only the pace.
+        assert_eq!(
+            s.hosts,
+            [
+                Host { name: "nas".into(), addr: "nas.lan".into(), key: Some([1; 32]), every: Some(10.0) },
+                Host { name: "slow".into(), addr: "slow".into(), ..Host::default() },
+            ]
+        );
+        let w = s.warnings.join("\n");
+        assert_eq!(s.warnings.len(), 3, "{w}");
+        assert!(w.contains("[[agent.viewer]] 3") && w.contains("[[host]] 2") && w.contains("`every`"), "{w}");
     }
 }

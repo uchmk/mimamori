@@ -56,6 +56,8 @@ pub fn why_text(w: &Why) -> String {
         // The older side is the one to update.
         Why::Proto(p) => trf(if *p < PROTO { "fleet.why.proto_old" } else { "fleet.why.proto_new" }, &[&p.to_string(), &PROTO.to_string()]),
         Why::NotAgent => tr("fleet.why.not_agent").into(),
+        Why::Denied => tr("fleet.why.denied").into(),
+        Why::BadKey => tr("fleet.why.bad_key").into(),
     }
 }
 

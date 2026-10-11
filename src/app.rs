@@ -592,12 +592,13 @@ impl App {
                     // The machine inside may be gone or another now.
                     self.go_home();
                     let hosts = self.prefs.settings.hosts.clone();
-                    let fleet = remote::client::spawn(&hosts, self.wake.clone());
+                    let fleet = remote::client::spawn(&hosts, self.prefs.settings.dir.clone(), self.wake.clone());
                     self.set_fleet(hosts.iter().map(Peer::new).collect(), fleet);
                     self.fleet_sel = self.fleet_sel.min(self.peers.len());
                 }
                 self.relanguage();
             }
+            Reload::Key(k) => self.prefs.key = Some(k),
             Reload::Failed(e) => self.toast(trf("toast.save_failed", &[&e])),
         }
     }
@@ -2109,7 +2110,7 @@ mod tests {
         keys(&mut a, "F y");
         assert_eq!(a.copy.take(), Some(remote::host_sample()));
         let (_ftx, frx) = crossbeam_channel::unbounded();
-        a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into() })], (frx, Vec::new()));
+        a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into(), ..Host::default() })], (frx, Vec::new()));
         keys(&mut a, "y");
         assert!(a.copy.is_none());
         keys(&mut a, "l y");
@@ -2126,7 +2127,7 @@ mod tests {
         use crate::remote::{Status, proto::Hello};
         let (mut a, _tx, _ctl) = app();
         let (ftx, frx) = crossbeam_channel::unbounded();
-        let host = |n: &str| Peer::new(&Host { name: n.into(), addr: format!("localhost:{}", proto::PORT) });
+        let host = |n: &str| Peer::new(&Host { name: n.into(), addr: format!("localhost:{}", proto::PORT), ..Host::default() });
         a.set_fleet(vec![host("nas"), host("pi"), host("mac")], (frx, Vec::new()));
         keys(&mut a, "3 F");
         assert!(a.fleet && a.report().contains("screen: fleet"), "{}", a.report());
@@ -2171,7 +2172,7 @@ mod tests {
         let (ftx, frx) = crossbeam_channel::unbounded();
         let (w0, wants0) = crossbeam_channel::unbounded();
         let (w1, wants1) = crossbeam_channel::unbounded();
-        let host = |n: &str| Peer::new(&Host { name: n.into(), addr: format!("localhost:{}", proto::PORT) });
+        let host = |n: &str| Peer::new(&Host { name: n.into(), addr: format!("localhost:{}", proto::PORT), ..Host::default() });
         a.set_fleet(vec![host("nas"), host("pi")], (frx, vec![w0, w1]));
         let hello = |user: &str| Hello { proto: proto::PROTO, interval: 2.0, user: user.into(), ..Hello::default() };
         tx.send(Msg::Procs { procs: vec![proc(7, "here", 1.0, 1)], total_threads: None }).unwrap();
@@ -2251,7 +2252,10 @@ mod tests {
         let (mut a, _tx, _ctl) = app();
         let (ftx, frx) = crossbeam_channel::unbounded();
         let (w0, wants0) = crossbeam_channel::unbounded();
-        a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: format!("localhost:{}", proto::PORT) })], (frx, vec![w0]));
+        a.set_fleet(
+            vec![Peer::new(&Host { name: "nas".into(), addr: format!("localhost:{}", proto::PORT), ..Host::default() })],
+            (frx, vec![w0]),
+        );
         let allow = vec!["kill".to_string()];
         let hello = Hello { proto: proto::PROTO, user: "ana".into(), os: "Linux 24.04 Ubuntu".into(), allow, pid: 3, ..Hello::default() };
         ftx.send((0, Event::Up(hello))).unwrap();

@@ -24,6 +24,8 @@ pub enum Reload {
     Common(Result<(Common, Vec<String>), String>),
     Themes(Vec<Theme>, Vec<String>),
     Settings(Box<Settings>),
+    /// This machine's public key and name, or why it could not be read.
+    Key(Result<(String, String), String>),
     Failed(String),
 }
 
@@ -42,6 +44,10 @@ pub struct Prefs {
     /// The screen's page, search and focus.
     pub state: State,
     pub drafts: Drafts,
+    /// This machine's public key (base64) and name for the fleet page;
+    /// `None` until read.
+    pub key: Option<Result<(String, String), String>>,
+    key_asked: bool,
     tx: Sender<Reload>,
     pub rx: Receiver<Reload>,
     wake: Option<egui::Context>,
@@ -61,6 +67,8 @@ impl Prefs {
             theme_err: None,
             state: State::default(),
             drafts: Drafts::new(),
+            key: None,
+            key_asked: false,
             tx,
             rx,
             wake: None,
@@ -155,6 +163,25 @@ impl Prefs {
                 Err(e) => Reload::Failed(e),
             };
             Self::send_back(&tx, &wake, r);
+        });
+    }
+
+    /// Read this machine's key on a thread, made the first time, once: the
+    /// fleet page asks when it is first shown.
+    pub fn ask_key(&mut self) {
+        if std::mem::replace(&mut self.key_asked, true) {
+            return;
+        }
+        let (tx, wake, dir) = (self.tx.clone(), self.wake.clone(), self.settings.dir.clone());
+        let Some(dir) = dir else {
+            Self::send_back(&tx, &wake, Reload::Key(Err(crate::i18n::tr("settings.no_folder").into())));
+            return;
+        };
+        std::thread::spawn(move || {
+            let r = crate::remote::noise::load_or_make(&dir)
+                .map(|k| (crate::remote::noise::encode(&k.public), crate::remote::noise::host_name()))
+                .map_err(|e| e.to_string());
+            Self::send_back(&tx, &wake, Reload::Key(r));
         });
     }
 

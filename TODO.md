@@ -119,8 +119,13 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] fleet: `--install-service`（Windows はタスク スケジューラ、Linux は systemd の user unit、macOS は launchd の LaunchAgent）で、ログオン時にエージェントを立てる。
   → Windows はタスク スケジューラの ONLOGON が管理者を要るので、HKCU の `Run` キーにし、その場でも窓なしで立てる（`--log` で `agent.log` に書く）。
   Linux は `~/.config/systemd/user/yagura-agent.service`、macOS は `~/Library/LaunchAgents/io.github.uchmk.yagura-agent.plist`。`--uninstall-service` で止めて消す (v0.40.0)
-- [ ] fleet: 要約を差分にする・間隔を見る側から変える（細い回線のため）。使ってみて要ると分かってから。
-- [ ] fleet: 直接つなぐ形（Q1 の 2 か 3）。SSH / Tailscale で足りないと分かってから。
+- [x] fleet: 要約を差分にする・間隔を見る側から変える（細い回線のため）。
+  → プロトコル 5。最初は丸ごとの `Summary`、その後は変わった欄だけの `Delta`（見る側への枠が詰まって落ちたら次は丸ごと）。
+  `[[host]] every = 秒` で見る側が `ToAgent::Pace` を送り、その見る側への要約だけ間を空ける（0.5〜60 秒、エージェントの間隔より速くはしない） (v0.41.0)
+- [x] fleet: 直接つなぐ形（Q1 の 3: Noise）。
+  → `snow`（Pure Rust、`Noise_IK_25519_ChaChaPoly_BLAKE2s`）。`yagura --key` で鍵の組を作って見せ（`<設定>/yagura/key`）、見られる側は `[agent] listen` と
+  `[[agent.viewer]]`（見る側の公開鍵）、見る側は `[[host]] key`（相手の公開鍵、既定のポート 7314）。知らない見る側・違う鍵は `Why::Denied`・`BadKey` で言う。
+  設定の画面の Fleet に DIRECT CONNECTIONS の欄、sys の Fleet agent の節に直接の口と鍵 (v0.41.0)
 
 ## 5. 配布
 

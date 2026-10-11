@@ -12,7 +12,7 @@ Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
 > **v0.19** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
-> **v0.31** adds the fleet: other machines' summaries on one screen, over SSH or Tailscale (see [Fleet](#fleet)).
+> **v0.31** adds the fleet: other machines' summaries on one screen, over SSH or Tailscale (see [Fleet](#fleet)); **v0.41** lets it connect directly, with keys ([Direct connections](#direct-connections)).
 > **v0.35** lets you enter another machine's screens from its card, and switch machines with `[` / `]`.
 > What is still missing on each OS is in [TODO.md](TODO.md).
 
@@ -29,7 +29,7 @@ inside each tile.
 | `7` | net      | The network interfaces with their rates, and counts of the sockets; in the middle, a row per interface that is up (loopback included) with its received and sent graphs over the last minute side by side, above every TCP and UDP socket (protocol, local and remote address, state, PID, process; it scrolls with the wheel, `j` / `k`, `PageDown` / `PageUp`; filter with `/`, only the listening ones with `u`; `Enter` on an interface keeps only the sockets on its addresses and those bound to any address, until `Esc`); on the right, the selected interface's details (name, adapter, kind, link speed, addresses, MAC, MTU, totals) and under them the selected socket (`Enter` opens its process in procs). Interfaces are read every interval; sockets every 2 s, and only while the screen shows |
 | `8` | disk     | The drives with their traffic now, and the totals of all of them; the selected drive's read, write and busy graphs stacked, each the column's width, over every mounted volume (mount point, device, file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, totals since boot and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. `Enter` on a chip goes to its first sensor, on a sensor back to its chip. Read every interval |
-| `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own. Under the processor, the fleet agent: whether one listens on this machine's port (asked every 5 s while the screen shows), its version, process, what it allows, its interval and how many viewers it has, or, when none runs, the port, what `[agent] allow` would allow and how to start one; inside another machine's screens, that machine's agent |
+| `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own. Under the processor, the fleet agent: whether one listens on this machine's port (asked every 5 s while the screen shows), where it takes direct connections and its key, its version, process, what it allows, its interval and how many viewers it has, or, when none runs, the port, what `[agent] allow` would allow and how to start one; inside another machine's screens, that machine's agent |
 | `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the battery on a laptop (`87% charging`, `87% plugged in`), the uptime or when it was last seen, the agent's version and what it allows, and what is wrong there (hot sensors, drives SMART warns about, failed services), yellow, or red when a service failed. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
@@ -128,10 +128,17 @@ backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
 [agent]             # for `yagura --agent` on this machine
 port = 7313         # listens on 127.0.0.1 only
 allow = []          # "kill", "service": what a fleet viewer may do on this machine (empty: view only)
+listen = "0.0.0.0:7314"   # also take direct connections from the viewers below (none when left out)
+
+[[agent.viewer]]    # a machine that may watch this one directly, once per machine
+name = "laptop"
+key = "…"           # its public key, as `yagura --key` prints it there
 
 [[host]]            # a machine on the fleet screen, once per machine
 name = "nas"
-addr = "localhost:7314"   # host or host:port; the port defaults to 7313
+addr = "localhost:7314"   # host or host:port; the port defaults to 7313, or 7314 with a key
+key = "…"           # its agent's public key: connect directly (left out: plain, through a tunnel)
+every = 5.0         # a summary every 5 s at most, for a thin link (left out: the agent's interval)
 ```
 
 `keymap.toml` uses yazi's format, section by section (`[main]`, `[input]`,
@@ -162,7 +169,7 @@ says otherwise.
 | ---- | ---- |
 | General | Language and scale (common.toml), the update interval, the clock card (common.toml) |
 | Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with yagura's own tiles, process rows and status bar (common.toml) |
-| Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); and the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path), each with Copy |
+| Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path); and the direct connections (this machine's public key, the `[[agent.viewer]]` that lets it in, the `[agent] listen` line, the `[[host]]` that watches it directly), each with Copy |
 | Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
 
 Only the `[settings]` section's keys are taken (`Esc` and `Ctrl+,` close, a
@@ -205,9 +212,9 @@ run the same binary without a window:
 yagura --agent
 ```
 
-It listens on `127.0.0.1:7313` only and has no keys or passwords of its own:
-the viewer reaches it through a tunnel that already decides who may connect
-and encrypts the way. Either
+It listens on `127.0.0.1:7313`, and the viewer reaches it through a tunnel
+that already decides who may connect and encrypts the way, or directly with
+keys ([below](#direct-connections)). Either
 
 ```sh
 ssh -N -L 7314:localhost:7313 nas          # on the viewer: nas's agent on localhost:7314
@@ -231,7 +238,12 @@ round: CPU, memory, the first GPU's usage, the hottest temperature, the
 battery, how many viewers it has and counts of what is wrong (temperatures
 drawn red, drives failing or with SMART counts drawn yellow, failed services; services are read every minute for this even while no svc screen
 shows), with its host name, OS, CPU, uptime, version and port once at the
-start (protocol 4).
+start (protocol 5). After the first summary only what changed goes, which on a
+quiet machine is a few bytes; a viewer whose channel fills up gets a whole one
+again. A host with `every = 5.0` in the viewer's `config.toml` asks its agent
+for a summary every 5 s at most (0.5 to 60; never faster than the agent
+samples), for a thin link; the agent keeps sampling at its own pace for the
+other viewers.
 
 `Enter` on a card (or `[` / `]` from any screen) shows that machine's screens:
 the viewer then asks its agent for every reading the window draws from, and the
@@ -270,8 +282,8 @@ if the link drops before it comes, a toast says so (look at its screen to see
 what happened), and a request is never sent again on the next connection.
 The agent writes each request and its outcome to its console
 (`yagura agent: 127.0.0.1:52144 asks to end 1234 (started …): Kill(Ended)`).
-A viewer and an agent of different protocols do not connect (v0.40 and
-v0.39, say; the card says which side to update).
+A viewer and an agent of different protocols do not connect (v0.41 and
+v0.40, say; the card says which side to update).
 
 To keep an agent up, let the OS start it at logon:
 
@@ -296,6 +308,49 @@ LaunchAgent; on Windows they are not, and it says so.
 `--agent --log FILE` also appends each line, with the time, to `FILE`
 (started over past 1 MiB): Windows' release build has no console to write to
 otherwise.
+
+### Direct connections
+
+Without ssh or Tailscale, a viewer can reach an agent across the network
+over the [Noise protocol](https://noiseprotocol.org/)
+(`Noise_IK_25519_ChaChaPoly_BLAKE2s`, through the pure Rust
+[snow](https://crates.io/crates/snow)). Keys are swapped beforehand, the way
+WireGuard does it: no certificates and no passwords. Each machine makes a
+key pair the first time it is asked for one and keeps the private half in
+`key` in yagura's config folder (readable by its account alone on Linux and
+macOS). Print this machine's public key and the snippets that use it with
+
+```sh
+yagura --key
+```
+
+or copy them from the settings screen's Fleet page. On the machine watched:
+
+```toml
+[agent]
+listen = "0.0.0.0:7314"   # or one address; it listens on 127.0.0.1:7313 as well
+
+[[agent.viewer]]
+name = "laptop"
+key = "<the laptop's public key>"
+```
+
+and on the viewer:
+
+```toml
+[[host]]
+name = "nas"
+addr = "nas.lan"          # the port defaults to 7314 with a key
+key = "<nas's public key>"
+```
+
+The viewer knows the agent's key and sends its own, encrypted, in the first
+message; the agent answers only the viewers it lists, and the card says
+when it does not know this one or when the key is another machine's. A
+connection to the direct port without a key gets nowhere, and the plain
+port stays on 127.0.0.1. The sys screen's agent section shows where it
+listens directly and its key. Let the port through the machine's firewall
+(on Windows it asks the first time the agent listens).
 
 ## Languages
 

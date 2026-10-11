@@ -5,14 +5,21 @@
 //! is said again after each reconnect. What it asks the agent to do goes
 //! the same way, once: a request queued while the link was down is dropped,
 //! not sent to the next connection.
+//!
+//! A host with a `key` is reached directly, over Noise ([`super::noise`]),
+//! on [`proto::DIRECT_PORT`]; the rest through a tunnel on [`proto::PORT`].
+//! The agent sends a whole summary first and then only what changed; the
+//! thread keeps the whole and gives the viewer that.
 
-use std::io;
+use std::io::{self, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, bounded, never, select, unbounded};
 
+use super::noise::{self, Key, Reader, Refused, Writer};
 use super::proto::{self, Act, Done, FromAgent, Hello, PROTO, Summary, ToAgent, Want};
 use crate::collect::Msg;
 use crate::config::settings::Host;
@@ -65,6 +72,29 @@ pub enum Why {
     Proto(u16),
     /// Something that is not a yagura agent answered.
     NotAgent,
+    /// The agent does not list this machine's key in its `[[agent.viewer]]`.
+    Denied,
+    /// The host's `key` is not that agent's.
+    BadKey,
+}
+
+/// How to reach a host.
+#[derive(Clone, Debug, Default)]
+struct Target {
+    addr: String,
+    /// The agent's public key: a direct connection.
+    key: Option<Key>,
+    /// How often it should send a summary, when not every interval.
+    every: Option<f32>,
+    /// yagura's config folder, where this machine's own key is.
+    dir: Option<PathBuf>,
+}
+
+impl Target {
+    fn of(h: &Host, dir: Option<PathBuf>) -> Self {
+        let port = if h.key.is_some() { proto::DIRECT_PORT } else { proto::PORT };
+        Self { addr: proto::with_port(&h.addr, port), key: h.key, every: h.every, dir }
+    }
 }
 
 /// What a host's thread keeps of the viewer's wants.
@@ -100,16 +130,17 @@ impl Wants {
 }
 
 /// Watch every host; events come tagged with the host's index, and each
-/// host's sender takes what the viewer wants of it and asks of it.
-pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> (Receiver<(usize, Event)>, Vec<Sender<ToHost>>) {
+/// host's sender takes what the viewer wants of it and asks of it. `dir` is
+/// yagura's config folder, for this machine's key when a host has one.
+pub fn spawn(hosts: &[Host], dir: Option<PathBuf>, wake: Option<egui::Context>) -> (Receiver<(usize, Event)>, Vec<Sender<ToHost>>) {
     let (tx, rx) = unbounded();
     let mut senders = Vec::new();
     for (i, h) in hosts.iter().enumerate() {
         let (want_tx, want_rx) = unbounded();
         senders.push(want_tx);
-        let (tx, wake, addr) = (tx.clone(), wake.clone(), proto::with_port(&h.addr));
+        let (tx, wake, to) = (tx.clone(), wake.clone(), Target::of(h, dir.clone()));
         let spawned = std::thread::Builder::new().name(format!("yagura-host-{i}")).spawn(move || {
-            watch(&addr, &Wants::new(want_rx), &|e| {
+            watch(&to, &Wants::new(want_rx), &|e| {
                 let ok = tx.send((i, e)).is_ok();
                 if let Some(w) = &wake {
                     w.request_repaint();
@@ -125,10 +156,10 @@ pub fn spawn(hosts: &[Host], wake: Option<egui::Context>) -> (Receiver<(usize, E
 }
 
 /// Until `emit` says nobody listens.
-fn watch(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) {
+fn watch(to: &Target, wants: &Wants, emit: &dyn Fn(Event) -> bool) {
     let mut wait = RETRY_MIN;
     loop {
-        let Some((was_up, why)) = session(addr, wants, emit) else { return };
+        let Some((was_up, why)) = session(to, wants, emit) else { return };
         if !emit(Event::Down(why)) {
             return;
         }
@@ -142,12 +173,13 @@ fn watch(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) {
 
 /// One connection: whether it came up and why it ended; `None` when `emit`
 /// failed.
-fn session(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) -> Option<(bool, Why)> {
-    let mut s = match connect(addr) {
-        Ok(s) => s,
+fn session(to: &Target, wants: &Wants, emit: &dyn Fn(Event) -> bool) -> Option<(bool, Why)> {
+    let opened = connect(&to.addr).and_then(|s| open(&s, to));
+    let (mut r, mut w) = match opened {
+        Ok(rw) => rw,
         Err(why) => return Some((false, why)),
     };
-    let hello = match greet(&mut s) {
+    let hello = match greet(&mut r, &mut w) {
         Ok(h) => h,
         Err(why) => return Some((false, why)),
     };
@@ -158,13 +190,24 @@ fn session(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) -> Option<(b
     let t0 = Instant::now();
     // Dropped when this returns, which stops the writer at once.
     let (_stop, stop_rx) = bounded::<()>(0);
-    if let Ok(w) = s.try_clone() {
-        let wants = wants.clone();
-        let _ = std::thread::Builder::new().name("yagura-host-out".into()).spawn(move || write(w, t0, &wants, &stop_rx));
-    }
+    let (wants2, every) = (wants.clone(), to.every);
+    let _ = std::thread::Builder::new().name("yagura-host-out".into()).spawn(move || write(w, t0, every, &wants2, &stop_rx));
+    // The whole summary, which each delta changes.
+    let mut last: Option<Summary> = None;
     loop {
-        let e = match proto::read_frame::<FromAgent>(&mut s) {
-            Ok(FromAgent::Summary(sum)) => Event::Summary(sum),
+        let e = match proto::read_frame::<FromAgent>(&mut r) {
+            Ok(FromAgent::Summary(sum)) => {
+                last = Some(sum.clone());
+                Event::Summary(sum)
+            }
+            Ok(FromAgent::Delta(d)) => match &mut last {
+                Some(sum) => {
+                    sum.apply(d);
+                    Event::Summary(sum.clone())
+                }
+                // The agent starts each viewer with a whole one.
+                None => continue,
+            },
             Ok(FromAgent::Pong(n)) => Event::Latency(t0.elapsed().saturating_sub(Duration::from_micros(n))),
             Ok(FromAgent::Hello(_)) => continue,
             Ok(FromAgent::Msg(m)) => Event::Msg(m),
@@ -177,9 +220,14 @@ fn session(addr: &str, wants: &Wants, emit: &dyn Fn(Event) -> bool) -> Option<(b
     }
 }
 
-/// The viewer's side of a connection: what it wants (again, after a
-/// reconnect), then each change, and a ping every [`PING_EVERY`].
-fn write(mut w: TcpStream, t0: Instant, wants: &Wants, stop: &Receiver<()>) {
+/// The viewer's side of a connection: its pace and what it wants (again,
+/// after a reconnect), then each change, and a ping every [`PING_EVERY`].
+fn write(mut w: Writer, t0: Instant, every: Option<f32>, wants: &Wants, stop: &Receiver<()>) {
+    if let Some(secs) = every
+        && proto::write_frame(&mut w, &ToAgent::Pace(secs)).is_err()
+    {
+        return;
+    }
     let now = wants.now();
     if now != Want::default() && proto::write_frame(&mut w, &ToAgent::Watch(now)).is_err() {
         return;
@@ -222,14 +270,15 @@ fn write(mut w: TcpStream, t0: Instant, wants: &Wants, stop: &Receiver<()>) {
 /// a thread.
 pub fn probe(port: u16) -> Result<(Hello, Summary), Why> {
     // Windows retries a refused connection for about a second before it says so.
-    let mut s = connect(&format!("127.0.0.1:{port}"))?;
+    let s = connect(&format!("127.0.0.1:{port}"))?;
     s.set_read_timeout(Some(PROBE)).map_err(|e| why(&e))?;
-    let hello = greet(&mut s)?;
+    let (mut r, mut w) = noise::plain(&s).map_err(|e| why(&e))?;
+    let hello = greet(&mut r, &mut w)?;
     // An agent that has not sampled yet sends its first summary within its
     // interval (10 s at most).
     s.set_read_timeout(Some(QUIET)).map_err(|e| why(&e))?;
     loop {
-        match proto::read_frame::<FromAgent>(&mut s) {
+        match proto::read_frame::<FromAgent>(&mut r) {
             Ok(FromAgent::Summary(sum)) => return Ok((hello, sum)),
             Ok(_) => {}
             Err(e) => return Err(why(&e)),
@@ -245,9 +294,24 @@ fn connect(addr: &str) -> Result<TcpStream, Why> {
     Ok(s)
 }
 
-fn greet(s: &mut TcpStream) -> Result<Hello, Why> {
-    proto::write_frame(s, &ToAgent::Hello { proto: PROTO }).map_err(|e| why(&e))?;
-    let body = proto::read_body(s).map_err(|e| why(&e))?;
+/// The two halves of a connection: through Noise when the host has a key,
+/// plain otherwise.
+fn open(s: &TcpStream, to: &Target) -> Result<(Reader, Writer), Why> {
+    let Some(agent) = &to.key else { return noise::plain(s).map_err(|e| why(&e)) };
+    let dir = to.dir.as_deref().ok_or_else(|| Why::Io("no config folder for this machine's key".into()))?;
+    let keys = noise::load_or_make(dir).map_err(|e| Why::Io(e.to_string()))?;
+    let rw = noise::initiate(s, &keys, agent).map_err(|f| match f {
+        noise::Fail::Refused(Refused::UnknownViewer) => Why::Denied,
+        noise::Fail::Refused(Refused::WrongAgentKey) => Why::BadKey,
+        noise::Fail::Io(e) => why(&e),
+    })?;
+    s.set_read_timeout(Some(QUIET)).map_err(|e| why(&e))?;
+    Ok(rw)
+}
+
+fn greet(r: &mut impl Read, w: &mut impl Write) -> Result<Hello, Why> {
+    proto::write_frame(w, &ToAgent::Hello { proto: PROTO }).map_err(|e| why(&e))?;
+    let body = proto::read_body(r).map_err(|e| why(&e))?;
     match proto::head(&body) {
         Some((0, p)) if p == PROTO => {}
         Some((0, p)) => return Err(Why::Proto(p)),
@@ -273,6 +337,7 @@ fn why(e: &io::Error) -> Why {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::settings::ViewerKey;
     use crate::remote::agent::{self, Config};
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -286,14 +351,15 @@ mod tests {
     fn watch_with(addr: String) -> (Receiver<Event>, Sender<ToHost>) {
         let (tx, rx) = unbounded();
         let (want_tx, want_rx) = unbounded();
-        std::thread::spawn(move || watch(&addr, &Wants::new(want_rx), &|e| tx.send(e).is_ok()));
+        let to = Target { addr, ..Target::default() };
+        std::thread::spawn(move || watch(&to, &Wants::new(want_rx), &|e| tx.send(e).is_ok()));
         (rx, want_tx)
     }
 
     fn agent(interval: f32) -> String {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = l.local_addr().unwrap().to_string();
-        let cfg = Config { allow: Vec::new(), interval };
+        let cfg = Config { allow: Vec::new(), interval, direct: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         addr
     }
@@ -318,7 +384,7 @@ mod tests {
     fn a_viewer_gets_the_hello_summaries_and_round_trips() {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let (addr, port) = (l.local_addr().unwrap().to_string(), l.local_addr().unwrap().port());
-        let cfg = Config { allow: vec!["kill".into()], interval: 0.5 };
+        let cfg = Config { allow: vec!["kill".into()], interval: 0.5, direct: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         let rx = watch_one(addr);
         let Event::Up(h) = next(&rx) else { panic!("not up first") };
@@ -345,7 +411,7 @@ mod tests {
     fn a_probe_reads_the_agent_on_this_machine() {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = l.local_addr().unwrap().port();
-        let cfg = Config { allow: vec!["service".into()], interval: 0.25 };
+        let cfg = Config { allow: vec!["service".into()], interval: 0.25, direct: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         let (h, sum) = probe(port).expect("an agent");
         assert_eq!((h.port, h.allow.as_slice(), h.pid), (port, ["service".to_string()].as_slice(), std::process::id()));
@@ -431,7 +497,7 @@ mod tests {
     fn agent_allowing(allow: &[&str]) -> String {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = l.local_addr().unwrap().to_string();
-        let cfg = Config { allow: allow.iter().map(|a| a.to_string()).collect(), interval: 0.5 };
+        let cfg = Config { allow: allow.iter().map(|a| a.to_string()).collect(), interval: 0.5, direct: None };
         std::thread::spawn(move || agent::serve(l, cfg));
         addr
     }
@@ -475,7 +541,7 @@ mod tests {
         let w = Want { detail: true, ..Want::default() };
         tx.send(ToHost::Want(w)).unwrap();
         let l = TcpListener::bind(&addr).unwrap();
-        std::thread::spawn(move || agent::serve(l, Config { allow: vec!["kill".into()], interval: 0.25 }));
+        std::thread::spawn(move || agent::serve(l, Config { allow: vec!["kill".into()], interval: 0.25, direct: None }));
         loop {
             match next(&rx) {
                 Event::Up(_) => break,
@@ -524,6 +590,104 @@ mod tests {
             }
         });
         assert_eq!(next(&watch_one(addr)), Event::Down(Why::Proto(99)));
+    }
+
+    /// An agent that takes viewers with these keys directly: its address
+    /// and key.
+    fn direct_agent(viewers: Vec<Key>) -> (String, Key) {
+        let plain = TcpListener::bind("127.0.0.1:0").unwrap();
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let keys = noise::Keys::generate().unwrap();
+        let public = keys.public;
+        let viewers = viewers.into_iter().enumerate().map(|(i, key)| ViewerKey { name: format!("v{i}"), key }).collect();
+        let direct = agent::Direct { listen: addr.clone(), keys, viewers };
+        let cfg = Config { allow: Vec::new(), interval: 0.25, direct: Some(direct) };
+        std::thread::spawn(move || agent::serve_all(plain, Some(l), cfg));
+        (addr, public)
+    }
+
+    /// A viewer with its own key in a new config folder: its public key.
+    fn viewer_dir(label: &str) -> (PathBuf, Key) {
+        let dir = crate::util::test_dir(label).join("yagura");
+        let public = noise::load_or_make(&dir).unwrap().public;
+        (dir, public)
+    }
+
+    fn watch_target(to: Target) -> Receiver<Event> {
+        let (rx, want) = watch_target_with(to);
+        std::mem::forget(want);
+        rx
+    }
+
+    fn watch_target_with(to: Target) -> (Receiver<Event>, Sender<ToHost>) {
+        let (tx, rx) = unbounded();
+        let (want_tx, want_rx) = unbounded();
+        std::thread::spawn(move || watch(&to, &Wants::new(want_rx), &|e| tx.send(e).is_ok()));
+        (rx, want_tx)
+    }
+
+    #[test]
+    fn a_viewer_with_a_key_connects_directly() {
+        let (dir, mine) = viewer_dir("direct-ok");
+        let (addr, theirs) = direct_agent(vec![mine]);
+        let (rx, want) = watch_target_with(Target { addr, key: Some(theirs), every: None, dir: Some(dir) });
+        let Event::Up(h) = next(&rx) else { panic!("not up first") };
+        assert_eq!((h.key.as_str(), h.proto), (noise::encode(&theirs).as_str(), PROTO));
+        assert!(!h.direct.is_empty(), "{h:?}");
+        // The summaries come, the whole one first and then the deltas made whole.
+        let sums: Vec<Summary> = std::iter::from_fn(|| Some(next(&rx)))
+            .filter_map(|e| match e {
+                Event::Summary(s) => Some(s),
+                Event::Down(why) => panic!("down: {why:?}"),
+                _ => None,
+            })
+            .take(4)
+            .collect();
+        assert!(sums.iter().all(|s| s.mem_total > 0), "{sums:?}");
+        // The process list is larger than one Noise message on most machines.
+        want.send(ToHost::Want(Want { detail: true, ..Want::default() })).unwrap();
+        assert!(readings(&rx, Duration::from_secs(3)).iter().any(|m| matches!(m, Msg::Procs { .. })), "readings come through Noise");
+    }
+
+    #[test]
+    fn an_agent_says_it_does_not_know_the_viewer() {
+        let (dir, _) = viewer_dir("direct-denied");
+        let (addr, theirs) = direct_agent(vec![noise::Keys::generate().unwrap().public]);
+        let rx = watch_target(Target { addr, key: Some(theirs), every: None, dir: Some(dir) });
+        assert_eq!(next(&rx), Event::Down(Why::Denied));
+    }
+
+    #[test]
+    fn a_key_of_another_agent_is_said() {
+        let (dir, mine) = viewer_dir("direct-bad-key");
+        let (addr, _) = direct_agent(vec![mine]);
+        let other = noise::Keys::generate().unwrap().public;
+        let rx = watch_target(Target { addr, key: Some(other), every: None, dir: Some(dir) });
+        assert_eq!(next(&rx), Event::Down(Why::BadKey));
+    }
+
+    #[test]
+    fn a_plain_viewer_on_the_direct_port_gets_nowhere() {
+        let (addr, _) = direct_agent(Vec::new());
+        let rx = watch_one(addr);
+        assert!(matches!(next(&rx), Event::Down(Why::Closed | Why::NotAgent)));
+    }
+
+    #[test]
+    fn a_slow_pace_spaces_the_summaries() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        std::thread::spawn(move || agent::serve(l, Config { allow: Vec::new(), interval: 0.25, direct: None }));
+        let rx = watch_target(Target { addr, every: Some(1.0), ..Target::default() });
+        assert!(matches!(next(&rx), Event::Up(_)));
+        let end = Instant::now() + Duration::from_millis(3300);
+        let mut n = 0;
+        while let Ok(e) = rx.recv_deadline(end) {
+            n += usize::from(matches!(e, Event::Summary(_)));
+        }
+        // Every 1 s rather than every 0.25 s: the first, then about 3.
+        assert!((2..=6).contains(&n), "{n} summaries in 3.3 s");
     }
 
     #[test]
