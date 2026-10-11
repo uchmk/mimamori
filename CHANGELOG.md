@@ -4,6 +4,12 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.41.2] - 2026-10-11
+
+### 変更
+
+- 実機（Windows 11 x64、AMD RX 9070 XT と iGPU）で gpu·npu の画面を確かめた結果を TESTING.md に記した（3a.1・3a.3・3a.10。3a.13 はグラフのクリックだけ残る）。見つかったこと（dwm の専用メモリがカードより大きく出る、AMD のドライバーの版が `—`、procs の開始の時刻が UTC）を TODO.md に積んだ（uchmk/yagura#4）。
+
 ## [0.41.1] - 2026-10-11
 
 ### 修正

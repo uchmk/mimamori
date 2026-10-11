@@ -10,6 +10,9 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] procs: Windows で管理者でないと、ほかのユーザーのプロセス（SYSTEM の svchost・lsass・dwm など）の USER が `—`、MEM が `0 B` になる（uchmk/yagura#3）。タスク マネージャーは同じ権限で出す。
   sysinfo は `PROCESS_QUERY_LIMITED_INFORMATION` に落とすが、トークンもワーキング セットも読めない。`WTSEnumerateProcessesExW`（レベル 1: SID とワーキング セット、ハンドルが要らない）で欠けたものを埋める案。
 - [x] gpu·npu（`4`）: 使用率・VRAM・温度。Windows は PDH の `GPU Engine` カウンタ、Linux は `/sys/class/drm` と amdgpu / i915 の sysfs、NVIDIA は NVML を動的に読む（無ければ出さない）。NPU は見本の「設計」タブの限界のとおり、取れる OS だけ。
+- [ ] gpu·npu: Windows の dwm の専用メモリが 38.1 GiB と出た（PDH の `GPU Process Memory` の値そのまま。カードは 16 GiB、uchmk/yagura#4）。カードの総量を超える値は `—` にするか、総量で抑える。
+- [ ] gpu·npu: Windows の AMD でドライバーの版が `—`（dxdiag は 32.0.31041.1004、uchmk/yagura#4）。DXGI の `CheckInterfaceSupport` の UMD の版か、レジストリの `DriverVersion` から取る。
+- [ ] procs: 右の列の開始の時刻が UTC で出る（`ui/procs.rs` の `fmt_epoch`、uchmk/yagura#4）。手元の時刻にする。
 - [x] svc（`6`）: Windows のサービス、Linux の systemd のユニット、macOS の launchd。読むだけから始める。
 - [x] svc: 開始・停止・再起動のキー（確認を挟む。Windows は `ControlService`、Linux は `systemctl`、macOS は `launchctl kickstart` / `kill`）。権限が足りないときの言い方も。
 - [x] svc: macOS の launchd の plist（`/Library/LaunchDaemons` など）を読み、止まっている・無効のジョブ、コマンドとファイルも出す。今は `launchctl list` だけ。
