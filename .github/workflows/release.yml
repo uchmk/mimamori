@@ -30,7 +30,12 @@ permissions:
   contents: write
 
 jobs:
+  # Nothing is published until the tests pass on ARM64 (arm64.yml).
+  arm64:
+    uses: ./.github/workflows/arm64.yml
+
   windows:
+    needs: arm64
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

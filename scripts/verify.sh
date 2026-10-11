@@ -30,6 +30,9 @@ run() {
 # rewrites a stale Cargo.lock. When this fails, run `cargo build` and commit
 # Cargo.lock with the version bump.
 run cargo build -q --locked
+# the shared scripts are ito's, byte for byte (scripts/lanes.sh)
+run scripts/lanes.sh check
+run python3 scripts/merge-lanes.py --self-test
 run cargo fmt --check
 run cargo test -q
 tests=$(echo "$last" | grep -m1 'test result')

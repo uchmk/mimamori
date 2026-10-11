@@ -1,0 +1,50 @@
+name: Finding / 所見
+description: Something a check or a session saw that is not plainly a bug -- to sort / 実機の確認やセッションが見つけたもので、はっきりしたバグではないもの（振り分け待ち）
+labels: [finding]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Something plainly wrong is a `bug`; a choice the owner or the two votes make is a `question`.
+        The dev session turns a finding into a fix, a TODO.md line or nothing, and closes it with the version.
+
+        はっきり間違っているものは `bug`、持ち主か 2 票で決めることは `question` にします。
+        開発のセッションが直すか TODO.md の行にするかを決め、版を書いて閉じます。
+
+  - type: dropdown
+    id: lane
+    attributes:
+      label: From / 出どころ
+      options:
+        - lane:qa (a real-machine check / 実機の確認)
+        - lane:cloud (a cloud session / クラウドのセッション)
+    validations:
+      required: true
+
+  - type: input
+    id: rev
+    attributes:
+      label: Version or commit / 版かコミット
+      placeholder: v0.42.0 / main@abc1234
+    validations:
+      required: true
+
+  - type: input
+    id: rows
+    attributes:
+      label: TESTING row / TESTING の行
+      placeholder: 3d.8 / none
+      description: The row of TESTING.md it is about, if any. / 関わる行（あれば）。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: Steps, what was seen, what was expected / 手順・見えたもの・期待
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence / 証拠
+      description: Key log lines, a picture, the output of a command. / ログの行・画像・コマンドの出力。

@@ -4,6 +4,20 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.42.0] - 2026-10-11
+
+### 追加
+
+- ARM64 のテストを CI で回す（`.github/workflows/arm64.yml`）。Windows（`windows-11-arm`）と Linux（`ubuntu-24.04-arm`）の ARM64 のランナーで build と test を回す。main への push と手動のときだけ動き、`release.yml` はこれが緑でないと何も出さない。
+- 確認事項と所見の issue のフォーム（`question.yml`・`finding.yml`）と、ラベルをそろえて質問の票を数える `.github/workflows/merge-lanes.yml`（`vote[cloud]:` / `vote[win]:` が一致すれば `vote-decided`、割れれば `needs-owner`、持ち主の `回答:` で `answered`）。
+
+### 変更
+
+- 確認事項を QUESTIONS.md から `question` の issue に移した（CLAUDE.md「確認事項」）。QUESTIONS.md は Q1・Q2 の archive として残す。
+- 共通のスクリプト（`merge-lanes.py`・`labels.sh`・`todo-open.sh`・`lanes.sh`）を ito の `scripts/lanes/` から写す（`scripts/lanes.sh sync`、値は `scripts/lanes.conf`）。`scripts/verify.sh` が写しの差と `merge-lanes.py --self-test` を見る。
+- ito の rev を v0.8.0（`202627b`）に上げた。
+- TODO.md の印（`【人】` `【実機】`）をバッククォートで囲まずに書く。囲むと言及の扱いになり、`scripts/todo-open.sh` が進められる項目に数えてしまう。
+
 ## [0.41.5] - 2026-10-11
 
 ### 修正

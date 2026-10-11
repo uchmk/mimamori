@@ -1,7 +1,8 @@
 # TODO
 
 v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の順で進める。
-`【人】` は持ち主の作業、`【実機】` は実機でしか確かめられないもの（[TESTING.md](TESTING.md) に積む）。
+【人】 は持ち主の作業、【実機】 は実機でしか確かめられないもの（[TESTING.md](TESTING.md) に積む）、（要確認: #N）は `question` の issue で止まっているもの。
+印は裸で書く（バッククォートの中は言及の扱い）。開発のセッションが進められる項目の数は `scripts/todo-open.sh`。
 
 ## 1. 残りの画面（番号は v0.1 で固定済み）
 
@@ -24,9 +25,9 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → 有効なジョブは `launchctl bootstrap <ドメイン> <plist>` で読み込んでから `kickstart` する。無効のジョブは無効を解かず、`launchctl enable …` をトーストで教えるだけ（v0.7.2）。
 - [x] svc: Windows のドライバー（`SERVICE_DRIVER`）を出すか、左の列の切り替えにするか決める。
   → 一緒に読み、`u`（procs の Mine や net の LISTEN と同じ鍵）でサービス ⇄ ドライバーを切り替える。左の列に今の種類を出す。ドライバーの操作の行は `sc.exe start|stop`（v0.7.3）。
-- [ ] svc の実機の確認 `【実機】`（TESTING.md 3b）。
+- [ ] svc の実機の確認 【実機】（TESTING.md 3b）。
   3b.1・3b.5・3b.6・3b.9 は済み（uchmk/yagura#5）。3b.2 の起動と停止・3b.8・3b.14 のドライバーの停止は管理者が要り、持ち主の UAC を待つ。
-- [ ] svc: Windows で WMI の `StartMode` が Unknown の 2 件が、yagura では自動か手動に入っている（uchmk/yagura#5）。どのサービスか、SCM の `QueryServiceConfig` が何を返すかを実機で見る `【実機】`。
+- [ ] svc: Windows で WMI の `StartMode` が Unknown の 2 件が、yagura では自動か手動に入っている（uchmk/yagura#5）。どのサービスか、SCM の `QueryServiceConfig` が何を返すかを実機で見る 【実機】。
 - [x] net（`7`）: インターフェースごとの送受信のグラフ、接続の一覧。Windows は IP ヘルパー、Linux は sysfs と `/proc/net`・`/proc/*/fd`。
 - [x] net: macOS のソケットの一覧（`proc_pidinfo` の `PROC_PIDFDSOCKETINFO`、または `netstat -anv` のパース）と、インターフェースの種類（`SCNetworkInterface`。Bluetooth PAN も見分ける）。今はインターフェースだけ。
   → ソケットは `netstat -anvW` のパース（PID の列は見出しから数える。古い `pid` と Sonoma 以降の `process:pid` の両方）。`proc_pidinfo` は他の利用者のプロセスを root なしで覗けず、
@@ -34,10 +35,10 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   1 分ごとに読み直す。SCNetworkInterface のバインディングを抱えずに済む。ポートの無いもの（utun・awdl など）は名前から推す（v0.7.4）。
 - [x] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
   → 選ぶだけでは絞らない（左の選択はいつもあるので、ほとんどが隠れる）。インターフェースで `Enter` を押すと絞り、どのアドレスにも付いたもの（`0.0.0.0`・`::`）は残す。選択を動かせば追い、`Esc` で外す（v0.7.5）。
-- [ ] net の実機の確認 `【実機】`（TESTING.md 3c）。
+- [ ] net の実機の確認 【実機】（TESTING.md 3c）。
   3c.2・3c.3・3c.7・3c.8・3c.10 は済み（uchmk/yagura#6）。3c.1 は Bluetooth が出ず、消えた `Wi-Fi 2`〜`5` が出ていたので v0.41.4 で直した。もう一度見てもらう。
 - [ ] net: Windows で消えた装置（`Not Present`）と隠れた Wi-Fi Direct を落とし、Bluetooth PAN はいつも残すようにした（v0.41.4）。Wi-Fi 3・5 が本当に Wi-Fi Direct だったかは
-  `Get-NetAdapter -IncludeHidden | fl Name,InterfaceDescription,Status` で確かめる `【実機】`。違えば隠れた装置を見分けるほかの手（`MIB_IF_ROW2` の `ConnectorPresent` と `HardwareInterface`、ifType）を探す。
+  `Get-NetAdapter -IncludeHidden | fl Name,InterfaceDescription,Status` で確かめる 【実機】。違えば隠れた装置を見分けるほかの手（`MIB_IF_ROW2` の `ConnectorPresent` と `HardwareInterface`、ifType）を探す。
 - [x] net: 実機の小さな指摘（uchmk/yagura#6）。
   - `Enter` で絞った後に `j` で移ると、絞り込みは追うがトーストは前のインターフェースの名前のまま。移ったときはトーストを出し直すか、出さない。
   - 左の列でインターフェースの名前が `イーサネ…` と切れる。速さの桁を詰めるか、名前の幅を広げる。
@@ -57,7 +58,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   右の列に「Health」と「Temperature」の行、壊れかけのドライブは左の名前も赤。hwmon のチップに無いドライブの温度は sensors の画面にも出る（v0.12.0）。
 - [ ] disk: Windows で `IOCTL_STORAGE_PREDICT_FAILURE` に答えないドライブ（実機の 3d.8 で分かる）があれば、WMI の `MSFT_PhysicalDisk` の `HealthStatus` と `StorageReliabilityCounter`（管理者）を足す。
   → NVMe は答えた（uchmk/yagura#2、Samsung 990 EVO Plus）。WMI の counter は温度・Wear だけで、通電時間とエラーは空。NVMe には足しても得るものが無い。SATA の機械で 3d.8 と 3d.17 を見てから決める。
-  寿命の消費は yagura が 1%、`Get-StorageReliabilityCounter` の `Wear` が 0 だった。yagura は NVMe の health ログの Percentage Used をそのまま出している。OS が丸めているのか別の数なのかは、CrystalDiskInfo か smartctl のある機械で比べる `【実機】`。
+  寿命の消費は yagura が 1%、`Get-StorageReliabilityCounter` の `Wear` が 0 だった。yagura は NVMe の health ログの Percentage Used をそのまま出している。OS が丸めているのか別の数なのかは、CrystalDiskInfo か smartctl のある機械で比べる 【実機】。
 - [x] disk: macOS の NVMe のドライブの温度と SMART の中身（IOKit の `IONVMeSMARTInterface`）。
   → `NVMe SMART Capable` の付いた親の user client を `IOCreatePlugInInterfaceForService` で開き、`SMARTReadData` の 512 バイトを `disk::nvme_log` で読む。sudo は要らない（v0.14.0）。
 - [x] disk: macOS の SATA のドライブの SMART の中身（`IOATASMARTInterface` の `SMARTReadData` と、温度は属性 194）。今は内蔵の SATA の Mac（古い Intel の Mac）と、SMART を通す外付けのケースだけが対象。
@@ -68,7 +69,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   Windows は NVMe の SMART / health ログ（ページ 2）を読み、critical warning も故障の印にする。512 バイトのパースは OS に依らない `disk::nvme_log`（v0.13.0）。
 - [x] disk: Windows の SATA の SMART の中身（`SMART_RCV_DRIVE_DATA` の属性。管理者が要る）。管理者でないときに何を出すかと合わせて決める。
   → 管理者なら属性を読み、そうでなければ「SMART counts: needs administrator」の 1 行を薄く出す（健康状態の行がすでに管理者が要ると言っていれば出さない）（v0.16.0）。
-- [ ] disk の実機の確認 `【実機】`（TESTING.md 3d）。
+- [ ] disk の実機の確認 【実機】（TESTING.md 3d）。
 - [x] sensors（`9`）: 温度・ファン（sysinfo の `Components`）。
   → 左がチップ（チップごとの一番熱い温度の 1 分のグラフ）、真ん中が温度とファンの一覧（今・1 分の最低と最高・高温の目安・限界）、右が選んだセンサーのグラフと目安の線。
   sysinfo の `Components` は macOS だけで使う。Linux は sysinfo がファンを読まずチップでまとめないので `/sys/class/hwmon` を自分で読み（温度が無ければ `/sys/class/thermal`）、
@@ -78,7 +79,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `AppleSMC` を直に読み、名前の付いた温度とファン（最小・最大つき）を出す。Apple silicon の HID の温度にも名前（v0.17.0）
 - [x] sensors: Windows のファンとコアの温度。メーカーのドライバーか、LibreHardwareMonitor のようなカーネルドライバーが要る（署名・管理者・同梱の是非を QUESTIONS で決めてから）。今は ACPI の熱ゾーンだけ。
   → Q2 の 1。HWiNFO の共有メモリと LibreHardwareMonitor（OpenHardwareMonitor）の WMI を、動いていれば読む。ドライバーは同梱しない (v0.30.0)
-- [ ] sensors の実機の確認 `【実機】`（TESTING.md 3e）。
+- [ ] sensors の実機の確認 【実機】（TESTING.md 3e）。
 - [x] sys（`0`）: OS・BIOS・メモリのスロットなど、変わらない情報。
   Windows と Linux はファームウェアの SMBIOS の表を自分で読む（`smbios.rs`、純粋な関数）。Windows は `GetSystemFirmwareTable('RSMB')` で管理者が要らない。
   Linux は `/sys/firmware/dmi/tables/DMI` が root だけなので、ふだんは `/sys/class/dmi/id`（スロットなし、そう言う）、SMBIOS の無い ARM の板はデバイスツリーの `model`。
@@ -88,15 +89,15 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → 左の列に「Processor」の節。埋まったソケットの中央処理装置だけを読み、キャッシュはハンドルで type 7 を引く。macOS は system_profiler のチップ名とコア数（v0.18.0）
 - [x] sys: GPU とドライブの一覧への近道（gpu·npu・disk の画面へ飛ぶ）を置くか決める。
   → 新しいキーは足さず、左の列に「Graphics」「Drives」の節（名前・VRAM、型番・大きさ）を置き、末尾にその画面を開く keymap のキーを出す（v0.19.0）
-- [ ] sys の実機の確認 `【実機】`（TESTING.md 3f）。
+- [ ] sys の実機の確認 【実機】（TESTING.md 3f）。
 
 ## 2. 構成と OS
 
 - [x] macOS のコアの構成: `sysctl hw.perflevelN.*`（P / E コアと L2 の塊）。今は 1 論理 CPU = 1 コアで描く。
   → Apple silicon は IOKit のデバイスツリー（`cpus` の子の `cluster-type`・`cluster-id`）でクラスターごとの塊、L2 の大きさは sysctl。Intel の Mac は sysctl のコア数とスレッド数（v0.20.0）
-- [x] Windows でプロセスのユーザー名が出るか確かめる `【実機】`（TESTING.md 3.x）。
+- [x] Windows でプロセスのユーザー名が出るか確かめる 【実機】（TESTING.md 3.x）。
   → TESTING.md 3.1 で確かめた（Windows 11 x64、v0.40.1、uchmk/yagura#3）
-- [ ] Windows ARM64（Snapdragon）の構成: `EfficiencyClass` が P / E を分けるか `【実機】`。
+- [ ] Windows ARM64（Snapdragon）の構成: `EfficiencyClass` が P / E を分けるか 【実機】。
   持ち主の PC は x64 で、Snapdragon の機械が無い（uchmk/yagura#10 は開いたまま。TESTING.md 1.2・2.3・3a.4）。
 - [ ] AMD の GL ドライバーで落ちる件（filer の TODO と同じ `atio6axx.dll`）。filer で原因が分かったら同じ対策を入れる。今は `config.toml` の `backend = "dx12"` で避けられる。
 - [x] macOS の GPU: IOKit の `IOAccelerator` の `PerformanceStatistics`（使用率・VRAM）。Pure Rust の `objc2-io-kit` で読めるか確かめる。
@@ -107,7 +108,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `gpu/fdinfo.rs` が `/dev/dri` の fd を 5 秒ごとに探し、毎回 fdinfo を読む。sysfs に使用率の無い GPU は fdinfo の合計を使う（v0.23.0）
 - [x] NVML のプロセスごとの使用率（`process_utilization_stats`）。今はメモリだけ。
   → 前の回の後の標本を SM・エンコーダー・デコーダーの大きいほうで平均する。Linux だけ（Windows はカウンタが出す）（v0.24.0）
-- [ ] GPU·NPU の実機の確認 `【実機】`（TESTING.md 3a）。
+- [ ] GPU·NPU の実機の確認 【実機】（TESTING.md 3a）。
 
 ## 3. 言語
 
@@ -168,4 +169,4 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → 共通仕様は tsumugi の `docs/common-spec.md`。共通のクレート `tsumugi-common`（common.toml の読み書き・見張り・時計）・`tsumugi-theme`（13 のテーマ・自分のテーマ）・
   `tsumugi-prefs`（画面の枠と部品、Language の行・CLOCK のカード・テーマのページ）を tsumugi v0.81.0 で切り出し、mimamori はその上に General・Theme・Fleet・Advanced の 4 ページ。
   色の定数をテーマを読む関数に換え、common.toml を 2 秒ごとに見て当て直す。`y` と、手引きの水色の行・設定の Copy でコピー（v0.32.0）
-- [ ] 設定の画面・テーマ・時計の実機の確認 `【実機】`（TESTING.md 5.9〜5.14）。
+- [ ] 設定の画面・テーマ・時計の実機の確認 【実機】（TESTING.md 5.9〜5.14）。

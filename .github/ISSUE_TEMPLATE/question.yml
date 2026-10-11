@@ -1,0 +1,48 @@
+name: Question / 確認事項
+description: A decision the owner or the two votes make (QUESTIONS.md before v0.42.0) / 持ち主か 2 票で決めること（v0.42.0 より前は QUESTIONS.md）
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The TODO.md item it holds up ends with `（要確認: #N）`. Up for the votes: add the label `vote`;
+        a cloud session comments `vote[cloud]: 2 — why`, the owner's PC session `vote[win]: 2 — why`.
+        The Merge lanes workflow counts them: the same option makes it `vote-decided`, a split
+        `needs-owner`. The owner's comment starting `回答:` wins over any vote (label `answered`).
+        Format and rules: CLAUDE.md「確認事項」.
+
+        止めている TODO の項目の末尾は `（要確認: #N）`。投票に回すならラベル `vote` を付けます。票はコメント
+        `vote[cloud]: 2 — 理由`（クラウド）/ `vote[win]: 2 — 理由`（持ち主の PC）。持ち主の `回答:` は常に優先します。
+
+  - type: textarea
+    id: background
+    attributes:
+      label: Background / 背景
+      description: What happened and why it needs a decision. / 何があり、なぜ決める必要があるか。
+    validations:
+      required: true
+
+  - type: input
+    id: todo
+    attributes:
+      label: TODO item it holds up / 止めている TODO
+      placeholder: TODO.md「節」の項目
+
+  - type: textarea
+    id: options
+    attributes:
+      label: Options / 選択肢
+      description: Numbered; mark one (推奨). / 番号を付け、1 つに（推奨）を付ける。
+      value: |
+        1. （推奨）
+        2.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: how
+    attributes:
+      label: How it may be decided / 決め方
+      options:
+        - label: The two votes may decide it (add `vote`) / 2 票で決めてよい（`vote` を付ける）
+        - label: The recommended option may go ahead until answered / 回答までは推奨で進めてよい

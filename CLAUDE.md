@@ -9,7 +9,10 @@
 - 返答は日本語。コード・コメント・コミットメッセージは英語。
 - 頼まれるまでコミットしない。
 - 改行は LF（`.gitattributes` の `eol=lf`）。スクリプトで書き換えるときは改行を変えない（Python なら `newline=''`）。
-- タスクは [TODO.md](TODO.md)、人への確認事項は [QUESTIONS.md](QUESTIONS.md)（kura と同じ形。選択肢に推奨を 1 つ、止まっている項目に `（要確認: Qn）`）。実機でしか確かめられないことは [TESTING.md](TESTING.md) に積む（機能を足したら行を足してから完了にする）。
+- タスクは [TODO.md](TODO.md)、人への確認事項は `question` の issue（下の「確認事項」。QUESTIONS.md は Q1-Q2 の archive）。実機でしか確かめられないことは [TESTING.md](TESTING.md) に積む（機能を足したら行を足してから完了にする）。
+  - 未完了の項目の末尾の `【人】` `【実機】` `（要確認: #N）` は開発のセッションが進めない印。印は**裸で書く**（バッククォートで囲むと言及の扱いになり、
+    `scripts/todo-open.sh` が数える。v0.42.0 で直した）。開発のセッションが進められる項目の数は `scripts/todo-open.sh`（`-v` で項目も）。
+  - 実機の確認で見つかったもの: はっきり間違っていれば `bug`、そうでなければ `finding` の issue（フォーム `.github/ISSUE_TEMPLATE/finding.yml`）。直したら版を書いて閉じる。
   `[x]` を付けてよいのは実機のセッションと持ち主だけ。動きを変えた行は `[ ]` に戻す。
 
 ## 版・変更ログ・push
@@ -41,8 +44,23 @@
   - 設定は OUTDIR/config から読み（`UCHMK_CONFIG_DIR`）、列の幅は OUTDIR/state に書く（`YAGURA_STATE_HOME`）。前の回の列の幅は持ち越さない。
   - `XRUN_IDLE=10` で、最後の 10 秒の CPU 使用率を `cpu.txt` に書く。Xvfb は llvmpipe（ソフトウェア描画）なので、
     再描画 1 回が重く、1 秒ごとのサンプリングで 1 コアの 10% 前後に見える。yagura 自身（収集 0.1%・UI 0.7% ほど）とは分けて読む。
+- **共通のスクリプト（`scripts/lanes.conf` の `files=` に並ぶもの）の正は ito の `scripts/lanes/`。**yagura の写しは直さない。
+  ito で直して push → Cargo.toml の ito の `rev` を上げて `cargo build` → `scripts/lanes.sh sync`。`verify.sh` が `scripts/lanes.sh check` で差を見る。
+- CI の `arm64`（`.github/workflows/arm64.yml`）は main への push と手動のときだけ、Windows と Linux の ARM64 のランナーで build と test を回す。
+  `release.yml` はこれが緑でないと何も出さない。
 - CI の `smoke` は `scripts/smoke-linux.sh`（xrun.sh で 1〜0 と F（fleet）の画面を順に撮り、panic・別の画面・真っ平らな画像で落ちる）。画像は成果物 `linux-smoke` に残る。
   画面を足したら、このスクリプトの `screens` にも足す。
+
+## 確認事項
+
+持ち主に決めてもらうことは `question` の issue にする（フォーム `.github/ISSUE_TEMPLATE/question.yml`。v0.42.0 から。QUESTIONS.md は archive）。
+
+- 題は問いを 1 行で。本文は背景・止めている TODO・選択肢（番号を付け、推奨を 1 つ）。止めている TODO の項目の末尾に `（要確認: #N）` を書く。
+- 投票に回してよいもの（持ち主の好みでなく、調べれば答えの出るもの）はラベル `vote` を付ける。票はコメントで
+  `vote[cloud]: 2 — 理由`（クラウドのセッション）と `vote[win]: 2 — 理由`（持ち主の PC のセッション。`needs-pc` の issue で頼む）。
+  取り消しは `uncount[cloud]:`。`.github/workflows/merge-lanes.yml` が数え、一致すれば `vote-decided`、割れれば `needs-owner` を付ける。
+- 持ち主の `回答:` で始まるコメントは常に優先する（`answered` が付く）。反映したら TODO の印を外し、版を書いて閉じる。
+- ラベルは同じワークフローが毎回そろえる（すぐ作るなら `scripts/labels.sh`）。
 
 ## 持ち主の PC への依頼（needs-pc）
 

@@ -1,0 +1,55 @@
+name: ARM64
+
+# The tests on ARM64 runners, Windows and Linux (v0.42.0), as kura's and tsumugi's arm64.yml.
+#
+# release.yml cross-builds Windows ARM64 on the x64 runner and builds Linux
+# ARM64 without running the tests; whether they pass on ARM64 is answered
+# here, on GitHub's own ARM64 runners, which cost nothing on a public
+# repository.
+#
+# Called by ci.yml on a push to main and by hand (not on a pull request: the
+# x64 jobs already gate those, and this would add its wait to every one) and
+# by release.yml, which publishes nothing until both jobs here are green.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows-arm64:
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      # The windows-11-arm image has not always carried Rust. A no-op when it
+      # does.
+      - name: Rust, if the image has none
+        shell: pwsh
+        run: |
+          if (Get-Command cargo -ErrorAction SilentlyContinue) { cargo --version; exit 0 }
+          $init = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
+          Invoke-WebRequest -Uri 'https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe' -OutFile $init
+          & $init -y --profile minimal --default-toolchain stable
+          if ($LASTEXITCODE -ne 0) { throw "rustup-init exited $LASTEXITCODE" }
+          Join-Path $env:USERPROFILE '.cargo\bin' | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-arm64
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --locked --workspace --all-features
+      - run: cargo test --locked --workspace --all-features
+
+  linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-arm64
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --locked --workspace --all-features
+      - run: cargo test --locked --workspace --all-features

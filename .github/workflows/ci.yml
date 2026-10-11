@@ -48,6 +48,11 @@ jobs:
       - run: cargo clippy --locked --all-targets --target x86_64-pc-windows-msvc -- -D warnings
       - run: cargo clippy --locked --all-targets --target aarch64-apple-darwin -- -D warnings
 
+  # The tests on Windows and Linux ARM64 (arm64.yml), on a push to main only.
+  arm64:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/arm64.yml
+
   # Start it on a virtual display, visit every screen and check each drew
   # (scripts/smoke-linux.sh). A runner has no GPU, so Mesa's llvmpipe draws
   # the OpenGL: slow, and correct, which is all this asks.
