@@ -306,7 +306,14 @@ pub fn tell(n: &Notify, title: &str, body: &str) {
         ito_notify::sound::play(&n.sound_name);
     }
     if !n.webhook.is_empty() {
-        ito_notify::webhook::send(n.webhook.clone(), n.webhook_format.clone(), title.to_owned(), body.to_owned(), String::new());
+        ito_notify::webhook::send(
+            n.webhook.clone(),
+            n.webhook_format.clone(),
+            ito_notify::webhook::Level::Alert,
+            title.to_owned(),
+            body.to_owned(),
+            String::new(),
+        );
     }
 }
 

@@ -4,6 +4,11 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.50.1] - 2026-10-11
+
+### 変更
+- ito を v0.17.5 に上げた。Webhook は ntfy の `Tags` / `Priority`（警告・高）と JSON の `state`（`alert`）を付けて送り、送れなかったら 30 秒後に 1 度だけやり直す。ほかの動きは同じ。
+
 ## [0.50.0] - 2026-10-11
 
 ### 追加
