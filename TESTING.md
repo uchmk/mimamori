@@ -192,6 +192,11 @@ back to `[ ]`.
 - [ ] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from).
 - [ ] 3i.2 `yagura --log-metrics usage.csv --every 2` writes the header and a row every 2 seconds; the numbers match the screens (CPU, memory, the network and disk rates, the busiest GPU, the hottest temperature, the battery on a laptop). Ctrl+C stops it; running it again appends rows without a second header. `--every 0` is refused.
 
+## 3j. Zoomed graphs
+
+- [ ] 3j.1 Double click the graph on overview (any gauge), cpu (total), mem (memory and swap), gpu (usage, memory), net (receive, send), disk (read, write, busy) and sensors: it opens over the window with the title, the range (5 min), the latest value, avg / min / max, a scale at the quarters and `… ago` / `now` under it. Clicks and the main keys do nothing while it is open; `Esc`, `q` and `Enter` close it.
+- [ ] 3j.2 `]` and `[` (also the arrows, `l` and `h`) step 5 min → 15 min → 1 hour and back; the line keeps moving while it is open; after an hour of running the 1 hour view fills the width; the next zoom opens at the range the last one was left at. With `every 2 s` the time marks double.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

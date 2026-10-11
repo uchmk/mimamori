@@ -9,10 +9,11 @@ use crate::app::{App, Gauge, OVW_TOP};
 use crate::collect::gpu;
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::tr;
-use crate::model::Ring;
+use crate::model::{Ring, Series};
 use crate::screen::Pane;
 use crate::stacks;
 use crate::util::{fmt_bytes, fmt_uptime};
+use crate::zoom::{Unit, Zoom};
 
 /// How short a gauge's graph may get before the middle takes a second
 /// column.
@@ -28,6 +29,8 @@ struct Row<'a> {
     pct: Option<f32>,
     color: Color32,
     ring: Option<&'a Ring>,
+    /// What a double click on its graph opens.
+    series: Option<Series>,
 }
 
 impl Row<'_> {
@@ -57,19 +60,32 @@ fn gauges(app: &App) -> Vec<Row<'_>> {
     app.ovw_gauges()
         .into_iter()
         .map(|g| match g {
-            Gauge::Cpu => {
-                Row { label: tr("ovw.cpu").into(), what: String::new(), pct: Some(m.total), color: theme::blue(), ring: Some(&m.cpu_hist) }
-            }
+            Gauge::Cpu => Row {
+                label: tr("ovw.cpu").into(),
+                what: String::new(),
+                pct: Some(m.total),
+                color: theme::blue(),
+                ring: Some(&m.cpu_hist),
+                series: Some(Series::Cpu),
+            },
             Gauge::Mem => Row {
                 label: tr("ovw.mem").into(),
                 what: String::new(),
                 pct: Some(m.mem_pct()),
                 color: theme::green(),
                 ring: Some(&m.mem_hist),
+                series: Some(Series::Mem),
             },
             Gauge::Swap => {
                 let pct = m.swap_hist.last().unwrap_or(0.0);
-                Row { label: tr("ovw.swap").into(), what: String::new(), pct: Some(pct), color: theme::magenta(), ring: Some(&m.swap_hist) }
+                Row {
+                    label: tr("ovw.swap").into(),
+                    what: String::new(),
+                    pct: Some(pct),
+                    color: theme::magenta(),
+                    ring: Some(&m.swap_hist),
+                    series: Some(Series::Swap),
+                }
             }
             Gauge::Gpu(i) => {
                 let d = &m.gpus[i];
@@ -80,7 +96,14 @@ fn gauges(app: &App) -> Vec<Row<'_>> {
                 };
                 let what = if d.name.is_empty() { d.vendor.unwrap_or_default().to_string() } else { d.name.clone() };
                 let ring = m.gpu_hist.get(&d.id).map(|h| &h.0);
-                Row { label: numbered(base, nth, of), what, pct: d.usage, color: theme::yellow(), ring }
+                Row {
+                    label: numbered(base, nth, of),
+                    what,
+                    pct: d.usage,
+                    color: theme::yellow(),
+                    ring,
+                    series: Some(Series::GpuUsage(d.id.clone())),
+                }
             }
             Gauge::Disk(i) => {
                 let d = &m.disks.drives[i];
@@ -89,7 +112,14 @@ fn gauges(app: &App) -> Vec<Row<'_>> {
                     what = format!("{what} · {}", fmt_bytes(size));
                 }
                 let ring = m.drive_hist.get(&d.id).map(|h| &h.2);
-                Row { label: numbered(tr("ovw.disk"), i, n_disk), what, pct: d.busy, color: theme::cyan(), ring }
+                Row {
+                    label: numbered(tr("ovw.disk"), i, n_disk),
+                    what,
+                    pct: d.busy,
+                    color: theme::cyan(),
+                    ring,
+                    series: Some(Series::DriveBusy(d.id.clone())),
+                }
             }
         })
         .collect()
@@ -155,8 +185,12 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
             graph::line(&cx.pen, body, ring.iter(), 100.0, g.color);
         }
         // A click on the graph selects its gauge, as its row on the left.
-        if cx.ui.interact(pr, Id::new(("ovw-gauge", i)), Sense::click()).clicked() {
+        let resp = cx.ui.interact(pr, Id::new(("ovw-gauge", i)), Sense::click());
+        if resp.clicked() {
             cx.out.click = Some((Pane::Left, i, false));
+        }
+        if let (true, Some(series)) = (resp.double_clicked(), &g.series) {
+            cx.out.zoom = Some(Zoom::new(series.clone(), g.title(), g.color, Unit::Pct));
         }
     }
 }

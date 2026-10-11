@@ -68,6 +68,7 @@ column dividers. The heights are kept per screen in
 | `Ctrl+,` (macOS `Cmd+,`) | The settings screen, and back. See [Settings screen](#settings-screen) |
 | `?`, `F1` | Help: every key of the keymap |
 | `Ctrl+=` / `Ctrl++` / `Ctrl+;`, `Ctrl+-`, `Ctrl+0` (macOS `Cmd`) | Zoom in, out, back to 100%. The scale is every uchmk app's (common.toml's `scale`), so the others follow; `Ctrl+;` is for JIS keyboards |
+| Double click a graph | Open it full size over the last 5 minutes (overview, cpu, mem, gpu, net, disk and sensors). `]` / `Right` / `l` look further back (15 minutes as 5 s means, 1 hour as 30 s means), `[` / `Left` / `h` closer, `Esc`, `q` or `Enter` close. The range is kept for the next one. The longer history is kept for these system-wide series only (not per process) |
 | `Esc` | Clear the filter, and on net the interface the sockets are narrowed to |
 | `q`, `Ctrl+q` (macOS `Cmd+q`) | Quit |
 

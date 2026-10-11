@@ -9,38 +9,175 @@ use crate::collect::{Mem, Msg, Proc, Static, battery, devices, disk, gpu, hw, ne
 /// interval.
 pub const HISTORY: usize = 60;
 
-/// The newest [`HISTORY`] values, oldest first.
+/// Samples of the long history's finest tier: five minutes at the default
+/// interval.
+const RAW: usize = 300;
+/// The middle tier is the mean of this many samples, `MID` of them: fifteen
+/// minutes.
+const MID_EVERY: usize = 5;
+const MID: usize = 180;
+/// The coarsest tier: the mean of this many samples, `SLOW` of them: an hour.
+const SLOW_EVERY: usize = 30;
+const SLOW: usize = 120;
+
+/// How far back a zoomed graph looks.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Range {
+    #[default]
+    Min5,
+    Min15,
+    Hour1,
+}
+
+impl Range {
+    /// The next longer (+1) or shorter (-1) range; the ends stay.
+    pub fn step(self, by: i32) -> Self {
+        let all = [Self::Min5, Self::Min15, Self::Hour1];
+        let i = all.iter().position(|&r| r == self).unwrap_or(0) as i32;
+        all[(i + by).clamp(0, 2) as usize]
+    }
+
+    /// Samples the range holds when full.
+    pub fn slots(self) -> usize {
+        match self {
+            Self::Min5 => RAW,
+            Self::Min15 => MID,
+            Self::Hour1 => SLOW,
+        }
+    }
+
+    /// Samples one point of the range stands for.
+    pub fn per_point(self) -> usize {
+        match self {
+            Self::Min5 => 1,
+            Self::Min15 => MID_EVERY,
+            Self::Hour1 => SLOW_EVERY,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Min5 => "zoom.min5",
+            Self::Min15 => "zoom.min15",
+            Self::Hour1 => "zoom.hour1",
+        }
+    }
+}
+
+/// The long history of a system-level series: every sample for five minutes,
+/// then means of coarser steps for fifteen minutes and an hour.
 #[derive(Clone, Debug, Default)]
-pub struct Ring(VecDeque<f32>);
+struct Long {
+    raw: VecDeque<f32>,
+    mid: VecDeque<f32>,
+    slow: VecDeque<f32>,
+    count: usize,
+    sum_mid: f32,
+    sum_slow: f32,
+}
+
+fn keep(q: &mut VecDeque<f32>, cap: usize, v: f32) {
+    if q.len() == cap {
+        q.pop_front();
+    }
+    q.push_back(v);
+}
+
+impl Long {
+    fn push(&mut self, v: f32) {
+        keep(&mut self.raw, RAW, v);
+        self.count += 1;
+        self.sum_mid += v;
+        self.sum_slow += v;
+        if self.count.is_multiple_of(MID_EVERY) {
+            keep(&mut self.mid, MID, self.sum_mid / MID_EVERY as f32);
+            self.sum_mid = 0.0;
+        }
+        if self.count.is_multiple_of(SLOW_EVERY) {
+            keep(&mut self.slow, SLOW, self.sum_slow / SLOW_EVERY as f32);
+            self.sum_slow = 0.0;
+        }
+    }
+}
+
+/// The newest [`HISTORY`] values, oldest first; a [`Ring::long`] one also
+/// keeps the longer tiers for the zoomed graph.
+#[derive(Clone, Debug, Default)]
+pub struct Ring {
+    recent: VecDeque<f32>,
+    long: Option<Box<Long>>,
+}
 
 impl Ring {
+    /// A ring that also keeps the last hour, for the graphs that can be zoomed.
+    pub fn long() -> Self {
+        Self { recent: VecDeque::new(), long: Some(Box::default()) }
+    }
+
+    /// Starts keeping the long tiers if it does not yet (for a ring made by
+    /// `Default`, as a field of the model is).
+    fn grow(&mut self) -> &mut Self {
+        self.long.get_or_insert_with(Box::default);
+        self
+    }
+
     pub fn push(&mut self, v: f32) {
-        if self.0.len() == HISTORY {
-            self.0.pop_front();
+        keep(&mut self.recent, HISTORY, v);
+        if let Some(l) = &mut self.long {
+            l.push(v);
         }
-        self.0.push_back(v);
     }
 
     pub fn iter(&self) -> impl ExactSizeIterator<Item = f32> + '_ {
-        self.0.iter().copied()
+        self.recent.iter().copied()
+    }
+
+    /// The values of `range`, oldest first (the last minute when the ring
+    /// keeps nothing longer).
+    pub fn span(&self, range: Range) -> Vec<f32> {
+        match (&self.long, range) {
+            (None, _) => self.iter().collect(),
+            (Some(l), Range::Min5) => l.raw.iter().copied().collect(),
+            (Some(l), Range::Min15) => l.mid.iter().copied().collect(),
+            (Some(l), Range::Hour1) => l.slow.iter().copied().collect(),
+        }
     }
 
     pub fn last(&self) -> Option<f32> {
-        self.0.back().copied()
+        self.recent.back().copied()
     }
 
     pub fn max(&self) -> f32 {
-        self.0.iter().copied().fold(0.0, f32::max)
+        self.recent.iter().copied().fold(0.0, f32::max)
     }
 
     /// The least value, 0 when empty.
     pub fn min(&self) -> f32 {
-        if self.0.is_empty() { 0.0 } else { self.0.iter().copied().fold(f32::INFINITY, f32::min) }
+        if self.recent.is_empty() { 0.0 } else { self.recent.iter().copied().fold(f32::INFINITY, f32::min) }
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.recent.len()
     }
+}
+
+/// Which history a zoomed graph shows, found again in the model each frame
+/// so the graph goes on moving.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Series {
+    Cpu,
+    Mem,
+    Swap,
+    GpuUsage(String),
+    GpuVram(String),
+    NetRx(String),
+    NetTx(String),
+    DriveRead(String),
+    DriveWrite(String),
+    DriveBusy(String),
+    VolRead(String),
+    VolWrite(String),
+    Sensor(String),
 }
 
 #[derive(Default)]
@@ -117,7 +254,7 @@ impl Model {
                 for (r, &u) in self.threads.iter_mut().zip(&usage) {
                     r.push(u);
                 }
-                self.cpu_hist.push(total);
+                self.cpu_hist.grow().push(total);
                 self.usage = usage;
                 self.freq = freq_mhz;
                 self.total = total;
@@ -125,8 +262,8 @@ impl Model {
                 self.samples += 1;
             }
             Msg::Mem(m) => {
-                self.mem_hist.push(pct(m.used, m.total));
-                self.swap_hist.push(pct(m.swap_used, m.swap_total));
+                self.mem_hist.grow().push(pct(m.used, m.total));
+                self.swap_hist.grow().push(pct(m.swap_used, m.swap_total));
                 self.mem = m;
             }
             Msg::Procs { procs, total_threads } => {
@@ -145,7 +282,7 @@ impl Model {
                 let mut hist = std::mem::take(&mut self.gpu_hist);
                 hist.retain(|id, _| devs.iter().any(|d| d.id == *id));
                 for d in &devs {
-                    let (u, v) = hist.entry(d.id.clone()).or_default();
+                    let (u, v) = hist.entry(d.id.clone()).or_insert_with(|| (Ring::long(), Ring::long()));
                     u.push(d.usage.unwrap_or(0.0));
                     v.push(d.vram_pct().unwrap_or(0.0));
                 }
@@ -161,7 +298,7 @@ impl Model {
                 let mut hist = std::mem::take(&mut self.net_hist);
                 hist.retain(|name, _| nics.iter().any(|n| n.name == *name));
                 for n in &nics {
-                    let (rx, tx) = hist.entry(n.name.clone()).or_default();
+                    let (rx, tx) = hist.entry(n.name.clone()).or_insert_with(|| (Ring::long(), Ring::long()));
                     rx.push(n.rx_rate as f32);
                     tx.push(n.tx_rate as f32);
                 }
@@ -177,7 +314,7 @@ impl Model {
                 let mut hist = std::mem::take(&mut self.drive_hist);
                 hist.retain(|id, _| d.drives.iter().any(|x| x.id == *id));
                 for x in &d.drives {
-                    let (r, w, b) = hist.entry(x.id.clone()).or_default();
+                    let (r, w, b) = hist.entry(x.id.clone()).or_insert_with(|| (Ring::long(), Ring::long(), Ring::long()));
                     r.push(x.read_rate as f32);
                     w.push(x.write_rate as f32);
                     b.push(x.busy.unwrap_or(0.0));
@@ -186,7 +323,7 @@ impl Model {
                 let mut hist = std::mem::take(&mut self.vol_hist);
                 hist.retain(|m, _| d.volumes.iter().any(|v| v.mount == *m));
                 for v in &d.volumes {
-                    let (r, w) = hist.entry(v.mount.clone()).or_default();
+                    let (r, w) = hist.entry(v.mount.clone()).or_insert_with(|| (Ring::long(), Ring::long()));
                     r.push(v.read_rate as f32);
                     w.push(v.write_rate as f32);
                 }
@@ -198,7 +335,7 @@ impl Model {
                 let mut hist = std::mem::take(&mut self.sensor_hist);
                 hist.retain(|id, _| s.list.iter().any(|x| x.id == *id));
                 for x in &s.list {
-                    hist.entry(x.id.clone()).or_default().push(x.value);
+                    hist.entry(x.id.clone()).or_insert_with(Ring::long).push(x.value);
                 }
                 self.sensor_hist = hist;
                 self.sensors = s;
@@ -208,6 +345,24 @@ impl Model {
             Msg::Battery(b) => self.battery = b,
             Msg::Devices(d) => self.devices = Some(*d),
         }
+    }
+
+    pub fn series(&self, s: &Series) -> Option<&Ring> {
+        Some(match s {
+            Series::Cpu => &self.cpu_hist,
+            Series::Mem => &self.mem_hist,
+            Series::Swap => &self.swap_hist,
+            Series::GpuUsage(id) => &self.gpu_hist.get(id)?.0,
+            Series::GpuVram(id) => &self.gpu_hist.get(id)?.1,
+            Series::NetRx(n) => &self.net_hist.get(n)?.0,
+            Series::NetTx(n) => &self.net_hist.get(n)?.1,
+            Series::DriveRead(id) => &self.drive_hist.get(id)?.0,
+            Series::DriveWrite(id) => &self.drive_hist.get(id)?.1,
+            Series::DriveBusy(id) => &self.drive_hist.get(id)?.2,
+            Series::VolRead(m) => &self.vol_hist.get(m)?.0,
+            Series::VolWrite(m) => &self.vol_hist.get(m)?.1,
+            Series::Sensor(id) => self.sensor_hist.get(id)?,
+        })
     }
 
     pub fn mem_pct(&self) -> f32 {
@@ -247,6 +402,40 @@ mod tests {
         assert_eq!(r.max(), 99.0);
         assert_eq!(r.min(), 40.0);
         assert_eq!(Ring::default().min(), 0.0);
+    }
+
+    #[test]
+    fn the_long_ring_keeps_coarser_tiers() {
+        let mut r = Ring::long();
+        for i in 0..400 {
+            r.push((i % 10) as f32);
+        }
+        // The short view is still the last minute.
+        assert_eq!(r.len(), HISTORY);
+        let five = r.span(Range::Min5);
+        assert_eq!((five.len(), five[0], five[299]), (300, 0.0, 9.0));
+        // Means of five and of thirty samples of 0..=9 repeating.
+        let fifteen = r.span(Range::Min15);
+        assert_eq!(fifteen.len(), 80);
+        assert_eq!((fifteen[0], fifteen[1]), (2.0, 7.0));
+        let hour = r.span(Range::Hour1);
+        assert_eq!(hour.len(), 13);
+        assert!(hour.iter().all(|&v| (v - 4.5).abs() < 1e-4));
+        // A ring without tiers answers every range with its minute.
+        let mut s = Ring::default();
+        s.push(1.0);
+        assert_eq!(s.span(Range::Hour1), vec![1.0]);
+        for i in 0..5000 {
+            r.push(i as f32);
+        }
+        assert_eq!((r.span(Range::Min5).len(), r.span(Range::Min15).len(), r.span(Range::Hour1).len()), (300, 180, 120));
+    }
+
+    #[test]
+    fn ranges_step_and_stop_at_the_ends() {
+        assert_eq!(Range::Min5.step(-1), Range::Min5);
+        assert_eq!(Range::Min5.step(1), Range::Min15);
+        assert_eq!(Range::Min15.step(1).step(1), Range::Hour1);
     }
 
     #[test]

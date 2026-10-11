@@ -13,7 +13,7 @@ use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
 use crate::i18n::{tr, trf};
 use crate::kill::{self, Outcome, Target};
-use crate::model::Model;
+use crate::model::{Model, Range};
 use crate::persist::{Saver, Stacks};
 use crate::prefs::{Prefs, Reload};
 use crate::remote::client::{self, Event, ToHost, Why};
@@ -22,6 +22,7 @@ use crate::remote::{self, Link, Peer};
 use crate::screen::{Pane, Screen};
 use crate::stacks;
 use crate::svcctl::{self, Action};
+use crate::zoom::Zoom;
 
 /// The sampling intervals `+` and `-` step through, in seconds.
 pub const INTERVALS: [f32; 6] = [0.5, 1.0, 2.0, 3.0, 5.0, 10.0];
@@ -204,6 +205,8 @@ pub enum Mode {
     Confirm,
     /// The settings screen (`Ctrl+,`), across the whole window.
     Settings,
+    /// A graph opened full size.
+    Zoom,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -268,6 +271,8 @@ pub struct Out {
     pub sys_room: Option<usize>,
     pub pane_rects: [Option<egui::Rect>; 3],
     pub tab: Option<Screen>,
+    /// A graph double-clicked: what to open full size.
+    pub zoom: Option<Zoom>,
     /// A divider dragged, released or double-clicked.
     pub moved: Option<ito_layout::ui::Moved<Pane>>,
     /// The panels stacked in a column this frame: the column, their layout
@@ -354,6 +359,10 @@ pub struct App {
     pub help_scroll: usize,
     /// What the confirm question is about.
     pub confirm: Option<Ask>,
+    /// The graph open full size, in [`Mode::Zoom`].
+    pub zoom: Option<Zoom>,
+    /// The range the last zoom looked back over; the next starts there.
+    zoom_range: Range,
     kill_tx: Sender<(Target, Outcome)>,
     kill_rx: Receiver<(Target, Outcome)>,
     svc_tx: Sender<(svcctl::Target, svcctl::Outcome)>,
@@ -459,6 +468,8 @@ impl App {
             toast: None,
             help_scroll: 0,
             confirm: None,
+            zoom: None,
+            zoom_range: Range::default(),
             kill_tx,
             kill_rx,
             svc_tx,
@@ -1352,6 +1363,9 @@ impl App {
         if let Some((p, m)) = out.stack_moved.take() {
             self.stack_moved(p, m);
         }
+        if let Some(z) = out.zoom.take() {
+            self.open_zoom(z);
+        }
         if let Some((pane, i, double)) = out.click {
             let v = self.view_mut();
             v.focus = pane.index();
@@ -1444,6 +1458,11 @@ impl App {
         }
     }
 
+    /// The sampling interval in seconds.
+    pub fn interval(&self) -> f32 {
+        self.interval
+    }
+
     pub fn goto(&mut self, s: Screen) {
         // Typing goes on in the screen it began in.
         if self.mode == Mode::Filter && s != self.screen {
@@ -1471,6 +1490,13 @@ impl App {
                 if let Match::Exact(b) = resolve(&self.km.confirm, &[k]) {
                     for a in b.run.clone() {
                         self.run_confirm(a);
+                    }
+                }
+            }
+            Mode::Zoom => {
+                if let Match::Exact(b) = resolve(&self.km.zoom, &[k]) {
+                    for a in b.run.clone() {
+                        self.run_zoom(a);
                     }
                 }
             }
@@ -1525,6 +1551,37 @@ impl App {
             Act::Arrow(Step::Top) => self.help_scroll = 0,
             _ => {}
         }
+    }
+
+    fn run_zoom(&mut self, a: Act) {
+        match a {
+            Act::Escape | Act::Enter | Act::Quit => self.close_zoom(),
+            Act::Page(by) => {
+                if let Some(z) = &mut self.zoom {
+                    z.range = z.range.step(by);
+                    self.zoom_range = z.range;
+                }
+            }
+            Act::Scale(to) => self.scale(to),
+            _ => {}
+        }
+    }
+
+    fn close_zoom(&mut self) {
+        self.zoom = None;
+        if self.mode == Mode::Zoom {
+            self.mode = Mode::Normal;
+        }
+    }
+
+    /// Open `z` full size, over the range the last one looked back.
+    pub fn open_zoom(&mut self, mut z: Zoom) {
+        if self.mode != Mode::Normal {
+            return;
+        }
+        z.range = self.zoom_range;
+        self.zoom = Some(z);
+        self.mode = Mode::Zoom;
     }
 
     fn run_confirm(&mut self, a: Act) {
@@ -2077,6 +2134,13 @@ impl App {
                 s += &format!("stack {}: {}\n", p.name(), stacks::sizes(n));
             }
         }
+        if let Some(z) = &self.zoom {
+            s += &format!(
+                "zoom: {} {:?}
+",
+                z.title, z.range
+            );
+        }
         match &self.confirm {
             Some(Ask::Kill(t)) => s += &format!("confirm: kill {} {}\n", t.pid, t.name),
             Some(Ask::Svc(t)) => s += &format!("confirm: {:?} {}\n", t.action, t.name),
@@ -2573,6 +2637,27 @@ mod tests {
         assert_eq!(Family::of("Darwin 24.1"), Family::Mac);
         assert_eq!(Family::of("Linux 24.04 Ubuntu"), Family::Other);
         assert_eq!(Family::of(""), Family::Other);
+    }
+
+    #[test]
+    fn a_zoomed_graph_steps_its_range_and_closes() {
+        use crate::model::Series;
+        use crate::zoom::Unit;
+        let (mut a, _tx, _ctl) = app();
+        a.open_zoom(Zoom::new(Series::Cpu, "CPU", egui::Color32::WHITE, Unit::Pct));
+        assert_eq!(a.mode, Mode::Zoom);
+        // The main layer is shut while it is open.
+        keys(&mut a, "3");
+        assert_eq!((a.screen, a.mode), (Screen::Ovw, Mode::Zoom));
+        keys(&mut a, "]");
+        assert_eq!(a.zoom.as_ref().map(|z| z.range), Some(Range::Min15));
+        keys(&mut a, "] ]");
+        assert_eq!(a.zoom.as_ref().map(|z| z.range), Some(Range::Hour1));
+        keys(&mut a, "<Esc>");
+        assert_eq!((a.mode, a.zoom.is_none()), (Mode::Normal, true));
+        // The next one opens where this one was left.
+        a.open_zoom(Zoom::new(Series::Mem, "MEM", egui::Color32::WHITE, Unit::Pct));
+        assert_eq!(a.zoom.as_ref().map(|z| z.range), Some(Range::Hour1));
     }
 
     #[test]

@@ -7,9 +7,11 @@ use ito_layout::{Dir, Node};
 use super::{Cx, GAP, graph, kv_rows, panel, row_at, shown};
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::tr;
+use crate::model::Series;
 use crate::screen::Pane;
 use crate::stacks;
 use crate::util::fmt_bytes;
+use crate::zoom::{Unit, Zoom};
 
 fn pct(part: u64, whole: u64) -> f32 {
     if whole == 0 { 0.0 } else { part as f32 * 100.0 / whole as f32 }
@@ -103,6 +105,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         if y + 20.0 <= body.bottom() {
             let g = Rect::from_min_max(pos2(body.left(), y), body.max);
             graph::line(&cx.pen, g, m.mem_hist.iter(), 100.0, theme::green());
+            cx.zoomable(g, 0, Zoom::new(Series::Mem, tr("ovw.mem"), theme::green(), Unit::Pct));
         }
     }
 
@@ -122,6 +125,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         if y + 20.0 <= body.bottom() {
             let g = Rect::from_min_max(pos2(body.left(), y), body.max);
             graph::line(&cx.pen, g, m.swap_hist.iter(), 100.0, theme::magenta());
+            cx.zoomable(g, 1, Zoom::new(Series::Swap, tr("mem.swap"), theme::magenta(), Unit::Pct));
         }
     }
 }

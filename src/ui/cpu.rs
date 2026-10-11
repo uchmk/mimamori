@@ -10,9 +10,11 @@ use super::{Cx, GAP, graph, kv_rows, now_secs, panel, row_at, shown};
 use crate::collect::topo::CoreKind;
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
+use crate::model::Series;
 use crate::screen::Pane;
 use crate::stacks;
 use crate::util::fmt_uptime;
+use crate::zoom::{Unit, Zoom};
 
 /// The average usage of some logical CPUs.
 fn avg(usage: &[f32], cpus: impl Iterator<Item = usize>) -> f32 {
@@ -105,6 +107,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     if shown(rects[1]) {
         let body = panel(&cx.pen, rects[1], tr("cpu.total"), &format!("{:.0}%", m.total), false);
         graph::line(&cx.pen, body, m.cpu_hist.iter(), 100.0, theme::blue());
+        cx.zoomable(body, 0, Zoom::new(Series::Cpu, tr("cpu.total"), theme::blue(), Unit::Pct));
     }
 
     // Every thread over the last minute.

@@ -41,6 +41,7 @@ fn lines(app: &App) -> Vec<Line> {
         (tr("help.input"), &km.input),
         (tr("help.in_help"), &km.help),
         (tr("help.confirm"), &km.confirm),
+        (tr("help.zoom"), &km.zoom),
         (tr("help.settings"), &km.settings),
     ] {
         if !out.is_empty() {

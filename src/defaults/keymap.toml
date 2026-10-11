@@ -116,6 +116,25 @@ keymap = [
     { on = "q", run = "escape", desc = "No, leave it as it is" },
 ]
 
+# A graph opened full size (double click it): the range it looks back over.
+[zoom]
+keymap = [
+    { on = "<Esc>", run = "escape", desc = "Close" },
+    { on = "q", run = "escape", desc = "Close" },
+    { on = "<Enter>", run = "enter", desc = "Close" },
+    { on = "]", run = "page next", desc = "Look further back" },
+    { on = "<Right>", run = "page next", desc = "Look further back" },
+    { on = "l", run = "page next", desc = "Look further back" },
+    { on = "[", run = "page prev", desc = "Look closer" },
+    { on = "<Left>", run = "page prev", desc = "Look closer" },
+    { on = "h", run = "page prev", desc = "Look closer" },
+    { on = "<C-=>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-+>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-;>", run = "scale in", desc = "Zoom in" },
+    { on = "<C-->", run = "scale out", desc = "Zoom out" },
+    { on = "<C-0>", run = "scale reset", desc = "Zoom to 100%" },
+]
+
 # The settings screen (as tsumugi's): only these keys are taken, every other
 # goes to its fields and lists (Tab between them, Space and Enter to press).
 # Esc first leaves the field being typed in, then closes the screen.

@@ -12,9 +12,10 @@ use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at, shown};
 use crate::collect::sensors::{self, Kind, Sensor, Sensors};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
-use crate::model::Ring;
+use crate::model::{Ring, Series};
 use crate::screen::Pane;
 use crate::stacks;
+use crate::zoom::{Unit, Zoom};
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
     draw_left(cx, left);
@@ -284,7 +285,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
 
 /// The selected sensor's minute as a line with the limits marked, its reading
 /// in the panel's corner.
-fn draw_graph(cx: &Cx, r: Rect) {
+fn draw_graph(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let Some(s) = app.selected_sensor() else {
         let body = panel(&cx.pen, r, tr(Kind::Temp.key()), "", false);
@@ -298,6 +299,7 @@ fn draw_graph(cx: &Cx, r: Rect) {
     };
     let max = scale(s, ring);
     graph::line(&cx.pen, body, ring.iter(), max, color(s));
+    cx.zoomable(body, 0, Zoom::new(Series::Sensor(s.id.clone()), s.label.clone(), color(s), Unit::Sensor(s.kind)));
     if s.kind == Kind::Temp {
         mark(cx, body, s.high, max, theme::yellow());
         mark(cx, body, s.crit, max, theme::red());

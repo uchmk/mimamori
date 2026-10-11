@@ -20,6 +20,7 @@ pub mod settings;
 mod svc;
 pub mod sys;
 mod tiles;
+mod zoomed;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -35,6 +36,7 @@ use crate::i18n::{tr, trf};
 use crate::remote::Status;
 use crate::screen::{Pane, Screen};
 use crate::util::{fmt_bytes, fmt_uptime};
+use crate::zoom::Zoom;
 
 pub const FONT: f32 = 13.0;
 const SMALL: f32 = 10.0;
@@ -160,6 +162,13 @@ impl Cx<'_> {
         let resp = self.ui.interact(r, Id::new(("row", self.app.screen, p.index(), i)), Sense::click());
         if resp.clicked() {
             self.out.click = Some((p, i, resp.double_clicked()));
+        }
+    }
+
+    /// A graph in `r` that opens full size when it is double clicked.
+    pub fn zoomable(&mut self, r: Rect, id: usize, zoom: Zoom) {
+        if self.ui.interact(r, Id::new(("zoom", self.app.screen, id)), Sense::click()).double_clicked() {
+            self.out.zoom = Some(zoom);
         }
     }
 
@@ -313,7 +322,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
             }
             // After the rows, so a divider takes the pointer where both are;
             // the columns' last, over the panels' where they meet.
-            if !matches!(app.mode, Mode::Help | Mode::Confirm) {
+            if !matches!(app.mode, Mode::Help | Mode::Confirm | Mode::Zoom) {
                 let look = Look { gap: GAP, grab: 10.0, line: theme::cyan() };
                 for (p, node, r) in std::mem::take(&mut out.stacks) {
                     if let Some(m) = dividers(ui, Id::new(("stack", app.screen, p.index())), &node, from_egui(r), look) {
@@ -337,6 +346,14 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
         confirm::draw(&pen, app, full);
         out.click = None;
         out.tab = None;
+        out.fleet_click = None;
+        out.fleet_tab = false;
+    }
+    if app.mode == Mode::Zoom {
+        zoomed::draw(&pen, app, full);
+        out.click = None;
+        out.tab = None;
+        out.zoom = None;
         out.fleet_click = None;
         out.fleet_tab = false;
     }
@@ -494,6 +511,7 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         Mode::Help => (tr("mode.help"), theme::magenta()),
         Mode::Confirm => (tr("mode.confirm"), theme::red()),
         Mode::Settings => (tr("mode.settings"), theme::cyan()),
+        Mode::Zoom => (tr("mode.zoom"), theme::green()),
     };
     let bw = pen.width(badge) + 16.0;
     let b = Rect::from_center_size(pos2(r.left() + 6.0 + bw / 2.0, y), vec2(bw, 18.0));

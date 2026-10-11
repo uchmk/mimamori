@@ -10,10 +10,11 @@ use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at, shown};
 use crate::collect::disk::{self, Drive, Health, Smart, Temp, Volume};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
-use crate::model::Ring;
+use crate::model::{Ring, Series};
 use crate::screen::Pane;
 use crate::stacks;
 use crate::util::fmt_bytes;
+use crate::zoom::{Unit, Zoom};
 
 /// Below this the graphs do not scale up, so an idle drive stays flat.
 const FLOOR: f32 = 64.0 * 1024.0;
@@ -164,7 +165,7 @@ fn cell(v: &Volume, col: Col) -> (String, Color32) {
 
 /// One traffic graph: its label, the value now, its history and its scale
 /// (`None` scales to the history over the floor).
-type Graph<'a> = (&'static str, Option<String>, Option<&'a Ring>, Option<f32>, Color32);
+type Graph<'a> = (&'static str, Option<String>, Option<&'a Ring>, Option<f32>, Color32, Option<Series>);
 
 fn draw_mid(cx: &mut Cx, r: Rect) {
     let app = cx.app;
@@ -177,9 +178,9 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     let rects = cx.stack(Pane::Mid, r, stacks::split(Dir::Down, 0.6, stacks::chain(Dir::Down, 0, n), Node::Leaf(n)));
     // Each way on its own scale, so quiet writes are not flattened by reads.
     let mut list: Vec<Graph> = vec![
-        (tr("disk.read"), None, None, None, theme::cyan()),
-        (tr("disk.write"), None, None, None, theme::magenta()),
-        (tr("disk.busy"), None, None, Some(100.0), theme::yellow()),
+        (tr("disk.read"), None, None, None, theme::cyan(), None),
+        (tr("disk.write"), None, None, None, theme::magenta(), None),
+        (tr("disk.busy"), None, None, Some(100.0), theme::yellow(), None),
     ];
     let mut name = None;
     if let Some(d) = app.selected_drive() {
@@ -187,28 +188,39 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         let hist = m.drive_hist.get(&d.id);
         list[0].1 = Some(rate(d.read_rate));
         list[0].2 = hist.map(|h| &h.0);
+        list[0].5 = Some(Series::DriveRead(d.id.clone()));
         list[1].1 = Some(rate(d.write_rate));
         list[1].2 = hist.map(|h| &h.1);
+        list[1].5 = Some(Series::DriveWrite(d.id.clone()));
         if let Some(b) = d.busy {
             list[2].1 = Some(format!("{b:.0}%"));
             list[2].2 = hist.map(|h| &h.2);
+            list[2].5 = Some(Series::DriveBusy(d.id.clone()));
         }
     } else if let Some(v) = app.selected_volume() {
         name = Some(v.mount.as_str());
         let hist = m.vol_hist.get(&v.mount);
         list[0].1 = Some(rate(v.read_rate));
         list[0].2 = hist.map(|h| &h.0);
+        list[0].5 = Some(Series::VolRead(v.mount.clone()));
         list[1].1 = Some(rate(v.write_rate));
         list[1].2 = hist.map(|h| &h.1);
+        list[1].5 = Some(Series::VolWrite(v.mount.clone()));
     }
-    for (k, (label, now, ring, max, color)) in list.into_iter().take(n as usize).enumerate() {
+    for (k, (label, now, ring, max, color, series)) in list.into_iter().take(n as usize).enumerate() {
         if !shown(rects[k]) {
             continue;
         }
         let title = name.map_or_else(|| label.to_string(), |n| format!("{label} · {n}"));
         let body = panel(&cx.pen, rects[k], &title, now.as_deref().unwrap_or(""), false);
         match ring {
-            Some(ring) => graph::line(&cx.pen, body, ring.iter(), max.unwrap_or_else(|| ring.max().max(FLOOR)), color),
+            Some(ring) => {
+                graph::line(&cx.pen, body, ring.iter(), max.unwrap_or_else(|| ring.max().max(FLOOR)), color);
+                if let Some(series) = series {
+                    let unit = if max.is_some() { Unit::Pct } else { Unit::Rate };
+                    cx.zoomable(body, k, Zoom::new(series, title, color, unit));
+                }
+            }
             None => {
                 cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), "—", theme::dim());
             }

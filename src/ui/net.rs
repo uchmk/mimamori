@@ -10,8 +10,10 @@ use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
 use crate::collect::net::{Conn, Nic, State};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
+use crate::model::Series;
 use crate::screen::Pane;
 use crate::util::fmt_bytes;
+use crate::zoom::{Unit, Zoom};
 
 /// Below this the graphs do not scale up, so an idle link stays flat.
 const FLOOR: f32 = 1024.0;
@@ -192,13 +194,16 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
 /// A graph each way, so a quiet upload is not flattened by a download.
 fn draw_traffic(cx: &mut Cx, n: &Nic, rx: Rect, tx: Rect) {
     let hist = cx.app.model.net_hist.get(&n.name);
-    let ways =
-        [(rx, "net.rx", hist.map(|h| &h.0), n.rx_rate, theme::cyan()), (tx, "net.tx", hist.map(|h| &h.1), n.tx_rate, theme::magenta())];
-    for (r, label, ring, now, color) in ways {
+    let ways = [
+        (rx, "net.rx", hist.map(|h| &h.0), n.rx_rate, theme::cyan(), Series::NetRx(n.name.clone())),
+        (tx, "net.tx", hist.map(|h| &h.1), n.tx_rate, theme::magenta(), Series::NetTx(n.name.clone())),
+    ];
+    for (k, (r, label, ring, now, color, series)) in ways.into_iter().enumerate() {
         let title = format!("{} · {}", tr(label), n.name);
         let body = panel(&cx.pen, r, &title, &rate(now), false);
         if let Some(ring) = ring {
             graph::line(&cx.pen, body, ring.iter(), ring.max().max(FLOOR), color);
+            cx.zoomable(body, k, Zoom::new(series, title, color, Unit::Rate));
         }
     }
 }

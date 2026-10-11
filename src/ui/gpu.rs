@@ -9,9 +9,11 @@ use super::{Cx, GAP, Pen, graph, kv_rows, panel, row_at, shown};
 use crate::collect::gpu::{self, Device, Fan, Kind};
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
+use crate::model::Series;
 use crate::screen::Pane;
 use crate::stacks;
 use crate::util::fmt_bytes;
+use crate::zoom::{Unit, Zoom};
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
     draw_left(cx, left);
@@ -195,7 +197,11 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     if shown(rects[0]) {
         let body = panel(&cx.pen, rects[0], &format!("{} · {}", name(d), tr("gpu.usage")), &pct(d.usage), cx.focused(Pane::Mid));
         match uh.filter(|_| d.usage.is_some()) {
-            Some(u) => graph::line(&cx.pen, body, u.iter(), 100.0, color),
+            Some(u) => {
+                graph::line(&cx.pen, body, u.iter(), 100.0, color);
+                let title = format!("{} · {}", name(d), tr("gpu.usage"));
+                cx.zoomable(body, 0, Zoom::new(Series::GpuUsage(d.id.clone()), title, color, Unit::Pct));
+            }
             None => {
                 para(&cx.pen, body, body.top(), "—", theme::dim());
             }
@@ -262,7 +268,10 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     {
         cx.pen.section(row_at(body, y + GAP), &trf("ovw.history", &[tr("gpu.vram")]));
         y += GAP + ROW;
-        graph::line(&cx.pen, Rect::from_min_max(pos2(body.left(), y), body.max), v.iter(), 100.0, theme::green());
+        let g = Rect::from_min_max(pos2(body.left(), y), body.max);
+        graph::line(&cx.pen, g, v.iter(), 100.0, theme::green());
+        let title = format!("{} · {}", name(d), tr("gpu.vram"));
+        cx.zoomable(g, 1, Zoom::new(Series::GpuVram(d.id.clone()), title, theme::green(), Unit::Pct));
     }
 }
 
