@@ -201,8 +201,8 @@ back to `[ ]`.
 
 ## 3i. Export
 
-- [ ] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from).
-- [ ] 3i.2 `yagura --log-metrics usage.csv --every 2` writes the header and a row every 2 seconds; the numbers match the screens (CPU, memory, the network and disk rates, the busiest GPU, the hottest temperature, the battery on a laptop). Ctrl+C stops it; running it again appends rows without a second header. `--every 0` is refused.
+- [x] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from). — Windows 11 x64 desktop, v0.51.0: 2 s, valid JSON with all sections, `battery` null (the numbers were not compared with the screens).
+- [ ] 3i.2 `yagura --log-metrics usage.csv --every 2` writes the header and a row every 2 seconds; the numbers match the screens (CPU, memory, the network and disk rates, the busiest GPU, the hottest temperature, the battery on a laptop). Ctrl+C stops it; running it again appends rows without a second header. `--every 0` is refused. Windows 11 desktop, v0.51.0: the header once and a row every 2 s after about 6 s of warm-up, appending adds no second header, `--every 0` is refused; the numbers against the screens remain.
 
 ## 3j. Zoomed graphs
 
@@ -234,9 +234,9 @@ Setup for all of them: put the `[[alert]]` of 3k.1 in config.toml (the settings 
 
 ## 3n. Prometheus `/metrics`
 
-- [ ] 3n.1 With `[agent] metrics = "127.0.0.1:9314"` in config.toml, `yagura --agent` says `Prometheus scrapes http://127.0.0.1:9314/metrics`; `curl -i http://127.0.0.1:9314/metrics` answers `200` with `text/plain; version=0.0.4`, and the numbers match the sys / cpu / mem / net screens (Windows and Linux or macOS). `curl -i http://127.0.0.1:9314/` is a 404.
+- [ ] 3n.1 With `[agent] metrics = "127.0.0.1:9314"` in config.toml, `yagura --agent` says `Prometheus scrapes http://127.0.0.1:9314/metrics`; `curl -i http://127.0.0.1:9314/metrics` answers `200` with `text/plain; version=0.0.4`, and the numbers match the sys / cpu / mem / net screens (Windows and Linux or macOS). `curl -i http://127.0.0.1:9314/` is a 404. Windows 11 desktop, v0.51.0: 200 with `text/plain; version=0.0.4`, `/` is 404; the numbers against the screens remain, and so does Linux / macOS.
 - [ ] 3n.2 `promtool check metrics < page` (from `curl`) reports no problem; a Prometheus with the address under `static_configs` shows the target `UP` and `yagura_cpu_usage_percent` graphs.
-- [ ] 3n.3 A port already taken makes the agent say `cannot serve metrics on …` and exit 1; with `metrics` left out nothing listens on 9314. On a laptop `yagura_battery_charge_percent` is there; on a desktop it is not.
+- [ ] 3n.3 A port already taken makes the agent say `cannot serve metrics on …` and exit 1; with `metrics` left out nothing listens on 9314. On a laptop `yagura_battery_charge_percent` is there; on a desktop it is not. Windows 11 desktop, v0.51.0: a taken port says `cannot serve metrics on …` and exits 1, with `metrics` left out nothing listens, no battery metric on a desktop; the laptop remains.
 - [ ] 3n.4 Watch a machine's containers or procs from a viewer (fleet, `Enter` on its card): its `/metrics` then also holds `yagura_container_*` and `yagura_processes`; after the viewer leaves they go again.
 
 ## 4. Resizing the columns

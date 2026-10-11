@@ -4,6 +4,11 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.51.2] - 2026-10-12
+
+### 変更
+- TESTING.md: Windows 11（デスクトップ）で `--snapshot`・`--log-metrics`・`/metrics` を実機で確かめた結果を書いた（3i.1 は完了、3i.2・3n.1・3n.3 は通った範囲と残りを注記）。コードの変更は無い。
+
 ## [0.51.1] - 2026-10-12
 
 ### 修正
