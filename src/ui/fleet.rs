@@ -303,24 +303,25 @@ fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
         pen.p.line_segment([pos2(spark.left(), spark.bottom()), pos2(spark.right(), spark.bottom())], Stroke::new(1.0, theme::line()));
     }
 
-    // Dim names, values in the text colour.
-    let facts = line(5);
-    let mut x = facts.left();
-    let y = facts.center().y;
-    for (k, (name, value, color)) in c.facts.iter().enumerate() {
-        if k > 0 {
-            x = pen.text(pos2(x, y), " · ", theme::dim()).right();
-        }
-        x = pen.text(pos2(x, y), &format!("{name} "), theme::dim()).right();
-        x = pen.text(pos2(x, y), value, fade(*color)).right();
-    }
-    // A long reason takes the facts' line when there are none.
-    let last = line(6);
-    let (top, rest) = match c.facts.is_empty() {
+    // A long reason takes the facts' line when there are none, or when the
+    // host is down: why it is down matters more than its old facts.
+    let (facts, last) = (line(5), line(6));
+    let (top, rest) = match c.facts.is_empty() || c.faded {
         true => split(pen, &c.last, last.width()),
         false => ("", c.last.as_str()),
     };
-    if !top.is_empty() {
+    if top.is_empty() {
+        // Dim names, values in the text colour.
+        let mut x = facts.left();
+        let y = facts.center().y;
+        for (k, (name, value, color)) in c.facts.iter().enumerate() {
+            if k > 0 {
+                x = pen.text(pos2(x, y), " · ", theme::dim()).right();
+            }
+            x = pen.text(pos2(x, y), &format!("{name} "), theme::dim()).right();
+            x = pen.text(pos2(x, y), value, fade(*color)).right();
+        }
+    } else {
         pen.text(pos2(facts.left(), facts.center().y), top, c.last_c);
     }
     pen.text(pos2(last.left(), last.center().y), &pen.fit(rest, last.width()), c.last_c);
@@ -353,11 +354,11 @@ fn hint_lines(app: &App) -> Vec<(String, Color32, Option<String>)> {
         (tr("fleet.hint_agent").into(), theme::dim(), None),
         cmd(remote::AGENT_LINE.into()),
         (tr("fleet.hint_reach").into(), theme::dim(), None),
-        cmd(remote::ssh_line()),
-        cmd(remote::tailscale_line()),
+        cmd(remote::ssh_line(app.prefs.settings.port)),
+        cmd(remote::tailscale_line(app.prefs.settings.port)),
         (tr("fleet.hint_add").into(), theme::dim(), None),
     ];
-    let sample = remote::host_sample();
+    let sample = remote::host_sample(app.prefs.settings.port);
     lines.extend(sample.lines().map(|l| (format!("  {l}"), theme::cyan(), Some(sample.clone()))));
     if let Some(path) = app.prefs.config_path() {
         let path = path.display().to_string();

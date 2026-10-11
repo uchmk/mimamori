@@ -11,6 +11,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] procs: Windows で管理者でないと、ほかのユーザーのプロセス（SYSTEM の svchost・lsass・dwm など）の USER が `—`、MEM が `0 B` になる（uchmk/yagura#3）。タスク マネージャーは同じ権限で出す。
   sysinfo は `PROCESS_QUERY_LIMITED_INFORMATION` に落とすが、トークンもワーキング セットも読めない。`WTSEnumerateProcessesExW`（レベル 1: SID とワーキング セット、ハンドルが要らない）で欠けたものを埋める案。
   → 欠けがあるときだけ WTS を読み、PID と名前が合うものの USER（`LookupAccountSidW`、SID ごとにキャッシュ）と MEM を埋める。ワーキング セットの単位（バイトか KiB）は両方が読めたプロセスとの比で決める（v0.41.4、TESTING.md 3.11）。
+- [ ] procs: 管理者でない Windows で、ほかのユーザーのプロセスの USER がまだ `—`（MEM は合う。uchmk/yagura#13）。`tasklist /v` も N/A なので、
+  WTS のレベル 1 の `pUserSid` が管理者でないと空で返るのかを実機で見る 【実機】。空なら TESTING.md 3.11 を `—` を期待する形に直す（タスク マネージャーは昇格して読む）。
 - [x] gpu·npu（`4`）: 使用率・VRAM・温度。Windows は PDH の `GPU Engine` カウンタ、Linux は `/sys/class/drm` と amdgpu / i915 の sysfs、NVIDIA は NVML を動的に読む（無ければ出さない）。NPU は見本の「設計」タブの限界のとおり、取れる OS だけ。
 - [x] gpu·npu: Windows の dwm の専用メモリが 38.1 GiB と出た（PDH の `GPU Process Memory` の値そのまま。カードは 16 GiB、uchmk/yagura#4）。カードの総量を超える値は `—` にするか、総量で抑える。
   → 総量を超える値は `—` にする（抑えると嘘の数が出る。v0.41.4、TESTING.md 3a.14）。
@@ -36,9 +38,11 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
   → 選ぶだけでは絞らない（左の選択はいつもあるので、ほとんどが隠れる）。インターフェースで `Enter` を押すと絞り、どのアドレスにも付いたもの（`0.0.0.0`・`::`）は残す。選択を動かせば追い、`Esc` で外す（v0.7.5）。
 - [ ] net の実機の確認 【実機】（TESTING.md 3c）。
-  3c.2・3c.3・3c.7・3c.8・3c.10 は済み（uchmk/yagura#6）。3c.1 は Bluetooth が出ず、消えた `Wi-Fi 2`〜`5` が出ていたので v0.41.4 で直した。もう一度見てもらう。
-- [ ] net: Windows で消えた装置（`Not Present`）と隠れた Wi-Fi Direct を落とし、Bluetooth PAN はいつも残すようにした（v0.41.4）。Wi-Fi 3・5 が本当に Wi-Fi Direct だったかは
+  3c.2・3c.3・3c.7・3c.8・3c.10 は済み（uchmk/yagura#6）。3c.1 は Bluetooth が出ず、消えた `Wi-Fi 2`〜`5` が出ていたので v0.41.4 で直した。v0.41.4 でも隠れた `Wi-Fi 3`・`5` が残ったので v0.42.2 で直した（uchmk/yagura#13）。もう一度見てもらう。
+- [x] net: Windows で消えた装置（`Not Present`）と隠れた Wi-Fi Direct を落とし、Bluetooth PAN はいつも残すようにした（v0.41.4）。Wi-Fi 3・5 が本当に Wi-Fi Direct だったかは
   `Get-NetAdapter -IncludeHidden | fl Name,InterfaceDescription,Status` で確かめる 【実機】。違えば隠れた装置を見分けるほかの手（`MIB_IF_ROW2` の `ConnectorPresent` と `HardwareInterface`、ifType）を探す。
+  → 実機では Wi-Fi 3・5 は Wi-Fi Direct ではなく、本物のカードの隠れたインターフェース（`NCF_HIDDEN`）だった（uchmk/yagura#13）。
+    ネットワークのクラスのレジストリのキーの `Characteristics` に 0x8 が立つものを `NetCfgInstanceId` で引いて落とす（30 秒キャッシュ、v0.42.2）。
 - [x] net: 実機の小さな指摘（uchmk/yagura#6）。
   - `Enter` で絞った後に `j` で移ると、絞り込みは追うがトーストは前のインターフェースの名前のまま。移ったときはトーストを出し直すか、出さない。
   - 左の列でインターフェースの名前が `イーサネ…` と切れる。速さの桁を詰めるか、名前の幅を広げる。
@@ -169,4 +173,5 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → 共通仕様は tsumugi の `docs/common-spec.md`。共通のクレート `tsumugi-common`（common.toml の読み書き・見張り・時計）・`tsumugi-theme`（13 のテーマ・自分のテーマ）・
   `tsumugi-prefs`（画面の枠と部品、Language の行・CLOCK のカード・テーマのページ）を tsumugi v0.81.0 で切り出し、mimamori はその上に General・Theme・Fleet・Advanced の 4 ページ。
   色の定数をテーマを読む関数に換え、common.toml を 2 秒ごとに見て当て直す。`y` と、手引きの水色の行・設定の Copy でコピー（v0.32.0）
-- [ ] 設定の画面・テーマ・時計の実機の確認 【実機】（TESTING.md 5.9〜5.14）。
+- [ ] 設定の画面・テーマ・時計の実機の確認 【実機】（TESTING.md 5.9〜5.18）。
+- [ ] tsumugi の時計の曜日が `language = "ja"` でも英語（uchmk/yagura#11 の 5.11）。tsumugi の側の直しなので、tsumugi のセッションに伝える 【人】。

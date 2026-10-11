@@ -169,13 +169,15 @@ says otherwise.
 | ---- | ---- |
 | General | Language and scale (common.toml), the update interval, the clock card (common.toml) |
 | Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with yagura's own tiles, process rows and status bar (common.toml) |
-| Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path); and the direct connections (this machine's public key, the `[[agent.viewer]]` that lets it in, the `[agent] listen` line, the `[[host]]` that watches it directly), each with Copy |
+| Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path); and the direct connections (this machine's public key, the `[[agent.viewer]]` that lets it in, the `[agent] listen` line, the `[[host]]` that watches it directly), each with Copy. The ssh and tailscale lines, the sample and a new host's address follow `[agent] port`; Add host and Delete change only the `[[host]]` tables, keeping config.toml's comments and order |
 | Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
 
 Only the `[settings]` section's keys are taken (`Esc` and `Ctrl+,` close, a
 second `Esc` when a control has the keys; `Ctrl+Tab` / `Ctrl+PageDown` and
 `Ctrl+Shift+Tab` / `Ctrl+PageUp` turn the page; `Ctrl+f` searches); every other
-key goes to the controls (`Tab` between them, typing into a field).
+key goes to the controls (`Tab` between them, typing into a field). The search
+finds the labels in the screen's language and the names in the files (`key`,
+`listen`, `every`, `interval`, `scale`, …) in either language.
 
 ## Commands
 
@@ -340,7 +342,7 @@ and on the viewer:
 ```toml
 [[host]]
 name = "nas"
-addr = "nas.lan"          # the port defaults to 7314 with a key
+addr = "nas.lan"          # the port defaults to 7314 with a key; a name tries each address, IPv4 first
 key = "<nas's public key>"
 ```
 
@@ -428,7 +430,7 @@ The net screen reads:
 
 | OS | Interfaces | Sockets |
 | --- | --- | --- |
-| Windows | The IP helper (`GetIfTable2`, `GetUnicastIpAddressTable`): the physical adapters, even unplugged, Bluetooth PAN, and any other that is up with an address (VPNs, Hyper-V switches), without the filter layers, the loopback pseudo-interface, removed devices' leftovers (`Not Present`) and the hidden Wi-Fi Direct adapters; Bluetooth PAN told apart by `PhysicalMediumType` | `GetExtendedTcpTable` / `GetExtendedUdpTable` with the owning PID |
+| Windows | The IP helper (`GetIfTable2`, `GetUnicastIpAddressTable`): the physical adapters, even unplugged, Bluetooth PAN, and any other that is up with an address (VPNs, Hyper-V switches), without the filter layers, the loopback pseudo-interface, removed devices' leftovers (`Not Present`), the hidden Wi-Fi Direct adapters and the adapters marked hidden in the registry (`NCF_HIDDEN`); Bluetooth PAN told apart by `PhysicalMediumType` | `GetExtendedTcpTable` / `GetExtendedUdpTable` with the owning PID |
 | Linux | sysinfo for the counters and addresses; `/sys/class/net` for the kind (Bluetooth PAN from `DEVTYPE` in `uevent`), link speed and driver | `/proc/net/{tcp,tcp6,udp,udp6}`, the owner from the `socket:[inode]` links in `/proc/*/fd`. Another user's sockets show no process without root |
 | macOS | sysinfo for the counters and addresses; `networksetup -listallhardwareports` for the kind and adapter (Wi-Fi, Ethernet, Bluetooth PAN, Thunderbolt Bridge), read once a minute; the rest (`utun`, `awdl`) by name | `netstat -anvW`, with the PID of the process that last used each socket |
 

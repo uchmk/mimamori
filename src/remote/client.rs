@@ -12,7 +12,7 @@
 //! thread keeps the whole and gives the viewer that.
 
 use std::io::{self, Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -286,12 +286,35 @@ pub fn probe(port: u16) -> Result<(Hello, Summary), Why> {
     }
 }
 
+/// The addresses a name resolved to, in the order to try them: IPv4
+/// first, since an agent's `listen` is usually `0.0.0.0` and a machine name
+/// often resolves to an IPv6 link-local address before its IPv4 one. Each
+/// once.
+fn order(addrs: impl IntoIterator<Item = SocketAddr>) -> Vec<SocketAddr> {
+    let mut out: Vec<SocketAddr> = Vec::new();
+    for a in addrs {
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    }
+    out.sort_by_key(|a| a.is_ipv6());
+    out
+}
+
 fn connect(addr: &str) -> Result<TcpStream, Why> {
-    let to = addr.to_socket_addrs().map_err(|_| Why::Unknown)?.next().ok_or(Why::Unknown)?;
-    let s = TcpStream::connect_timeout(&to, CONNECT).map_err(|e| why(&e))?;
-    let _ = s.set_nodelay(true);
-    s.set_read_timeout(Some(QUIET)).map_err(|e| why(&e))?;
-    Ok(s)
+    let all = order(addr.to_socket_addrs().map_err(|_| Why::Unknown)?);
+    let mut last = Why::Unknown;
+    for to in all {
+        match TcpStream::connect_timeout(&to, CONNECT) {
+            Ok(s) => {
+                let _ = s.set_nodelay(true);
+                s.set_read_timeout(Some(QUIET)).map_err(|e| why(&e))?;
+                return Ok(s);
+            }
+            Err(e) => last = why(&e),
+        }
+    }
+    Err(last)
 }
 
 /// The two halves of a connection: through Noise when the host has a key,
@@ -341,6 +364,23 @@ mod tests {
     use crate::remote::agent::{self, Config};
     use std::io::{Read, Write};
     use std::net::TcpListener;
+
+    #[test]
+    fn a_name_tries_ipv4_first_then_the_rest_once_each() {
+        let a = |s: &str| s.parse::<SocketAddr>().unwrap();
+        let got = order([a("[fe80::1%3]:7314"), a("192.168.1.5:7314"), a("[::1]:7314"), a("10.0.0.2:7314"), a("192.168.1.5:7314")]);
+        assert_eq!(got, [a("192.168.1.5:7314"), a("10.0.0.2:7314"), a("[fe80::1%3]:7314"), a("[::1]:7314")]);
+        assert!(order([]).is_empty());
+    }
+
+    #[test]
+    fn a_dead_address_does_not_stop_the_next_one() {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        // "localhost" resolves to ::1 and 127.0.0.1 on most machines; the
+        // listener is on IPv4 only, as an agent's `0.0.0.0` is.
+        assert!(connect(&format!("localhost:{port}")).is_ok());
+    }
 
     /// One host on `addr`, its events on a channel.
     fn watch_one(addr: String) -> Receiver<Event> {

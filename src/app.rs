@@ -1499,7 +1499,7 @@ impl App {
             Act::Enter => self.enter_machine(self.fleet_sel),
             Act::Fleet | Act::Escape => self.fleet = false,
             Act::Copy => match self.selected_peer() {
-                None if self.peers.is_empty() => self.copy(remote::host_sample()),
+                None if self.peers.is_empty() => self.copy(remote::host_sample(self.prefs.settings.port)),
                 None => self.toast(tr("toast.copy_none")),
                 Some(p) => {
                     let addr = p.addr.clone();
@@ -2186,7 +2186,7 @@ mod tests {
         assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.copy_none")));
         // No [[host]] yet: the sample to paste into config.toml.
         keys(&mut a, "F y");
-        assert_eq!(a.copy.take(), Some(remote::host_sample()));
+        assert_eq!(a.copy.take(), Some(remote::host_sample(a.prefs.settings.port)));
         let (_ftx, frx) = crossbeam_channel::unbounded();
         a.set_fleet(vec![Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into(), ..Host::default() })], (frx, Vec::new()));
         keys(&mut a, "y");

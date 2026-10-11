@@ -24,19 +24,19 @@ use proto::{Hello, Summary};
 /// The command that serves this machine to the fleet screens of others.
 pub const AGENT_LINE: &str = "yagura --agent";
 
-/// How to reach a machine's agent through ssh.
-pub fn ssh_line() -> String {
-    format!("ssh -L {0}:localhost:{0} <host>", proto::PORT)
+/// How to reach a machine's agent, listening on `port` (`[agent] port`), through ssh.
+pub fn ssh_line(port: u16) -> String {
+    format!("ssh -L {port}:localhost:{port} <host>")
 }
 
-/// How to reach a machine's agent through Tailscale.
-pub fn tailscale_line() -> String {
-    format!("tailscale serve --bg --tcp {0} tcp://localhost:{0}", proto::PORT)
+/// How to reach a machine's agent, listening on `port`, through Tailscale.
+pub fn tailscale_line(port: u16) -> String {
+    format!("tailscale serve --bg --tcp {port} tcp://localhost:{port}")
 }
 
-/// A `[[host]]` to paste into config.toml as it is.
-pub fn host_sample() -> String {
-    format!("[[host]]\nname = \"nas\"\naddr = \"localhost:{}\"\n", proto::PORT)
+/// A `[[host]]` to paste into config.toml as it is, for an agent on `port`.
+pub fn host_sample(port: u16) -> String {
+    format!("[[host]]\nname = \"nas\"\naddr = \"localhost:{port}\"\n")
 }
 
 /// A round trip slower than this marks the card slow.
@@ -75,6 +75,8 @@ impl Status {
 pub struct Peer {
     pub name: String,
     pub addr: String,
+    /// The host's `every`: the summaries are asked for this far apart.
+    pub every: Option<Duration>,
     pub link: Link,
     /// The agent's, from the last connection (kept while it is down).
     pub hello: Option<Hello>,
@@ -94,6 +96,7 @@ impl Peer {
         Self {
             name: h.name.clone(),
             addr: h.addr.clone(),
+            every: h.every.map(Duration::from_secs_f32),
             link: Link::Connecting,
             hello: None,
             latency: None,
@@ -134,12 +137,18 @@ impl Peer {
         Duration::from_secs_f32(self.hello.as_ref().map_or(1.0, |h| h.interval).max(0.1))
     }
 
+    /// How far apart the summaries come: the agent's interval, or the
+    /// host's `every` when that is longer.
+    fn pace(&self) -> Duration {
+        self.every.map_or(self.interval(), |e| e.max(self.interval()))
+    }
+
     pub fn status(&self, now: Instant) -> Status {
         match self.link {
             Link::Connecting => Status::Connecting,
             Link::Down(_) => Status::Down,
             Link::Up => {
-                let late = self.at.is_some_and(|t| now.saturating_duration_since(t) > self.interval() * 3);
+                let late = self.at.is_some_and(|t| now.saturating_duration_since(t) > self.pace() * 3);
                 if late || self.latency.is_some_and(|l| l >= SLOW) { Status::Slow } else { Status::Ok }
             }
         }
@@ -174,5 +183,22 @@ mod tests {
         p.apply(Event::Down(Why::Closed));
         assert_eq!(p.status(Instant::now()), Status::Down);
         assert!(p.summary.is_some() && p.hello.is_some());
+    }
+
+    #[test]
+    fn a_host_asked_for_slower_summaries_is_not_late_between_them() {
+        let mut p = Peer::new(&Host { name: "nas".into(), addr: "localhost:7314".into(), every: Some(5.0), ..Host::default() });
+        p.apply(Event::Up(Hello { interval: 1.0, ..Hello::default() }));
+        let now = Instant::now();
+        assert_eq!(p.status(now + Duration::from_secs(4)), Status::Ok, "every = 5: 4 s is on time");
+        assert_eq!(p.status(now + Duration::from_secs(16)), Status::Slow, "three of them missed");
+    }
+
+    #[test]
+    fn the_copy_lines_follow_the_agent_port() {
+        assert_eq!(ssh_line(7323), "ssh -L 7323:localhost:7323 <host>");
+        assert_eq!(tailscale_line(7323), "tailscale serve --bg --tcp 7323 tcp://localhost:7323");
+        assert!(host_sample(7323).contains("addr = \"localhost:7323\""));
+        assert!(!format!("{}{}{}", ssh_line(7323), tailscale_line(7323), host_sample(7323)).contains("7313"));
     }
 }

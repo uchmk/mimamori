@@ -353,6 +353,14 @@ def check_verdict(runs, statuses, required, own):
     return "green"
 
 
+def required_checks(rules, ticks):
+    """The checks a pull request waits for: the checklist job runs only on a
+    change to the checklists, so a run that ticked nothing and only adds its
+    report -- every row failed or was skipped -- never gets one. Waiting for
+    it held tsumugi's lane on #14 (2026-10-11)."""
+    return rules["required_checks"] if ticks else []
+
+
 def diff_body(diff):
     """A `git diff` without its file headers: what mark_pairs reads."""
     i = diff.find("\n@@")
@@ -816,7 +824,7 @@ def handle(pr, rules, allowed_marks, held, own_checks):
         return "rules: " + "; ".join(problems)
     runs = get_all(f"/repos/{REPO}/commits/{head}/check-runs", "check_runs")
     statuses = get(f"/repos/{REPO}/commits/{head}/status")["statuses"]
-    verdict = check_verdict(runs, statuses, rules["required_checks"], own_checks)
+    verdict = check_verdict(runs, statuses, required_checks(rules, ticks), own_checks)
     if verdict.startswith("red"):
         comment_once(pr, "red", head, f"- {verdict}")
         return verdict
@@ -1242,6 +1250,9 @@ def self_test():
     green = [run("checklists", "completed", "success"), run("audit", "completed", "skipped", 2)]
     assert check_verdict(green, [], ["checklists"], {"merge"}) == "green"
     assert check_verdict(green, [], ["clippy"], {"merge"}) == "pending"
+    assert check_verdict([run("audit", "completed", "success")], [],
+                         required_checks({"required_checks": ["check"]}, []), set()) == "green"
+    assert required_checks({"required_checks": ["check"]}, [("T.md", "x", "1.2", "")]) == ["check"]
     assert check_verdict(green + [run("test", "in_progress", None, 3)], [], [], set()) == "pending"
     assert check_verdict(green + [run("test", "completed", "failure", 3)], [], [], set()) == "red: test"
     rerun = [run("test", "completed", "failure", 3), run("test", "completed", "success", 4)]

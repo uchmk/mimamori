@@ -2,7 +2,7 @@
 //! a person thinks of, and the numbers in its socket tables. Pure, so the
 //! tests run everywhere; `iphlp.rs` makes the calls.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use super::{Conn, Kind, Nic, Proto, State, mac, peer};
@@ -28,6 +28,9 @@ pub struct Row {
     pub oper_up: bool,
     /// IfOperStatusNotPresent: a removed device's leftover (Wi-Fi 2, 3…).
     pub gone: bool,
+    /// NCF_HIDDEN in the adapter's class key: one of a card's extra
+    /// interfaces that Windows keeps out of its own lists.
+    pub hidden: bool,
     /// Bits per second.
     pub speed: u64,
     pub rx: u64,
@@ -46,6 +49,27 @@ const MEDIUM_BLUETOOTH: u32 = 10;
 /// hotspot); `Get-NetAdapter` hides them.
 const WIFI_DIRECT: &str = "Microsoft Wi-Fi Direct Virtual Adapter";
 
+/// NCF_HIDDEN in an adapter's `Characteristics`.
+const NCF_HIDDEN: u32 = 0x8;
+
+/// A GUID as the registry writes it (`{6B29FC40-CA47-1067-B31D-00DD010662DA}`,
+/// braces optional, either case), in the form of `GUID::to_u128`.
+pub fn parse_guid(s: &str) -> Option<u128> {
+    let s = s.trim();
+    let s = s.strip_prefix('{').and_then(|s| s.strip_suffix('}')).unwrap_or(s);
+    let hex: String = s.chars().filter(|&c| c != '-').collect();
+    if hex.len() != 32 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    u128::from_str_radix(&hex, 16).ok()
+}
+
+/// The GUIDs of the hidden adapters, from each class key's
+/// `NetCfgInstanceId` and `Characteristics`.
+pub fn hidden(entries: impl IntoIterator<Item = (String, u32)>) -> HashSet<u128> {
+    entries.into_iter().filter(|(_, c)| c & NCF_HIDDEN != 0).filter_map(|(id, _)| parse_guid(&id)).collect()
+}
+
 fn kind(r: &Row) -> Kind {
     match r.ty {
         _ if r.medium == MEDIUM_BLUETOOTH => Kind::Bluetooth,
@@ -61,13 +85,13 @@ fn kind(r: &Row) -> Kind {
 /// unplugged, so a dead cable shows), Bluetooth PAN (which has no connector
 /// flag), or any that is up with an address (VPNs, Hyper-V switches). Each
 /// GUID once, without the filter layers, the loopback pseudo-interface
-/// (which counts nothing), leftovers of removed devices, and the Wi-Fi
-/// Direct adapters Windows hides while they are down.
+/// (which counts nothing), leftovers of removed devices, the hidden
+/// adapters, and the Wi-Fi Direct adapters Windows hides while they are down.
 pub fn pick(rows: &[Row], ips: &HashMap<u32, (Vec<String>, Vec<String>)>) -> Vec<Nic> {
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     let mut out = Vec::new();
     for r in rows {
-        if r.filter || r.ty == LOOPBACK || r.gone || (!r.oper_up && r.desc.starts_with(WIFI_DIRECT)) {
+        if r.filter || r.ty == LOOPBACK || r.gone || r.hidden || (!r.oper_up && r.desc.starts_with(WIFI_DIRECT)) {
             continue;
         }
         let (ipv4, ipv6) = ips.get(&r.index).cloned().unwrap_or_default();
@@ -174,13 +198,15 @@ mod tests {
         let stale = Row { hardware: true, connector: true, gone: true, ..row(16, 8, "Wi-Fi 2", 71) };
         let direct =
             Row { hardware: true, connector: true, desc: format!("{WIFI_DIRECT} #2"), ..row(17, 9, "Local Area Connection* 1", 71) };
+        // Another interface of the Wi-Fi card, marked hidden in its class key.
+        let extra = Row { hardware: true, connector: true, hidden: true, ..row(18, 10, "Wi-Fi 3", 71) };
         let ips = HashMap::from([
             (4, (vec!["192.168.1.2/24".to_string()], vec![])),
             (1, (vec!["127.0.0.1/8".to_string()], vec![])),
             (12, (vec!["10.6.0.2/32".to_string()], vec![])),
             (14, (vec![], vec!["fe80::1/64".to_string()])),
         ]);
-        let got = pick(&[eth, wifi, filter, dup, lo, vpn, wan, vswitch, bt, stale, direct], &ips);
+        let got = pick(&[eth, wifi, filter, dup, lo, vpn, wan, vswitch, bt, stale, direct, extra], &ips);
         let names: Vec<_> = got.iter().map(|n| n.name.as_str()).collect();
         assert_eq!(names, ["Ethernet", "Wi-Fi", "WireGuard", "vEthernet (WSL)", "Bluetooth Network Connection"]);
         assert_eq!(
@@ -192,6 +218,24 @@ mod tests {
         assert_eq!((got[2].kind, got[2].speed_mbps, got[2].mtu), (Kind::Vpn, None, None));
         assert_eq!(got[3].kind, Kind::Virtual);
         assert_eq!((got[4].kind, got[4].up), (Kind::Bluetooth, false));
+    }
+
+    #[test]
+    fn the_hidden_adapters_are_read_from_their_class_keys() {
+        let g = 0x6B29FC40_CA47_1067_B31D_00DD010662DA_u128;
+        assert_eq!(parse_guid("{6B29FC40-CA47-1067-B31D-00DD010662DA}"), Some(g));
+        assert_eq!(parse_guid("6b29fc40-ca47-1067-b31d-00dd010662da"), Some(g));
+        assert_eq!(parse_guid(" {6b29fc40-ca47-1067-b31d-00dd010662da} "), Some(g));
+        assert_eq!(parse_guid("{6B29FC40-CA47-1067-B31D}"), None);
+        assert_eq!(parse_guid("{+B29FC40-CA47-1067-B31D-00DD010662DA}"), None);
+        assert_eq!(parse_guid(""), None);
+        let set = hidden([
+            // NCF_HIDDEN | NCF_PHYSICAL | NCF_HAS_UI, and the card itself without it.
+            ("{6B29FC40-CA47-1067-B31D-00DD010662DA}".to_string(), 0x8c),
+            ("{00000000-0000-0000-0000-000000000001}".to_string(), 0x84),
+            ("not a guid".to_string(), 0x8),
+        ]);
+        assert_eq!(set, HashSet::from([g]));
     }
 
     #[test]

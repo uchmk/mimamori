@@ -1,8 +1,11 @@
 //! The IP helper: the interface table with each adapter's counters, the
-//! unicast addresses, and the TCP and UDP tables with their owning PIDs.
+//! unicast addresses, and the TCP and UDP tables with their owning PIDs;
+//! and the network class keys in the registry, for the hidden adapters.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use windows::Win32::NetworkManagement::IpHelper::{
     FreeMibTable, GetExtendedTcpTable, GetExtendedUdpTable, GetIfTable2, GetUnicastIpAddressTable, MIB_IF_TABLE2, MIB_TCP6TABLE_OWNER_PID,
@@ -10,6 +13,10 @@ use windows::Win32::NetworkManagement::IpHelper::{
     UDP_TABLE_OWNER_PID,
 };
 use windows::Win32::Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC};
+use windows::Win32::System::Registry::{
+    HKEY, HKEY_LOCAL_MACHINE, KEY_READ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegEnumKeyExW, RegGetValueW, RegOpenKeyExW,
+};
+use windows::core::{PCWSTR, PWSTR, w};
 
 use super::windows::{self as fold, Row};
 use super::{Conn, Conns, Nic, Note, Proto};
@@ -61,6 +68,57 @@ fn addresses() -> HashMap<u32, (Vec<String>, Vec<String>)> {
     out
 }
 
+/// Each network adapter's `NetCfgInstanceId` and `Characteristics`, from
+/// its key under the network class. Keys that lack either (`Properties`,
+/// which a user may not open) are left out.
+fn class_keys() -> Vec<(String, u32)> {
+    let class = w!(r"SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}");
+    let mut key = HKEY::default();
+    // SAFETY: opens a key that is closed below.
+    if unsafe { RegOpenKeyExW(HKEY_LOCAL_MACHINE, class, None, KEY_READ, &mut key) }.is_err() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for i in 0.. {
+        let mut name = [0u16; 256];
+        let mut len = name.len() as u32;
+        // SAFETY: `name` has room for `len` characters and the null.
+        if unsafe { RegEnumKeyExW(key, i, Some(PWSTR(name.as_mut_ptr())), &mut len, None, None, None, None) }.is_err() {
+            break;
+        }
+        let sub = PCWSTR(name.as_ptr());
+        let mut id = [0u16; 64];
+        let mut id_size = (id.len() * 2) as u32;
+        let (mut ch, mut ch_size) = (0u32, 4u32);
+        // SAFETY: each buffer is as big as its size says; the calls write no more.
+        let ok = unsafe {
+            RegGetValueW(key, sub, w!("NetCfgInstanceId"), RRF_RT_REG_SZ, None, Some(id.as_mut_ptr().cast()), Some(&mut id_size)).is_ok()
+                && RegGetValueW(key, sub, w!("Characteristics"), RRF_RT_REG_DWORD, None, Some((&raw mut ch).cast()), Some(&mut ch_size))
+                    .is_ok()
+        };
+        if ok {
+            out.push((wide(&id), ch));
+        }
+    }
+    // SAFETY: the key opened above, closed once.
+    let _ = unsafe { RegCloseKey(key) };
+    out
+}
+
+/// The hidden adapters' GUIDs, read again every half minute.
+fn hidden() -> HashSet<u128> {
+    static LAST: Mutex<Option<(Instant, HashSet<u128>)>> = Mutex::new(None);
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, set)) = &*last
+        && at.elapsed() < Duration::from_secs(30)
+    {
+        return set.clone();
+    }
+    let set = fold::hidden(class_keys());
+    *last = Some((Instant::now(), set.clone()));
+    set
+}
+
 /// `None` when the interface table could not be read.
 fn interfaces() -> Option<Vec<Row>> {
     let mut t = Mib::<MIB_IF_TABLE2>(std::ptr::null_mut());
@@ -70,6 +128,7 @@ fn interfaces() -> Option<Vec<Row>> {
     }
     // SAFETY: NumEntries rows follow the header in the table the call returned.
     let rows = unsafe { std::slice::from_raw_parts((*t.0).Table.as_ptr(), (*t.0).NumEntries as usize) };
+    let hidden = hidden();
     let rows = rows
         .iter()
         .map(|r| {
@@ -78,6 +137,7 @@ fn interfaces() -> Option<Vec<Row>> {
             Row {
                 index: r.InterfaceIndex,
                 guid: r.InterfaceGuid.to_u128(),
+                hidden: hidden.contains(&r.InterfaceGuid.to_u128()),
                 alias: wide(&r.Alias),
                 desc: wide(&r.Description),
                 mac: r.PhysicalAddress[..n].to_vec(),

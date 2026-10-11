@@ -102,6 +102,16 @@ mod tests {
     }
 
     #[test]
+    fn adding_a_host_keeps_the_comments_and_the_agent_where_they_were() {
+        let text = "# my machines\n# (the first is the NAS)\n\n[[host]]\nname = \"nas\" # the first host\naddr = \"localhost:7314\"\n\n[agent]\nport = 7323\n";
+        let out = Edit::Hosts(vec![host("nas", "localhost:7314"), host("pi", "pi.ts.net")]).apply(text).unwrap();
+        assert!(out.starts_with("# my machines\n# (the first is the NAS)\n\n[[host]]\nname = \"nas\" # the first host\n"), "{out}");
+        let (pi, agent) = (out.find("name = \"pi\"").unwrap(), out.find("[agent]").unwrap());
+        assert!(pi < agent, "the new host lands after the last one, [agent] stays below: {out}");
+        assert!(out.ends_with("[agent]\nport = 7323\n"), "{out}");
+    }
+
+    #[test]
     fn saved_changes_read_back() {
         let d = test_dir("edit-save");
         save(&d, &Edit::Interval(5.0)).unwrap();

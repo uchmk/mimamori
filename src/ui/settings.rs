@@ -74,8 +74,31 @@ fn index() -> Vec<(usize, &'static str)> {
     for k in ["settings.backend", "settings.folder", "settings.common", "settings.warnings"] {
         v.push((ADVANCED, tr(k)));
     }
+    // The names in the files, so a search finds them in any language.
+    v.extend(CONFIG_NAMES);
     v
 }
+
+/// Each page's keys in config.toml and common.toml.
+const CONFIG_NAMES: [(usize, &str); 17] = [
+    (GENERAL, "language"),
+    (GENERAL, "scale"),
+    (GENERAL, "interval"),
+    (GENERAL, "[clock]"),
+    (THEME, "theme"),
+    (THEME, "dark_theme"),
+    (THEME, "light_theme"),
+    (FLEET, "[agent]"),
+    (FLEET, "allow"),
+    (FLEET, "port"),
+    (FLEET, "listen"),
+    (FLEET, "[[agent.viewer]]"),
+    (FLEET, "[[host]]"),
+    (FLEET, "addr"),
+    (FLEET, "key"),
+    (FLEET, "every"),
+    (ADVANCED, "backend"),
+];
 
 pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     let lang = current_language();
@@ -195,16 +218,16 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 if row(ui, l, tr("settings.add_host"), tr("settings.add_host_note"), |ui| button(ui, l, tr("settings.add"))) {
                     let mut list = hosts.clone();
                     let n = list.len() + 1;
-                    list.push(Host { name: format!("host{n}"), addr: format!("localhost:{}", proto::PORT), ..Host::default() });
+                    list.push(Host { name: format!("host{n}"), addr: format!("localhost:{}", settings.port), ..Host::default() });
                     asked.edits.push(Edit::Hosts(list));
                 }
             });
             section(ui, l, tr("settings.setup"), |ui| {
                 let mut lines = vec![
                     ("settings.copy_agent", remote::AGENT_LINE.to_string()),
-                    ("settings.copy_ssh", remote::ssh_line()),
-                    ("settings.copy_tailscale", remote::tailscale_line()),
-                    ("settings.copy_host", remote::host_sample()),
+                    ("settings.copy_ssh", remote::ssh_line(settings.port)),
+                    ("settings.copy_tailscale", remote::tailscale_line(settings.port)),
+                    ("settings.copy_host", remote::host_sample(settings.port)),
                 ];
                 if let Some(c) = &config {
                     lines.push(("settings.copy_config", c.display().to_string()));
@@ -395,4 +418,35 @@ fn preview(ui: &mut Ui) {
     let now = chrono::Local::now().naive_local();
     let clock = Clock::default().text(&now, current_language());
     p.text(pos2(bar.right() - 10.0, bar.center().y), Align2::RIGHT_CENTER, clock, mono, theme::strong());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_name_in_the_files_finds_its_page_in_any_language() {
+        let pages = |q: &str| -> Vec<usize> {
+            let mut v: Vec<usize> = CONFIG_NAMES.iter().filter(|(_, w)| w.contains(q)).map(|(p, _)| *p).collect();
+            v.dedup();
+            v
+        };
+        for (q, page) in [
+            ("language", GENERAL),
+            ("scale", GENERAL),
+            ("interval", GENERAL),
+            ("clock", GENERAL),
+            ("theme", THEME),
+            ("allow", FLEET),
+            ("port", FLEET),
+            ("listen", FLEET),
+            ("viewer", FLEET),
+            ("host", FLEET),
+            ("key", FLEET),
+            ("every", FLEET),
+            ("backend", ADVANCED),
+        ] {
+            assert_eq!(pages(q), [page], "{q}");
+        }
+    }
 }
