@@ -4,6 +4,18 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.43.1] - 2026-10-11
+
+### 修正
+
+- fleet の表示中に `Tab` / `Shift+Tab` で動けなかったのを直した。隠れている元の画面から数えて動いていたのをやめ、fleet を最後のタブとして扱う
+  （fleet から `Tab` で overview、`Shift+Tab` で最後の画面）。
+
+### 変更
+
+- `Tab` / `Shift+Tab` の巡回に fleet が入った（overview → … → devices → fleet → overview。逆向きも同じ）。以前は devices から overview へ回っていた。
+- TESTING.md の 3g.8 に `Tab` の巡回の確認を足した（`[ ]` のまま）。
+
 ## [0.43.0] - 2026-10-11
 
 ### 追加

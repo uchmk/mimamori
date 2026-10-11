@@ -1639,6 +1639,14 @@ impl App {
                 self.toast(t);
             }
             Act::Sort | Act::Tree | Act::Scope(_) | Act::Resize(_) | Act::Equalize | Act::Backspace => {}
+            // The fleet's tab is the last one, so next is the first screen and
+            // previous the last built one.
+            Act::Screen(g @ (Goto::Next | Goto::Prev)) => {
+                let mut built = Screen::ALL.iter().copied().filter(|s| s.built());
+                if let Some(s) = if g == Goto::Next { built.next() } else { built.next_back() } {
+                    self.goto(s);
+                }
+            }
             Act::Screen(_) | Act::Filter => {
                 self.fleet = false;
                 return false;
@@ -1671,6 +1679,17 @@ impl App {
             // Its sampling is its own.
             Act::Pause | Act::Interval(_) if away.is_some() => self.toast(trf("toast.remote_sampling", &[&away.unwrap_or_default()])),
             Act::Fleet => {
+                self.fleet = true;
+                self.fleet_sel = self.fleet_sel.min(self.peers.len());
+            }
+            // The fleet is the tab after the last screen: Tab wraps through it.
+            Act::Screen(g @ (Goto::Next | Goto::Prev))
+                if {
+                    let mut built = Screen::ALL.iter().copied().filter(|s| s.built());
+                    self.screen == if g == Goto::Next { built.next_back() } else { built.next() }.unwrap_or(self.screen)
+                } =>
+            {
+                self.goto(self.screen);
                 self.fleet = true;
                 self.fleet_sel = self.fleet_sel.min(self.peers.len());
             }
@@ -2268,8 +2287,11 @@ mod tests {
         assert_eq!(a.screen, Screen::Sys);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Devices);
+        // The fleet's tab comes after the last screen, then round.
         keys(&mut a, "<Tab>");
-        assert_eq!(a.screen, Screen::Ovw);
+        assert!(a.fleet);
+        keys(&mut a, "<Tab>");
+        assert!(!a.fleet && a.screen == Screen::Ovw);
         tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
         a.pump();
         keys(&mut a, "l l <Enter>");
@@ -2378,6 +2400,19 @@ mod tests {
         assert!(a.fleet);
         keys(&mut a, "2");
         assert!(!a.fleet && a.screen == Screen::Cpu);
+        // Tab and Shift+Tab go round through the fleet's tab, the last one.
+        let (first, last) = (Screen::Ovw, *Screen::ALL.iter().rev().find(|s| s.built()).unwrap());
+        keys(&mut a, "F <Tab>");
+        assert!(!a.fleet && a.screen == first);
+        keys(&mut a, "<BackTab>");
+        assert!(a.fleet && a.screen == first);
+        keys(&mut a, "<BackTab>");
+        assert!(!a.fleet && a.screen == last);
+        keys(&mut a, "<Tab>");
+        assert!(a.fleet);
+        keys(&mut a, "<BackTab>");
+        assert!(!a.fleet && a.screen == last);
+        keys(&mut a, "2");
         a.apply_out(Out { fleet_tab: true, ..Out::default() }, &egui::Context::default());
         assert!(a.fleet);
         a.apply_out(Out { fleet_click: Some((9, false)), ..Out::default() }, &egui::Context::default());
