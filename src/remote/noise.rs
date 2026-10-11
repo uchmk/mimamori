@@ -439,10 +439,19 @@ mod tests {
         let (mut r, mut w) = initiate(&c, &va, &ag.public).unwrap();
         let (name, mut ar, mut aw) = side.join().unwrap().unwrap();
         assert_eq!(name, "laptop");
-        // Larger than one message, both ways, as frames.
+        // Larger than one message, both ways, as frames. The big one is read
+        // while it is written: it is larger than the socket buffers (small on
+        // Windows ARM64), so the write waits for the reader. A stuck write
+        // fails instead of hanging the test.
+        c.set_write_timeout(Some(Duration::from_secs(20))).unwrap();
         let big: Vec<u8> = (0..200_000u32).map(|i| (i % 251) as u8).collect();
-        super::super::proto::write_frame(&mut w, &big).unwrap();
-        assert_eq!(super::super::proto::read_frame::<Vec<u8>>(&mut ar).unwrap(), big);
+        let got = std::thread::scope(|sc| {
+            let sent = sc.spawn(|| super::super::proto::write_frame(&mut w, &big));
+            let got = super::super::proto::read_frame::<Vec<u8>>(&mut ar);
+            sent.join().unwrap().unwrap();
+            got.unwrap()
+        });
+        assert_eq!(got, big);
         super::super::proto::write_frame(&mut aw, &"pong").unwrap();
         assert_eq!(super::super::proto::read_frame::<String>(&mut r).unwrap(), "pong");
         // Nothing goes over in the clear.
