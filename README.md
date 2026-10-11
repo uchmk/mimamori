@@ -238,7 +238,7 @@ addr = "pi.tail1234.ts.net"    # through tailscale serve
 The agent samples like the window does (`interval`) and sends a summary each
 round: CPU, memory, the first GPU's usage, the hottest temperature, the
 battery, how many viewers it has and counts of what is wrong (temperatures
-drawn red, drives failing or with SMART counts drawn yellow, failed services; services are read every minute for this even while no svc screen
+drawn red, drives failing or with SMART counts drawn yellow, failed services (not drivers); services are read every minute for this even while no svc screen
 shows), with its host name, OS, CPU, uptime, version and port once at the
 start (protocol 5). After the first summary only what changed goes, which on a
 quiet machine is a few bytes; a viewer whose channel fills up gets a whole one

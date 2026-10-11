@@ -145,8 +145,10 @@ pub struct Services {
 }
 
 impl Services {
-    pub fn count(&self, s: State) -> usize {
-        self.list.iter().filter(|v| v.state == s).count()
+    /// Failed services, leaving out drivers: svc lists them apart (`u`) and
+    /// its crumb counts them apart.
+    pub fn failed_services(&self) -> usize {
+        self.list.iter().filter(|v| !v.driver && v.state == State::Failed).count()
     }
 }
 

@@ -31,7 +31,6 @@ use crossbeam_channel::{Receiver, Sender, TrySendError, bounded, select, unbound
 use super::noise::{self, Keys};
 use super::proto::{self, Act, Done, FromAgent, Hello, PROTO, Refusal, Summary, ToAgent, Want, Warn};
 use super::wire::{self, Route};
-use crate::collect::svc::State;
 use crate::collect::{self, Ctl, Msg, gpu};
 use crate::config::settings::ViewerKey;
 use crate::model::Model;
@@ -481,7 +480,7 @@ pub fn summary(m: &Model) -> Summary {
     let warn = Warn {
         hot: n(m.sensors.hot()),
         drives: n(m.disks.drives.iter().filter(|d| d.warns()).count()),
-        failed: m.svc_read.then(|| n(m.services.count(State::Failed))),
+        failed: m.svc_read.then(|| n(m.services.failed_services())),
     };
     Summary {
         cpu: m.total,
@@ -588,7 +587,7 @@ fn talk(s: &TcpStream, mut r: impl Read, mut w: impl Write + Send + 'static, who
 mod tests {
     use super::*;
     use crate::collect::Proc;
-    use crate::collect::svc::{Service, Start};
+    use crate::collect::svc::{Service, Start, State};
     use crate::svcctl::Action;
 
     #[test]
@@ -623,6 +622,17 @@ mod tests {
             svc("disk", false, Start::Auto, true),
         ];
         m
+    }
+
+    #[test]
+    fn the_card_counts_failed_services_not_drivers() {
+        let mut m = model();
+        assert_eq!(summary(&m).warn.failed, None, "not read yet");
+        m.svc_read = true;
+        m.services.list[0].state = State::Failed;
+        m.services.list[1].state = State::Running;
+        m.services.list[3].state = State::Failed;
+        assert_eq!(summary(&m).warn.failed, Some(1));
     }
 
     fn service(action: Action, name: &str, driver: bool) -> Act {
