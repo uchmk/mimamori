@@ -11,7 +11,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] 通知（v0.46.0。実機の確認は TESTING.md 3k 【実機】）: ito に `ito-notify`（通知・音・webhook）を切り出し、yagura は `[notify]` と `[[alert]]`（cpu・mem・swap・gpu・temp・disk・battery）を持つ。
 - [ ] 通知: tsumugi の `sound.rs`・`webhook.rs` を `ito-notify` に載せ替える（tsumugi の `rev` を上げる。トーストの Allow / Deny と点滅・バッジは tsumugi 側に残す）。
 - [ ] 通知: サービスの停止のアラート（`[[alert]]` に service の種類を足す）。
-- [ ] procs: 優先度（nice / Priority Class）・CPU アフィニティ・開いているファイルとハンドル・プロセスごとのネットワーク量。
+- [x] procs: 優先度・アフィニティ・開いているファイルとハンドル・ソケットの数（v0.47.0。実機の確認は TESTING.md 3l 【実機】）。
+- [ ] procs: 優先度とアフィニティを変える操作、プロセスごとのネットワーク量（送受信の速さ）、fleet の相手のプロセスの詳細。
 - [ ] コンテナ（Docker / Podman、Linux は cgroup）の CPU とメモリ。
 - [ ] ログインユーザー・電源プラン・ロードアベレージを overview か sys に。
 - [ ] エージェントの Prometheus 互換 `/metrics`。

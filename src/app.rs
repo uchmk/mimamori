@@ -37,6 +37,10 @@ pub fn toast_time(text: &str) -> Duration {
 /// How far a resize key moves a divider, as a share of the room.
 const NUDGE: f32 = 0.03;
 /// How often sys looks for this machine's agent while it shows.
+/// How old the selected process's priority and open files get before they
+/// are read again.
+const PROC_INFO_EVERY: Duration = Duration::from_secs(5);
+
 const PROBE_EVERY: Duration = Duration::from_secs(5);
 /// Rows the overview lists in each of its two top lists.
 pub const OVW_TOP: usize = 5;
@@ -365,6 +369,12 @@ pub struct App {
     zoom_range: Range,
     /// What the `[[alert]]` rules have seen of this machine.
     alerts: crate::alert::Tracker,
+    /// What the procs detail knows of the selected process beyond the list,
+    /// and when it was asked; read on a thread of its own, one at a time.
+    proc_info: Option<(u32, crate::procinfo::Info, Instant)>,
+    proc_info_busy: bool,
+    proc_info_tx: Sender<(u32, crate::procinfo::Info)>,
+    proc_info_rx: Receiver<(u32, crate::procinfo::Info)>,
     kill_tx: Sender<(Target, Outcome)>,
     kill_rx: Receiver<(Target, Outcome)>,
     svc_tx: Sender<(svcctl::Target, svcctl::Outcome)>,
@@ -427,6 +437,7 @@ impl App {
     pub fn new(km: Keymap, rx: Receiver<Msg>, ctl: Sender<Ctl>, layouts: HashMap<Screen, Node<Pane>>, saver: Saver, interval: f32) -> Self {
         let (kill_tx, kill_rx) = crossbeam_channel::unbounded();
         let (svc_tx, svc_rx) = crossbeam_channel::unbounded();
+        let (proc_info_tx, proc_info_rx) = crossbeam_channel::unbounded();
         Self {
             km,
             model: Model::default(),
@@ -473,6 +484,10 @@ impl App {
             zoom: None,
             zoom_range: Range::default(),
             alerts: crate::alert::Tracker::default(),
+            proc_info: None,
+            proc_info_busy: false,
+            proc_info_tx,
+            proc_info_rx,
             kill_tx,
             kill_rx,
             svc_tx,
@@ -716,12 +731,37 @@ impl App {
             self.refresh_rows();
         }
         self.check_alerts();
+        self.check_proc_info();
         self.clamp_all();
         // Dropped once it has had its time, or the frame after it would ask
         // for another frame forever.
         if self.toast.is_some() && self.toast_left().is_none() {
             self.toast = None;
         }
+    }
+
+    /// The selected process's priority, affinity and open files, read again
+    /// when it is another process or [`PROC_INFO_EVERY`] old; only for this
+    /// machine's processes while the procs screen shows.
+    fn check_proc_info(&mut self) {
+        while let Ok((pid, info)) = self.proc_info_rx.try_recv() {
+            self.proc_info_busy = false;
+            self.proc_info = Some((pid, info, Instant::now()));
+        }
+        if self.screen != Screen::Procs || self.away.is_some() || self.proc_info_busy {
+            return;
+        }
+        let Some(pid) = self.selected_proc().map(|p| p.pid) else { return };
+        let due = self.proc_info.as_ref().is_none_or(|(p, _, at)| *p != pid || at.elapsed() >= PROC_INFO_EVERY);
+        if due {
+            self.proc_info_busy = crate::procinfo::spawn(pid, self.proc_info_tx.clone(), self.wake.clone());
+        }
+    }
+
+    /// What is known of the selected process beyond the list.
+    pub fn selected_info(&self) -> Option<&crate::procinfo::Info> {
+        let pid = self.selected_proc()?.pid;
+        self.proc_info.as_ref().filter(|(p, ..)| *p == pid).map(|(_, i, _)| i)
     }
 
     /// The `[[alert]]` rules against this machine's readings (the home one

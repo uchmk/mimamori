@@ -18,6 +18,7 @@ mod kill;
 mod model;
 mod persist;
 mod prefs;
+mod procinfo;
 mod remote;
 mod screen;
 mod service;

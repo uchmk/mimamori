@@ -8,6 +8,7 @@ use crate::app::SortCol;
 use crate::collect::Proc;
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
+use crate::procinfo::Prio;
 use crate::screen::Pane;
 use crate::util::{fmt_bytes, fmt_local};
 
@@ -170,7 +171,25 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         (tr("procs.exe"), p.exe.clone().unwrap_or_else(dash)),
         (tr("procs.cmd"), if p.cmd.is_empty() { dash() } else { p.cmd.clone() }),
     ];
-    let mut y = kv_rows(&cx.pen, body, body.top(), &rows) + GAP;
+    let mut y = kv_rows(&cx.pen, body, body.top(), &rows);
+    // Beyond the list, for this machine's process only (read on demand).
+    if let Some(i) = app.selected_info() {
+        let prio = i.priority.map(|p| match p.key() {
+            Some(k) => tr(k).to_string(),
+            None => match p {
+                Prio::Nice(n) => n.to_string(),
+                _ => String::new(),
+            },
+        });
+        let extra = [
+            (tr("procs.priority"), prio.unwrap_or_else(dash)),
+            (tr("procs.affinity"), i.affinity.clone().unwrap_or_else(dash)),
+            (tr("procs.files"), i.files.map_or_else(dash, |n| n.to_string())),
+            (tr("procs.conns"), i.conns.map_or_else(dash, |n| n.to_string())),
+        ];
+        y = kv_rows(&cx.pen, body, y, &extra);
+    }
+    y += GAP;
 
     // The last minute of its CPU and memory, sharing what room is left.
     let Some((cpu, mem)) = app.model.proc_hist.get(&p.pid) else { return };
