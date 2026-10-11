@@ -1,17 +1,20 @@
 //! Sensors (9): the chips with their hottest reading on the left, every
 //! temperature and fan with its range over the minute and its limits in the
-//! middle, the selected sensor's graph and where it was read on the right.
+//! middle under the selected sensor's graph, and where it was read on the
+//! right.
 //! Enter on a chip jumps to its first sensor, and on a sensor back to its
 //! chip.
 
 use egui::{Color32, Rect, Stroke, pos2, vec2};
+use ito_layout::{Dir, Node};
 
-use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at};
+use super::{Cx, GAP, gpu::para, graph, kv_rows, panel, row_at, shown};
 use crate::collect::sensors::{self, Kind, Sensor, Sensors};
 use crate::config::theme::{self, ROW};
 use crate::i18n::{tr, trf};
 use crate::model::Ring;
 use crate::screen::Pane;
+use crate::stacks;
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
     draw_left(cx, left);
@@ -76,12 +79,8 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         let cy = row.center().y;
         let rr = cx.pen.text_r(pos2(row.right() - 6.0, cy), &x.kind.show(x.value), color(x));
         let room = rr.left() - row.left() - 6.0 - cx.pen.cw * 2.0;
-        let name = cx.pen.fit(c.name, (room * 0.6).max(cx.pen.cw * 6.0));
-        let t = cx.pen.text(pos2(row.left() + 6.0, cy), &name, theme::fg());
-        let sr = Rect::from_min_max(pos2(t.right() + cx.pen.cw, row.top() + 4.0), pos2(rr.left() - cx.pen.cw, row.bottom() - 4.0));
-        if let Some(ring) = m.sensor_hist.get(&x.id) {
-            graph::spark(&cx.pen, sr, ring.iter(), scale(x, ring), color(x));
-        }
+        let name = cx.pen.fit(c.name, room.max(cx.pen.cw * 6.0));
+        cx.pen.text(pos2(row.left() + 6.0, cy), &name, theme::fg());
     });
     // The whole machine, and why the list may be short.
     let mut y = list.bottom() + if chips.is_empty() { 0.0 } else { GAP };
@@ -181,7 +180,19 @@ fn cell(s: &Sensor, ring: Option<&Ring>, first: bool, col: Col) -> (String, Colo
     }
 }
 
+/// The selected sensor's graph over the list of sensors, each in its own
+/// panel like the disk screen.
 fn draw_mid(cx: &mut Cx, r: Rect) {
+    let rects = cx.stack(Pane::Mid, r, stacks::split(Dir::Down, 0.3, Node::Leaf(0), Node::Leaf(1)));
+    if shown(rects[0]) {
+        draw_graph(cx, rects[0]);
+    }
+    if shown(rects[1]) {
+        draw_list(cx, rects[1]);
+    }
+}
+
+fn draw_list(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let m = &app.model;
     let list = &m.sensors.list;
@@ -267,26 +278,32 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         return;
     };
     let body = panel(&cx.pen, r, &s.label, &s.chip, cx.focused(Pane::Right));
-    let mut y = body.top();
     let ring = m.sensor_hist.get(&s.id);
-    if let Some(ring) = ring {
-        let h = (body.height() * 0.3).clamp(40.0, 160.0);
-        if y + ROW + h <= body.bottom() {
-            cx.pen.pair(row_at(body, y), tr(s.kind.key()), theme::dim(), &s.kind.show(s.value), color(s));
-            y += ROW;
-            let g = Rect::from_min_size(pos2(body.left(), y), vec2(body.width(), h));
-            let max = scale(s, ring);
-            graph::line(&cx.pen, g, ring.iter(), max, color(s));
-            if s.kind == Kind::Temp {
-                mark(cx, g, s.high, max, theme::yellow());
-                mark(cx, g, s.crit, max, theme::red());
-            } else {
-                mark(cx, g, s.min, max, theme::red());
-            }
-            y += h + GAP;
-        }
+    kv_rows(&cx.pen, body, body.top(), &detail_rows(s, ring));
+}
+
+/// The selected sensor's minute as a line with the limits marked, its reading
+/// in the panel's corner.
+fn draw_graph(cx: &Cx, r: Rect) {
+    let app = cx.app;
+    let Some(s) = app.selected_sensor() else {
+        let body = panel(&cx.pen, r, tr(Kind::Temp.key()), "", false);
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), "—", theme::dim());
+        return;
+    };
+    let body = panel(&cx.pen, r, &s.label, &s.kind.show(s.value), false);
+    let Some(ring) = app.model.sensor_hist.get(&s.id) else {
+        cx.pen.text(pos2(body.left() + 4.0, body.top() + ROW / 2.0), "—", theme::dim());
+        return;
+    };
+    let max = scale(s, ring);
+    graph::line(&cx.pen, body, ring.iter(), max, color(s));
+    if s.kind == Kind::Temp {
+        mark(cx, body, s.high, max, theme::yellow());
+        mark(cx, body, s.crit, max, theme::red());
+    } else {
+        mark(cx, body, s.min, max, theme::red());
     }
-    kv_rows(&cx.pen, body, y, &detail_rows(s, ring));
 }
 
 #[cfg(test)]

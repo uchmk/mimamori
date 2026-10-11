@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.43.1"
+version = "0.43.2"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -22,17 +22,17 @@ postcard = { version = "1", default-features = false, features = ["use-std"] }
 # Every shared crate is kept in uchmk/ito (since v0.32.1) and pinned to
 # one commit, the same for all of them; to take a fix, move `rev` and run
 # `cargo build` so Cargo.lock follows. It depends on nothing but egui.
-ito-layout = { git = "https://github.com/uchmk/ito", rev = "cf59f2cb5d48b4a262857a61e2dcf7b9a423cb3f", features = ["egui", "serde"] }
+ito-layout = { git = "https://github.com/uchmk/ito", rev = "4317550086167c5051457844d5c11b2b3d05ab5b", features = ["egui", "serde"] }
 # The translation table and the language setting in common.toml, shared with tsumugi.
-ito-i18n = { git = "https://github.com/uchmk/ito", rev = "cf59f2cb5d48b4a262857a61e2dcf7b9a423cb3f" }
+ito-i18n = { git = "https://github.com/uchmk/ito", rev = "4317550086167c5051457844d5c11b2b3d05ab5b" }
 # yazi's key notation and egui's key events in the same terms, shared with tsumugi.
-ito-keys = { git = "https://github.com/uchmk/ito", rev = "cf59f2cb5d48b4a262857a61e2dcf7b9a423cb3f", features = ["egui"] }
+ito-keys = { git = "https://github.com/uchmk/ito", rev = "4317550086167c5051457844d5c11b2b3d05ab5b", features = ["egui"] }
 # common.toml (theme, clock, language), editing a TOML file in place and
 # watching it; the themes; the settings screen's frame and widgets. All
 # shared with tsumugi and kura (ito's docs/common-spec.md).
-ito-common = { git = "https://github.com/uchmk/ito", rev = "cf59f2cb5d48b4a262857a61e2dcf7b9a423cb3f", features = ["clock"] }
-ito-theme = { git = "https://github.com/uchmk/ito", rev = "cf59f2cb5d48b4a262857a61e2dcf7b9a423cb3f" }
-ito-prefs = { git = "https://github.com/uchmk/ito", rev = "cf59f2cb5d48b4a262857a61e2dcf7b9a423cb3f" }
+ito-common = { git = "https://github.com/uchmk/ito", rev = "4317550086167c5051457844d5c11b2b3d05ab5b", features = ["clock"] }
+ito-theme = { git = "https://github.com/uchmk/ito", rev = "4317550086167c5051457844d5c11b2b3d05ab5b" }
+ito-prefs = { git = "https://github.com/uchmk/ito", rev = "4317550086167c5051457844d5c11b2b3d05ab5b" }
 # The clock's local time (pure Rust).
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 # The fleet's direct connections: the Noise handshake and ciphers (pure
