@@ -223,6 +223,11 @@ back to `[ ]`.
 - [ ] 3l.2 Windows: a normal app reads "Normal"; setting it to "Below normal" in Task Manager shows within 5 s; a service of another user shows `—` (not an error). Setting an affinity in Task Manager shows as ranges (`0-3`).
 - [ ] 3l.3 Linux / macOS: `nice -n 5 sleep 100` reads 5; `taskset -c 0,2 sleep 100` (Linux) reads `0,2`. Inside another machine (fleet) the extra rows are not shown.
 
+## 3o. Logins and the power plan (sys)
+
+- [ ] 3o.1 The sys screen's Session section lists each login (name · terminal · from host · time) and the power plan: Windows the active plan (Balanced, High performance), Linux the platform profile or CPU governor, macOS the Low Power mode. Log in over ssh or RDP and the row appears within 15 s.
+- [ ] 3o.2 In fleet, Enter on another machine shows that machine's logins.
+
 ## 3n. Prometheus `/metrics`
 
 - [ ] 3n.1 With `[agent] metrics = "127.0.0.1:9314"` in config.toml, `yagura --agent` says `Prometheus scrapes http://127.0.0.1:9314/metrics`; `curl -i http://127.0.0.1:9314/metrics` answers `200` with `text/plain; version=0.0.4`, and the numbers match the sys / cpu / mem / net screens (Windows and Linux or macOS). `curl -i http://127.0.0.1:9314/` is a 404.

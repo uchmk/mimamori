@@ -25,7 +25,7 @@ pub const DIRECT_PORT: u16 = 7314;
 /// Where `[agent] metrics` serves `/metrics` when no port is given.
 pub const METRICS_PORT: u16 = 9314;
 /// Raised whenever a message changes shape.
-pub const PROTO: u16 = 7;
+pub const PROTO: u16 = 8;
 /// A frame larger than this is not ours (another service on the port). The
 /// process list of a busy machine is the largest that is.
 pub const MAX_FRAME: usize = 16 << 20;

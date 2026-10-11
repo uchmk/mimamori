@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, battery, containers, devices, disk, gpu, hw, net, sensors, svc};
+use crate::collect::{Mem, Msg, Proc, Static, battery, containers, devices, disk, gpu, hw, net, sensors, session, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -241,6 +241,8 @@ pub struct Model {
     pub containers: Option<containers::Containers>,
     /// Each live container's CPU percent and memory bytes, by id.
     pub ct_hist: HashMap<String, (Ring, Ring)>,
+    /// The logins and the power plan; `None` until read once.
+    pub session: Option<session::Session>,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -347,6 +349,7 @@ impl Model {
             }
             Msg::Hardware(h) => self.hw = Some(*h),
             Msg::Battery(b) => self.battery = b,
+            Msg::Session(s) => self.session = Some(s),
             Msg::Devices(d) => self.devices = Some(*d),
             Msg::Containers(c) => {
                 let mut hist = std::mem::take(&mut self.ct_hist);

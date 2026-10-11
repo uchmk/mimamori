@@ -4,6 +4,14 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.50.0] - 2026-10-11
+
+### 追加
+- sys 画面にログイン中のユーザー（名前・端末・接続元・時刻）と電源プランを出す。Linux は utmp と ACPI のプラットフォーム プロファイル（無ければ CPU の governor）、Windows はリモート デスクトップ サービスのセッション一覧と `powrprof` の有効なプラン、macOS は `who` と `pmset -g`。15 秒ごとに読み、fleet では別の機械の分も見える。`--snapshot` の JSON に `session`、`/metrics` に `yagura_logged_in_users` が入る。
+
+### 変更
+- fleet のプロトコルを 7 から 8 にした（`Msg` に `Session` を足した）。見る側と agent のどちらかが v0.49 以前だと、カードは `another version` になる。両方を v0.50.0 にそろえること。
+
 ## [0.49.0] - 2026-10-11
 
 ### 追加

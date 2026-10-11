@@ -14,7 +14,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] procs: 優先度・アフィニティ・開いているファイルとハンドル・ソケットの数（v0.47.0。実機の確認は TESTING.md 3l 【実機】）。
 - [ ] procs: 優先度とアフィニティを変える操作、プロセスごとのネットワーク量（送受信の速さ）、fleet の相手のプロセスの詳細。
 - [ ] コンテナ（Docker / Podman、Linux は cgroup）の CPU とメモリ。
-- [ ] ログインユーザー・電源プラン・ロードアベレージを overview か sys に。
+- [x] ログインユーザー・電源プラン・ロードアベレージを overview か sys に。ロードアベレージは cpu 画面にあり、ユーザーと電源プランを sys 画面に足した（v0.50.0）。
+- [ ] sys 画面のログインと電源プランを実機で確かめる（TESTING 3o）【実機】
 - [x] エージェントの Prometheus 互換 `/metrics`。
   → `[agent] metrics = "127.0.0.1:9314"`（平文の HTTP、既定は無効）。hub が頼まれたときだけ `metrics.rs` で今の値をテキストにする（v0.49.0）
 - [ ] `/metrics` の実機の確認 【実機】（TESTING.md 3n）。

@@ -66,6 +66,7 @@ pub fn lines(app: &App) -> Vec<Line> {
         ]);
     }
     section(tr("sys.system"), system);
+    section(tr("sys.session"), session(app));
     section(tr("sys.processor"), processor(app, hw));
     section(tr("sys.agent"), agent(app));
     if m.hw.is_none() {
@@ -196,6 +197,28 @@ fn processor(app: &App, hw: &Hardware) -> Vec<(&'static str, String)> {
 
 /// The fleet agent of the machine whose screens show: the one this window
 /// is inside, else what the last look on this machine's port found.
+/// The logins, one row each, and the power plan.
+fn session(app: &App) -> Vec<(&'static str, String)> {
+    let Some(s) = &app.model.session else { return Vec::new() };
+    let mut rows: Vec<_> = s
+        .users
+        .iter()
+        .map(|u| {
+            let mut v = vec![u.name.clone(), u.line.clone()];
+            if !u.host.is_empty() {
+                v.push(trf("sys.from", &[&u.host]));
+            }
+            if u.since > 0 {
+                v.push(crate::util::fmt_local(u.since));
+            }
+            v.retain(|p| !p.is_empty());
+            (tr("sys.login"), v.join(" · "))
+        })
+        .collect();
+    rows.push((tr("sys.power"), s.power.clone()));
+    rows
+}
+
 fn agent(app: &App) -> Vec<(&'static str, String)> {
     let allow = |a: &[String]| if a.is_empty() { tr("fleet.view_only").to_string() } else { a.join(", ") };
     let up = |h: &Hello, viewers: Option<u16>| {

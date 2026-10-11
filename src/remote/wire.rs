@@ -90,7 +90,7 @@ pub enum Route {
 
 pub fn route(m: &Msg) -> Route {
     match m {
-        Msg::Static(_) | Msg::Hardware(_) => Route::Static,
+        Msg::Static(_) | Msg::Hardware(_) | Msg::Session(_) => Route::Static,
         Msg::Svc(_) => Route::Services,
         Msg::Conns(_) => Route::Conns,
         Msg::Devices(_) => Route::Devices,
@@ -126,7 +126,7 @@ pub fn union(wants: impl IntoIterator<Item = Want>) -> Want {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collect::{Mem, Static, battery, containers, devices, disk, gpu, hw, net, sensors, svc, topo};
+    use crate::collect::{Mem, Static, battery, containers, devices, disk, gpu, hw, net, sensors, session, svc, topo};
     use crate::remote::proto;
 
     fn every_msg() -> Vec<Msg> {
@@ -214,6 +214,10 @@ mod tests {
                 runtime: Some(containers::Runtime::Podman),
                 note: None,
             })),
+            Msg::Session(session::Session {
+                users: vec![session::User { name: "ann".into(), line: "tty1".into(), host: String::new(), since: 9 }],
+                power: "balanced".into(),
+            }),
         ]
     }
 
@@ -270,6 +274,7 @@ mod tests {
         assert_eq!(routes[10], Route::Static);
         assert_eq!(routes[12], Route::Devices);
         assert_eq!(routes[13], Route::Containers);
+        assert_eq!(routes[14], Route::Static);
         let watch = Want { detail: true, ..Want::default() };
         let svc = Want { services: true, ..watch };
         assert!(watch.takes(Route::Detail) && !watch.takes(Route::Services));

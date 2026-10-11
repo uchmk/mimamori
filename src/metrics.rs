@@ -54,6 +54,11 @@ pub fn render(m: &Model) -> String {
         }
     }
 
+    if let Some(s) = &m.session {
+        head(&mut o, "yagura_logged_in_users", "gauge", "Logins on the machine.");
+        sample(&mut o, "yagura_logged_in_users", &[], s.users.len() as f64);
+    }
+
     for (name, help, v) in [
         ("yagura_memory_total_bytes", "Physical memory.", m.mem.total),
         ("yagura_memory_used_bytes", "Physical memory in use.", m.mem.used),
@@ -218,6 +223,11 @@ mod tests {
     #[test]
     fn what_is_not_read_is_left_out() {
         let page = render(&Model::default());
-        assert!(!page.contains("yagura_battery") && !page.contains("yagura_container") && !page.contains("yagura_load_average"));
+        assert!(
+            !page.contains("yagura_battery")
+                && !page.contains("yagura_container")
+                && !page.contains("yagura_load_average")
+                && !page.contains("yagura_logged_in")
+        );
     }
 }

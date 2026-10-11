@@ -38,6 +38,7 @@ struct Snapshot<'a> {
     hardware: &'a Option<collect::hw::Hardware>,
     devices: &'a Option<collect::devices::Devices>,
     containers: &'a Option<collect::containers::Containers>,
+    session: &'a Option<collect::session::Session>,
 }
 
 #[derive(Serialize)]
@@ -75,6 +76,7 @@ fn complete(m: &Model) -> bool {
         && m.hw.is_some()
         && m.devices.is_some()
         && m.containers.is_some()
+        && m.session.is_some()
 }
 
 /// Everything, as JSON.
@@ -110,6 +112,7 @@ pub fn snapshot() -> Result<String, String> {
         hardware: &m.hw,
         devices: &m.devices,
         containers: &m.containers,
+        session: &m.session,
     };
     serde_json::to_string_pretty(&snap).map_err(|e| e.to_string())
 }
@@ -235,6 +238,7 @@ mod tests {
             hardware: &m.hw,
             devices: &m.devices,
             containers: &m.containers,
+            session: &m.session,
         };
         let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&snap).unwrap()).unwrap();
         assert!(v["cpu"]["usage"].is_array() && v["mem"]["total"].is_number());

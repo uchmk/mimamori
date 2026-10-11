@@ -16,6 +16,7 @@ pub mod net;
 #[cfg(windows)]
 mod pdh;
 pub mod sensors;
+pub mod session;
 pub mod svc;
 pub mod topo;
 #[cfg(windows)]
@@ -120,6 +121,8 @@ pub enum Msg {
     Devices(Box<devices::Devices>),
     /// Only while the containers screen wants them, every [`CT_EVERY`].
     Containers(Box<containers::Containers>),
+    /// Every [`session::EVERY`]: the logins and the power plan.
+    Session(session::Session),
 }
 
 #[derive(Debug)]
@@ -221,13 +224,18 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
     let mut dev_next: Option<Instant> = None;
     let mut cts = containers::Reader::default();
     let mut ct_next: Option<Instant> = None;
+    let mut session_next = Instant::now();
     let mut paused = false;
     let mut procs_every: u32 = 2;
     // The first CPU reading needs a gap after the first refresh.
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
     let mut tick: u64 = 0;
     loop {
-        let due = if paused { None } else { [Some(next), Some(svc_next), net_next, dev_next, ct_next].into_iter().flatten().min() };
+        let due = if paused {
+            None
+        } else {
+            [Some(next), Some(svc_next), Some(session_next), net_next, dev_next, ct_next].into_iter().flatten().min()
+        };
         let got = match due {
             Some(t) => ctl.recv_timeout(t.saturating_duration_since(Instant::now())),
             None => ctl.recv().map_err(|_| RecvTimeoutError::Disconnected),
@@ -311,6 +319,12 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
                 return;
             }
             ct_next = Some(Instant::now() + CT_EVERY);
+        }
+        if Instant::now() >= session_next {
+            if !send(Msg::Session(session::read())) {
+                return;
+            }
+            session_next = Instant::now() + session::EVERY;
         }
         if Instant::now() < next {
             continue;
