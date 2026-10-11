@@ -246,10 +246,16 @@ metric = "cpu"                # cpu, mem, swap, gpu, temp, disk or battery
 above = 90                    # or: below = 15
 for = 30                      # seconds it has to hold (default 10)
 name = "CPU is busy"          # optional; else "CPU is over 90%"
+
+[[alert]]
+metric = "service"            # fires when a service is stopped or failed
+service = "nginx"             # its name as svc shows it (case does not matter)
 ```
 
 `cpu`, `mem`, `swap`, `gpu` (the busiest) and `disk` (the fullest volume) are
-percentages, `temp` is the hottest sensor in °C, `battery` the charge. A rule
+percentages, `temp` is the hottest sensor in °C, `battery` the charge. A `service` rule takes a
+name instead of a number and fires when that service is stopped or failed (not
+while it is starting or stopping, and not for a name svc does not list). A rule
 fires once when it has held for `for` seconds and again only after it has
 stopped holding; the status bar shows it too. There are no rules until you
 write them. Only this machine's readings are watched, also while another

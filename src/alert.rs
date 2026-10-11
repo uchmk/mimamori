@@ -17,6 +17,10 @@
 //! above = 90                    # or `below = 15`
 //! for = 30                      # seconds it has to hold (default 10)
 //! name = "CPU is busy"          # optional
+//!
+//! [[alert]]
+//! metric = "service"            # fires when the service is stopped or failed
+//! service = "nginx"             # its name as svc shows it (case does not matter)
 //! ```
 //!
 //! A rule fires once when its condition has held for `for` seconds, and again
@@ -24,6 +28,7 @@
 
 use std::time::{Duration, Instant};
 
+use crate::collect::svc;
 use crate::i18n::{tr, trf};
 use crate::model::Model;
 
@@ -44,9 +49,11 @@ pub enum Metric {
     Disk,
     /// Charge, percent.
     Battery,
+    /// A named service being stopped or failed (see `Rule::service`).
+    Service,
 }
 
-pub const METRICS: [(&str, Metric); 7] = [
+pub const METRICS: [(&str, Metric); 8] = [
     ("cpu", Metric::Cpu),
     ("mem", Metric::Mem),
     ("swap", Metric::Swap),
@@ -54,6 +61,7 @@ pub const METRICS: [(&str, Metric); 7] = [
     ("temp", Metric::Temp),
     ("disk", Metric::Disk),
     ("battery", Metric::Battery),
+    ("service", Metric::Service),
 ];
 
 impl Metric {
@@ -67,6 +75,7 @@ impl Metric {
             Metric::Temp => "alert.temp",
             Metric::Disk => "alert.disk",
             Metric::Battery => "alert.battery",
+            Metric::Service => "alert.service",
         }
     }
 
@@ -91,6 +100,8 @@ impl Metric {
                 .map(|v| (v.total - v.avail.min(v.total)) as f32 * 100.0 / v.total as f32)
                 .max_by(f32::total_cmp),
             Metric::Battery => m.battery.map(|b| b.pct),
+            // Needs the rule's service name: `Rule::read`.
+            Metric::Service => None,
         }
     }
 }
@@ -105,9 +116,23 @@ pub struct Rule {
     /// Seconds the condition has to hold.
     pub secs: u64,
     pub name: Option<String>,
+    /// For `Metric::Service`: the service to watch.
+    pub service: Option<String>,
 }
 
 impl Rule {
+    /// The reading now: for a service, 1 while it is stopped or failed (0
+    /// while it runs; nothing when it is not listed or is changing state).
+    pub fn read(&self, m: &Model) -> Option<f32> {
+        let Some(want) = self.service.as_deref() else { return self.metric.read(m) };
+        let s = m.services.list.iter().find(|s| !s.driver && s.name.eq_ignore_ascii_case(want))?;
+        match s.state {
+            svc::State::Stopped | svc::State::Failed => Some(1.0),
+            svc::State::Running | svc::State::Paused => Some(0.0),
+            svc::State::Starting | svc::State::Stopping | svc::State::Unknown => None,
+        }
+    }
+
     fn holds(&self, v: f32) -> bool {
         if self.above { v > self.limit } else { v < self.limit }
     }
@@ -206,7 +231,7 @@ pub fn parse_rules(v: &toml::Value, warn: &mut Vec<String>) -> Vec<Rule> {
             warn.push(format!("{file} must be a table"));
             continue;
         };
-        for k in t.keys().filter(|k| !["metric", "above", "below", "for", "name"].contains(&k.as_str())) {
+        for k in t.keys().filter(|k| !["metric", "above", "below", "for", "name", "service"].contains(&k.as_str())) {
             warn.push(format!("{file}: unknown setting `{k}`"));
         }
         let Some(metric) = t.get("metric").and_then(|m| m.as_str()).and_then(|w| METRICS.iter().find(|(n, _)| *n == w)).map(|(_, m)| *m)
@@ -215,13 +240,26 @@ pub fn parse_rules(v: &toml::Value, warn: &mut Vec<String>) -> Vec<Rule> {
             warn.push(format!("{file}: `metric` is one of {words}"));
             continue;
         };
+        let service = t.get("service").and_then(|n| n.as_str()).map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned);
         let (above, below) = (t.get("above").and_then(number), t.get("below").and_then(number));
-        let (limit, is_above) = match (above, below) {
-            (Some(a), None) => (a as f32, true),
-            (None, Some(b)) => (b as f32, false),
-            _ => {
-                warn.push(format!("{file}: needs one number, `above` or `below`"));
+        let (limit, is_above) = if metric == Metric::Service {
+            if service.is_none() || above.is_some() || below.is_some() {
+                warn.push(format!("{file}: `service` needs `service = \"name\"` and no `above` or `below`"));
                 continue;
+            }
+            (0.5, true)
+        } else {
+            if service.is_some() {
+                warn.push(format!("{file}: `service` is for `metric = \"service\"`"));
+                continue;
+            }
+            match (above, below) {
+                (Some(a), None) => (a as f32, true),
+                (None, Some(b)) => (b as f32, false),
+                _ => {
+                    warn.push(format!("{file}: needs one number, `above` or `below`"));
+                    continue;
+                }
             }
         };
         let secs = match t.get("for").map(|v| v.as_integer().filter(|s| (0..=86_400).contains(s))) {
@@ -233,7 +271,7 @@ pub fn parse_rules(v: &toml::Value, warn: &mut Vec<String>) -> Vec<Rule> {
             }
         };
         let name = t.get("name").and_then(|n| n.as_str()).map(str::trim).filter(|n| !n.is_empty()).map(str::to_owned);
-        out.push(Rule { metric, limit, above: is_above, secs, name });
+        out.push(Rule { metric, limit, above: is_above, secs, name, service });
     }
     out
 }
@@ -249,6 +287,11 @@ impl Fired {
     /// The notification's title and body, on `host`.
     pub fn words(&self, host: &str) -> (String, String) {
         let r = &self.rule;
+        if let Some(svc) = &r.service {
+            let title = r.name.clone().unwrap_or_else(|| trf("alert.service_down", &[svc]));
+            let body = if host.is_empty() { trf("alert.service_now", &[svc]) } else { trf("alert.service_now_on", &[svc, host]) };
+            return (title, body);
+        }
         let label = tr(r.metric.key());
         let limit = format!("{}{}", r.limit, r.metric.unit());
         let title = r.name.clone().unwrap_or_else(|| trf(if r.above { "alert.above" } else { "alert.below" }, &[label, &limit]));
@@ -274,14 +317,14 @@ impl Tracker {
 
     /// Look at the readings at `now`; the rules that have just fired. A
     /// changed list of rules starts over.
-    pub fn step(&mut self, rules: &[Rule], now: Instant, read: impl Fn(Metric) -> Option<f32>) -> Vec<Fired> {
+    pub fn step(&mut self, rules: &[Rule], now: Instant, read: impl Fn(&Rule) -> Option<f32>) -> Vec<Fired> {
         if self.rules != rules {
             self.rules = rules.to_vec();
             self.state = vec![(None, false); rules.len()];
         }
         let mut out = Vec::new();
         for (rule, (since, told)) in rules.iter().zip(&mut self.state) {
-            match read(rule.metric).filter(|v| rule.holds(*v)) {
+            match read(rule).filter(|v| rule.holds(*v)) {
                 Some(value) => {
                     let start = *since.get_or_insert(now);
                     if !*told && now.duration_since(start) >= Duration::from_secs(rule.secs) {
@@ -332,7 +375,7 @@ mod tests {
         let (r, w) =
             rules("[[alert]]\nmetric = \"cpu\"\nabove = 90\nfor = 30\nname = \"busy\"\n[[alert]]\nmetric = \"battery\"\nbelow = 15.5\n");
         assert!(w.is_empty(), "{w:?}");
-        assert_eq!(r[0], Rule { metric: Metric::Cpu, limit: 90.0, above: true, secs: 30, name: Some("busy".into()) });
+        assert_eq!(r[0], Rule { metric: Metric::Cpu, limit: 90.0, above: true, secs: 30, name: Some("busy".into()), service: None });
         assert_eq!((r[1].metric, r[1].above, r[1].secs), (Metric::Battery, false, 10), "for defaults to 10");
         let (r, w) = rules(
             "[[alert]]\nmetric = \"fans\"\nabove = 1\n[[alert]]\nmetric = \"cpu\"\n[[alert]]\nmetric = \"cpu\"\nabove = 1\nbelow = 2\n[[alert]]\nmetric = \"cpu\"\nabove = 1\nfor = -3\nx = 1\n",
@@ -357,7 +400,7 @@ mod tests {
 
     #[test]
     fn a_rule_fires_once_after_it_has_held_and_again_after_it_clears() {
-        let rule = Rule { metric: Metric::Cpu, limit: 90.0, above: true, secs: 30, name: None };
+        let rule = Rule { metric: Metric::Cpu, limit: 90.0, above: true, secs: 30, name: None, service: None };
         let mut t = Tracker::default();
         let t0 = Instant::now();
         let at = |s: u64| t0 + Duration::from_secs(s);
@@ -378,7 +421,7 @@ mod tests {
 
     #[test]
     fn under_and_changed_rules() {
-        let low = Rule { metric: Metric::Battery, limit: 15.0, above: false, secs: 0, name: None };
+        let low = Rule { metric: Metric::Battery, limit: 15.0, above: false, secs: 0, name: None, service: None };
         let mut t = Tracker::default();
         let now = Instant::now();
         assert_eq!(t.step(std::slice::from_ref(&low), now, |_| Some(10.0)).len(), 1, "no wait with for = 0");
@@ -387,6 +430,35 @@ mod tests {
         let mut other = low;
         other.limit = 20.0;
         assert_eq!(t.step(&[other], now, |_| Some(10.0)).len(), 1);
+    }
+
+    #[test]
+    fn a_service_rule_wants_a_name_and_no_number() {
+        let (r, w) = rules("[[alert]]\nmetric = \"service\"\nservice = \"nginx\"\nfor = 5\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!((r[0].metric, r[0].service.as_deref(), r[0].secs), (Metric::Service, Some("nginx"), 5));
+        let (r, w) = rules(
+            "[[alert]]\nmetric = \"service\"\n[[alert]]\nmetric = \"service\"\nservice = \"a\"\nabove = 1\n[[alert]]\nmetric = \"cpu\"\nabove = 1\nservice = \"a\"\n",
+        );
+        assert!(r.is_empty());
+        assert_eq!(w.len(), 3, "{w:?}");
+    }
+
+    #[test]
+    fn a_service_reads_one_while_it_is_down() {
+        let rule = Rule { metric: Metric::Service, limit: 0.5, above: true, secs: 0, name: None, service: Some("NGINX".into()) };
+        let mut m = Model::default();
+        assert_eq!(rule.read(&m), None, "not listed");
+        let mut s = svc::Service { name: "nginx".into(), state: svc::State::Running, ..Default::default() };
+        m.services.list.push(s.clone());
+        assert_eq!(rule.read(&m), Some(0.0));
+        for (state, want) in [(svc::State::Stopped, Some(1.0)), (svc::State::Failed, Some(1.0)), (svc::State::Stopping, None)] {
+            s.state = state;
+            m.services.list[0] = s.clone();
+            assert_eq!(rule.read(&m), want, "{state:?}");
+        }
+        let fired = Fired { rule, value: 1.0 };
+        assert!(!fired.words("").0.is_empty());
     }
 
     #[test]
