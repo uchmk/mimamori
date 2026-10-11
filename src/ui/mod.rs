@@ -26,7 +26,7 @@ use egui::{Align2, Color32, FontId, Id, Painter, Pos2, Rect, Sense, Stroke, Stro
 use ito_layout::Node;
 use ito_layout::ui::{Look, dividers, from_egui, to_egui};
 
-use crate::app::{App, Mode, Out, TOAST, fmt_interval};
+use crate::app::{App, Mode, Out, fmt_interval};
 use crate::config::cmd::Act;
 use crate::config::keys::render_seq;
 use crate::config::theme::{self, ROW};
@@ -410,10 +410,11 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
         }
         Screen::Svc if !m.svc_read => tr("misc.reading").to_string(),
         Screen::Svc => {
-            let sv = &m.services;
-            let n = |s| sv.count(s).to_string();
+            // The kind on the list (services or drivers), as the left column counts it.
             use crate::collect::svc::State;
-            trf("crumb.svc", &[&sv.list.len().to_string(), &n(State::Running), &n(State::Failed), sv.source])
+            let n = |s: State| app.svc_kind().filter(|v| v.state == s).count().to_string();
+            let kind = tr(if app.svc_drivers { "svc.drivers" } else { "svc.services" });
+            trf("crumb.svc", &[kind, &app.svc_kind().count().to_string(), &n(State::Running), &n(State::Failed), m.services.source])
         }
         Screen::Net if !m.nic_read => tr("misc.reading").to_string(),
         Screen::Net => {
@@ -528,9 +529,9 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
 
     if app.mode == Mode::Filter {
         pen.text(pos2(x, y), &pen.fit(&format!("/{}▏", app.filter), room), theme::fg());
-    } else if let Some((t, at)) = app.toast.as_ref().filter(|(_, at)| at.elapsed() < TOAST) {
+    } else if let Some((t, left)) = app.shown_toast() {
         pen.text(pos2(x, y), &pen.fit(t, room), theme::yellow());
-        ui.ctx().request_repaint_after(TOAST.saturating_sub(at.elapsed()));
+        ui.ctx().request_repaint_after(left);
     } else {
         // Another machine samples at its own pace.
         let (interval, paused) = match away {

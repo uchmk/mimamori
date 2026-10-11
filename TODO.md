@@ -21,6 +21,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] svc: Windows のドライバー（`SERVICE_DRIVER`）を出すか、左の列の切り替えにするか決める。
   → 一緒に読み、`u`（procs の Mine や net の LISTEN と同じ鍵）でサービス ⇄ ドライバーを切り替える。左の列に今の種類を出す。ドライバーの操作の行は `sc.exe start|stop`（v0.7.3）。
 - [ ] svc の実機の確認 `【実機】`（TESTING.md 3b）。
+  3b.1・3b.5・3b.6・3b.9 は済み（uchmk/yagura#5）。3b.2 の起動と停止・3b.8・3b.14 のドライバーの停止は管理者が要り、持ち主の UAC を待つ。
+- [ ] svc: Windows で WMI の `StartMode` が Unknown の 2 件が、yagura では自動か手動に入っている（uchmk/yagura#5）。どのサービスか、SCM の `QueryServiceConfig` が何を返すかを実機で見る `【実機】`。
 - [x] net（`7`）: インターフェースごとの送受信のグラフ、接続の一覧。Windows は IP ヘルパー、Linux は sysfs と `/proc/net`・`/proc/*/fd`。
 - [x] net: macOS のソケットの一覧（`proc_pidinfo` の `PROC_PIDFDSOCKETINFO`、または `netstat -anv` のパース）と、インターフェースの種類（`SCNetworkInterface`。Bluetooth PAN も見分ける）。今はインターフェースだけ。
   → ソケットは `netstat -anvW` のパース（PID の列は見出しから数える。古い `pid` と Sonoma 以降の `process:pid` の両方）。`proc_pidinfo` は他の利用者のプロセスを root なしで覗けず、

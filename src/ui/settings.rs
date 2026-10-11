@@ -8,7 +8,7 @@ use egui::{Align2, FontId, Rect, Sense, Ui, pos2, vec2};
 use ito_common::{Clock, CommonChange, common_path, themes_dir};
 use ito_prefs::{Words, button, field, row, section, select, sep, status, switch};
 
-use crate::app::{App, INTERVALS, TOAST, fmt_interval};
+use crate::app::{App, INTERVALS, fmt_interval};
 use crate::config::edit::Edit;
 use crate::config::settings::{ALLOW, BACKENDS, DIR, Host};
 use crate::config::theme::{self, ramp};
@@ -327,18 +327,18 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
 
 /// The toast over the foot of the page: there is no status bar here.
 fn draw_toast(ui: &Ui, app: &App) {
-    let Some((t, at)) = app.toast.as_ref().filter(|(_, at)| at.elapsed() < TOAST) else { return };
+    let Some((t, left)) = app.shown_toast() else { return };
     let c = ito_theme::colors();
     let font = FontId::proportional(12.5);
     let area = ui.max_rect();
-    let galley = ui.painter().layout_no_wrap(t.clone(), font, c.strong());
+    let galley = ui.painter().layout_no_wrap(t.to_string(), font, c.strong());
     let size = galley.size() + vec2(28.0, 14.0);
     let r = Rect::from_center_size(pos2(area.center().x + 120.0, area.bottom() - 20.0 - size.y / 2.0), size);
     let p = ui.painter();
     p.rect_filled(r, 8.0, c.panel);
     p.rect_stroke(r, 8.0, egui::Stroke::new(1.0, c.wait), egui::StrokeKind::Inside);
     p.galley(r.center() - galley.size() / 2.0, galley, c.strong());
-    ui.ctx().request_repaint_after(TOAST.saturating_sub(at.elapsed()));
+    ui.ctx().request_repaint_after(left);
 }
 
 /// yagura in the theme in force: a row of core tiles, a few processes

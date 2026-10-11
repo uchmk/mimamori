@@ -27,6 +27,12 @@ use crate::svcctl::{self, Action};
 pub const INTERVALS: [f32; 6] = [0.5, 1.0, 2.0, 3.0, 5.0, 10.0];
 /// How long a toast stays in the status bar.
 pub const TOAST: Duration = Duration::from_secs(3);
+
+/// How long a toast stays: longer for a long line, so there is time to read it.
+pub fn toast_time(text: &str) -> Duration {
+    let extra = crate::util::width(text).saturating_sub(40) as u64;
+    TOAST + Duration::from_millis((extra * 60).min(5000))
+}
 /// How far a resize key moves a divider, as a share of the room.
 const NUDGE: f32 = 0.03;
 /// How often sys looks for this machine's agent while it shows.
@@ -653,7 +659,7 @@ impl App {
         self.clamp_all();
         // Dropped once it has had its time, or the frame after it would ask
         // for another frame forever.
-        if self.toast.as_ref().is_some_and(|(_, at)| at.elapsed() >= TOAST) {
+        if self.toast.is_some() && self.toast_left().is_none() {
             self.toast = None;
         }
     }
@@ -875,7 +881,14 @@ impl App {
     }
 
     pub fn toast_left(&self) -> Option<Duration> {
-        self.toast.as_ref().map(|(_, at)| TOAST.saturating_sub(at.elapsed()))
+        self.shown_toast().map(|(_, left)| left)
+    }
+
+    /// The toast while it has time left, and how much.
+    pub fn shown_toast(&self) -> Option<(&str, Duration)> {
+        let (t, at) = self.toast.as_ref()?;
+        let left = toast_time(t).saturating_sub(at.elapsed());
+        (!left.is_zero()).then_some((t.as_str(), left))
     }
 
     pub fn proc_at(&self, i: usize) -> Option<&Proc> {
@@ -940,6 +953,12 @@ impl App {
     pub fn count_svc(&self, state: Option<svc::State>) -> usize {
         let f = self.filter.to_lowercase();
         self.model.services.list.iter().filter(|s| self.svc_matches(s, state, &f)).count()
+    }
+
+    /// How many of the services, or the drivers, the filter keeps start this way.
+    pub fn count_start(&self, start: svc::Start) -> usize {
+        let f = self.filter.to_lowercase();
+        self.model.services.list.iter().filter(|s| s.start == start && self.svc_matches(s, None, &f)).count()
     }
 
     fn refresh_svc(&mut self) {
@@ -2468,6 +2487,34 @@ mod tests {
         assert_eq!(a.confirm, Some(Ask::Svc(svcctl::Target { action: Action::Stop, name: "Tcpip".into(), plist: None, driver: true })));
         keys(&mut a, "<Esc> u");
         assert_eq!((a.svc_drivers, a.selected_svc().map(|s| s.name.as_str())), (false, Some("Spooler")));
+    }
+
+    #[test]
+    fn svc_start_counts_follow_the_kind_and_the_filter() {
+        let (mut a, tx, _ctl) = app();
+        let svc = |name: &str, start, driver| svc::Service { name: name.into(), start, driver, ..svc::Service::default() };
+        let list = vec![
+            svc("Spooler", svc::Start::Auto, false),
+            svc("Audiosrv", svc::Start::Auto, false),
+            svc("ALG", svc::Start::Manual, false),
+            svc("Tcpip", svc::Start::Auto, true),
+        ];
+        tx.send(Msg::Svc(svc::Services { list, source: "SCM", note: None })).unwrap();
+        keys(&mut a, "6");
+        a.pump();
+        assert_eq!((a.svc_kind().count(), a.count_start(svc::Start::Auto), a.count_start(svc::Start::Manual)), (3, 2, 1));
+        a.filter = "audio".into();
+        assert_eq!((a.count_start(svc::Start::Auto), a.count_start(svc::Start::Manual)), (1, 0));
+        a.filter.clear();
+        keys(&mut a, "u");
+        assert_eq!((a.svc_kind().count(), a.count_start(svc::Start::Auto)), (1, 1));
+    }
+
+    #[test]
+    fn a_long_toast_stays_longer() {
+        assert_eq!(toast_time("Copied"), TOAST);
+        let long = toast_time(&trf("toast.svc_denied_win", &["Spooler"]));
+        assert!(long > TOAST && long <= TOAST + Duration::from_secs(5), "{long:?}");
     }
 
     #[test]

@@ -22,7 +22,7 @@ up = "up {0}"
 [crumb]
 mem = "{0} RAM · {1} swap"
 procs = "{0} processes · {1} threads"
-svc = "{0} services · {1} running · {2} failed · {3}"
+svc = "{1} {0} · {2} running · {3} failed · {4}"
 net = "{0} interfaces · {1} up · {2} sockets · {3}"
 disk = "{0} drives · {1} volumes · read {2}/s · write {3}/s"
 sensors = "{0} sensors · hottest {1} · {2} fans"
