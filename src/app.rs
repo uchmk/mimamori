@@ -283,7 +283,8 @@ pub struct App {
     pub sys_room: usize,
     pub mode: Mode,
     pending: Vec<Key>,
-    pub filter: String,
+    /// The `/` text of procs, svc and net, each its own.
+    filters: HashMap<Screen, String>,
     pub sort: SortCol,
     proc_pid: Option<u32>,
     /// The process list as procs shows it: indices into `model.procs`.
@@ -394,7 +395,7 @@ impl App {
             sys_room: 0,
             mode: Mode::Normal,
             pending: Vec::new(),
-            filter: String::new(),
+            filters: HashMap::new(),
             sort: SortCol::Cpu,
             proc_pid: None,
             rows: Vec::new(),
@@ -808,7 +809,7 @@ impl App {
 
     /// Lists, selections and the filter start over for another model.
     fn fresh_lists(&mut self) {
-        self.filter.clear();
+        self.filters.clear();
         if self.mode == Mode::Filter {
             self.mode = Mode::Normal;
         }
@@ -951,18 +952,18 @@ impl App {
 
     /// How many services a row of svc's left column would show.
     pub fn count_svc(&self, state: Option<svc::State>) -> usize {
-        let f = self.filter.to_lowercase();
+        let f = self.filter_of(Screen::Svc);
         self.model.services.list.iter().filter(|s| self.svc_matches(s, state, &f)).count()
     }
 
     /// How many of the services, or the drivers, the filter keeps start this way.
     pub fn count_start(&self, start: svc::Start) -> usize {
-        let f = self.filter.to_lowercase();
+        let f = self.filter_of(Screen::Svc);
         self.model.services.list.iter().filter(|s| s.start == start && self.svc_matches(s, None, &f)).count()
     }
 
     fn refresh_svc(&mut self) {
-        let f = self.filter.to_lowercase();
+        let f = self.filter_of(Screen::Svc);
         let state = Self::SVC_SHOW[self.view_of(Screen::Svc).sel[0].min(3)];
         let list = &self.model.services.list;
         self.svc_rows = (0..list.len()).filter(|&i| self.svc_matches(&list[i], state, &f)).collect();
@@ -1005,6 +1006,12 @@ impl App {
         self.model.sensors.list.get(self.view_of(Screen::Sensors).sel[1])
     }
 
+    /// The index of the chip the selected sensor belongs to.
+    fn sensor_chip(&self) -> Option<usize> {
+        let sel = self.view_of(Screen::Sensors).sel[Pane::Mid.index()];
+        self.model.sensors.chips().iter().position(|c| (c.first..c.first + c.len).contains(&sel))
+    }
+
     /// The memory slot the sys screen has selected.
     pub fn selected_slot(&self) -> Option<&hw::Slot> {
         self.model.hw.as_ref()?.slots.get(self.view_of(Screen::Sys).sel[1])
@@ -1037,7 +1044,7 @@ impl App {
     }
 
     fn refresh_net(&mut self) {
-        let f = self.filter.to_lowercase();
+        let f = self.filter_of(Screen::Net);
         let list = &self.model.conns.list;
         let rows: Vec<usize> = (0..list.len()).filter(|&i| self.conn_matches(&list[i], &f)).collect();
         let found = self.net_key.and_then(|k| rows.iter().position(|&i| conn_key(&list[i]) == k));
@@ -1049,7 +1056,18 @@ impl App {
         self.net_key = self.selected_conn().map(conn_key);
     }
 
-    /// Every list the filter narrows.
+    /// The `/` text of this screen; empty where none is typed or the screen
+    /// has no list to narrow.
+    pub fn filter(&self) -> &str {
+        self.filters.get(&self.screen).map_or("", String::as_str)
+    }
+
+    /// A screen's `/` text, lower-cased to match with.
+    fn filter_of(&self, s: Screen) -> String {
+        self.filters.get(&s).map_or_else(String::new, |f| f.to_lowercase())
+    }
+
+    /// Every list a filter narrows.
     fn refilter(&mut self) {
         self.refresh_rows();
         self.refresh_svc();
@@ -1073,7 +1091,7 @@ impl App {
 
     /// The count of processes the procs list would show for a scope.
     pub fn count_scope(&self, mine: bool) -> usize {
-        let f = self.filter.to_lowercase();
+        let f = self.filter_of(Screen::Procs);
         self.model.procs.iter().filter(|p| self.matches(p, mine, &f)).count()
     }
 
@@ -1082,7 +1100,7 @@ impl App {
             let me = std::process::id();
             self.me = self.model.procs.iter().find(|p| p.pid == me).and_then(|p| p.user.clone());
         }
-        let f = self.filter.to_lowercase();
+        let f = self.filter_of(Screen::Procs);
         let mine = self.mine_only();
         let procs = &self.model.procs;
         let mut rows: Vec<usize> = (0..procs.len()).filter(|&i| self.matches(&procs[i], mine, &f)).collect();
@@ -1279,15 +1297,37 @@ impl App {
             (Screen::Svc, Pane::Mid) => self.svc_name = self.selected_svc().map(|s| s.name.clone()),
             (Screen::Svc, Pane::Left) => self.refresh_svc(),
             (Screen::Net, Pane::Mid) => self.net_key = self.selected_conn().map(conn_key),
+            // The chip and its sensors are selected together.
+            (Screen::Sensors, Pane::Left) => {
+                if let Some(first) = self.selected_chip().map(|c| c.first) {
+                    self.view_mut().sel[Pane::Mid.index()] = first;
+                }
+            }
+            (Screen::Sensors, Pane::Mid) => {
+                if let Some(i) = self.sensor_chip() {
+                    self.view_mut().sel[Pane::Left.index()] = i;
+                }
+            }
             (Screen::Net, Pane::Left) if self.net_nic.is_some() => {
+                let said = self.net_nic.as_deref().map(|n| trf("toast.net_nic", &[n]));
                 self.net_nic = self.selected_nic().map(|n| n.name.clone());
                 self.refresh_net();
+                // The toast that named the last interface names this one.
+                if let Some(name) = self.net_nic.clone()
+                    && self.shown_toast().is_some_and(|(t, _)| Some(t) == said.as_deref())
+                {
+                    self.toast(trf("toast.net_nic", &[&name]));
+                }
             }
             _ => {}
         }
     }
 
     pub fn goto(&mut self, s: Screen) {
+        // Typing goes on in the screen it began in.
+        if self.mode == Mode::Filter && s != self.screen {
+            self.mode = Mode::Normal;
+        }
         self.screen = s;
         self.drag = None;
         self.stack_drag = None;
@@ -1328,7 +1368,7 @@ impl App {
                 }
                 _ => {
                     if let (Code::Char(c), false) = (k.code, k.ctrl || k.alt || k.sup) {
-                        self.filter.push(c);
+                        self.filters.entry(self.screen).or_default().push(c);
                         self.refilter();
                     }
                 }
@@ -1628,14 +1668,14 @@ impl App {
             Act::Quit => self.quit = true,
             Act::Escape => {
                 let nic = self.screen == Screen::Net && self.net_nic.take().is_some();
-                if self.mode == Mode::Filter || !self.filter.is_empty() || nic {
-                    self.filter.clear();
+                if self.mode == Mode::Filter || !self.filter().is_empty() || nic {
+                    self.filters.remove(&self.screen);
                     self.refilter();
                 }
                 self.mode = Mode::Normal;
             }
             Act::Confirm => self.mode = Mode::Normal,
-            Act::Backspace if self.filter.pop().is_some() => self.refilter(),
+            Act::Backspace if self.filters.get_mut(&self.screen).and_then(String::pop).is_some() => self.refilter(),
             // Arrow, Focus, Resize, Equalize and Enter on a screen not built yet.
             _ => {}
         }
@@ -1739,8 +1779,7 @@ impl App {
                 v.focus = Pane::Mid.index();
             }
             (Screen::Sensors, Pane::Mid) => {
-                let sel = self.view_of(Screen::Sensors).sel[Pane::Mid.index()];
-                if let Some(i) = self.model.sensors.chips().iter().position(|c| (c.first..c.first + c.len).contains(&sel)) {
+                if let Some(i) = self.sensor_chip() {
                     let v = self.view_mut();
                     v.sel[Pane::Left.index()] = i;
                     v.focus = Pane::Left.index();
@@ -1756,9 +1795,9 @@ impl App {
         let v = self.view_mut();
         v.focus = Pane::Mid.index();
         v.sel[Pane::Left.index()] = 0;
-        let f = self.filter.to_lowercase();
+        let f = self.filter_of(Screen::Procs);
         if self.model.procs.iter().any(|p| p.pid == pid && !self.matches(p, false, &f)) {
-            self.filter.clear();
+            self.filters.remove(&Screen::Procs);
         }
         self.proc_pid = Some(pid);
         self.refresh_rows();
@@ -1822,7 +1861,7 @@ impl App {
         }
         s += &format!("focus: {}\n", self.focus().name());
         s += &format!("sel: {:?}\n", v.sel);
-        s += &format!("filter: {}\n", self.filter);
+        s += &format!("filter: {}\n", self.filter());
         s += &format!("sort: {:?}\n", self.sort);
         s += &format!("tree: {}\n", self.tree);
         s += &format!("scope: {}\n", if self.mine_only() { "mine" } else { "all" });
@@ -2016,9 +2055,20 @@ mod tests {
         keys(&mut a, "<Backspace> <Backspace>");
         assert_eq!(a.rows.len(), 2);
         keys(&mut a, "x <Enter>");
-        assert_eq!((a.mode, a.filter.as_str()), (Mode::Normal, "x"));
+        assert_eq!((a.mode, a.filter()), (Mode::Normal, "x"));
+        // Each list keeps its own: net starts empty and procs gets its own back.
+        keys(&mut a, "7");
+        assert_eq!(a.filter(), "");
+        keys(&mut a, "/ t c p <Enter> 5");
+        assert_eq!((a.screen, a.filter(), a.rows.len()), (Screen::Procs, "x", 0));
         keys(&mut a, "<Esc>");
-        assert!(a.filter.is_empty());
+        assert_eq!((a.filter(), a.rows.len()), ("", 2));
+        keys(&mut a, "7");
+        assert_eq!(a.filter(), "tcp");
+        // A screen change while typing ends the typing.
+        keys(&mut a, "/ u");
+        a.goto(Screen::Procs);
+        assert_eq!((a.mode, a.filter()), (Mode::Normal, ""));
     }
 
     #[test]
@@ -2503,9 +2553,9 @@ mod tests {
         keys(&mut a, "6");
         a.pump();
         assert_eq!((a.svc_kind().count(), a.count_start(svc::Start::Auto), a.count_start(svc::Start::Manual)), (3, 2, 1));
-        a.filter = "audio".into();
+        keys(&mut a, "/ a u d i o <Enter>");
         assert_eq!((a.count_start(svc::Start::Auto), a.count_start(svc::Start::Manual)), (1, 0));
-        a.filter.clear();
+        keys(&mut a, "<Esc>");
         keys(&mut a, "u");
         assert_eq!((a.svc_kind().count(), a.count_start(svc::Start::Auto)), (1, 1));
     }
@@ -2584,6 +2634,10 @@ mod tests {
         // The narrowing follows the selected interface, and Esc drops it.
         keys(&mut a, "h j");
         assert_eq!(a.net_nic.as_deref(), Some("lo"));
+        // Only a toast still naming the last interface is said again.
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.net_no_pid", &["10.0.0.2:50000"])));
+        keys(&mut a, "<Esc> k <Enter> h j");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.net_nic", &["lo"])));
         assert!(a.net_rows.iter().all(|&i| a.model.conns.list[i].local.port() != 50000));
         assert_eq!(a.net_rows.len(), 3);
         keys(&mut a, "<Esc>");
@@ -2633,9 +2687,14 @@ mod tests {
         let list = vec![temp("coretemp", "core0"), temp("coretemp", "core1"), temp("nvme", "temp1"), temp("nvme", "temp2")];
         tx.send(Msg::Sensors(sensors::Sensors { list, note: None })).unwrap();
         a.pump();
-        keys(&mut a, "9 j <Enter>");
+        // The sensors and their detail follow the chip, and the chip the sensor.
+        keys(&mut a, "9 j");
+        assert_eq!((a.focus(), a.selected_sensor().map(|s| s.id.as_str())), (Pane::Left, Some("nvme/temp1")));
+        keys(&mut a, "<Enter>");
         assert_eq!((a.focus(), a.selected_sensor().map(|s| s.id.as_str())), (Pane::Mid, Some("nvme/temp1")));
-        keys(&mut a, "j k k <Enter>");
+        keys(&mut a, "j k k");
+        assert_eq!((a.focus(), a.selected_chip().map(|c| c.name)), (Pane::Mid, Some("coretemp")));
+        keys(&mut a, "<Enter>");
         assert_eq!((a.focus(), a.selected_chip().map(|c| c.name)), (Pane::Left, Some("coretemp")));
         assert!(a.report().contains("sensors: 4 (temps 4, fans 0; chips 2)"));
     }
@@ -2680,7 +2739,7 @@ mod tests {
                 Line::Kv(tr("sys.socket"), trf("sys.sockets", &["2", "AM5"])),
                 Line::Kv(tr("sys.cores"), "16".into()),
                 Line::Kv(tr("sys.threads"), "32".into()),
-                Line::Kv(tr("sys.max_speed"), trf("sys.mhz", &["5300"])),
+                Line::Kv(tr("sys.max_speed"), trf("sys.mhz_firmware", &["5300"])),
             ]
         );
         assert!(!l.iter().any(|x| matches!(x, Line::Kv(k, _) if *k == tr("sys.l1"))));

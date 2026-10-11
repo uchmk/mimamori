@@ -38,11 +38,13 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   3c.2・3c.3・3c.7・3c.8・3c.10 は済み（uchmk/yagura#6）。3c.1 は Bluetooth が出ず、消えた `Wi-Fi 2`〜`5` が出ていたので v0.41.4 で直した。もう一度見てもらう。
 - [ ] net: Windows で消えた装置（`Not Present`）と隠れた Wi-Fi Direct を落とし、Bluetooth PAN はいつも残すようにした（v0.41.4）。Wi-Fi 3・5 が本当に Wi-Fi Direct だったかは
   `Get-NetAdapter -IncludeHidden | fl Name,InterfaceDescription,Status` で確かめる `【実機】`。違えば隠れた装置を見分けるほかの手（`MIB_IF_ROW2` の `ConnectorPresent` と `HardwareInterface`、ifType）を探す。
-- [ ] net: 実機の小さな指摘（uchmk/yagura#6）。
+- [x] net: 実機の小さな指摘（uchmk/yagura#6）。
   - `Enter` で絞った後に `j` で移ると、絞り込みは追うがトーストは前のインターフェースの名前のまま。移ったときはトーストを出し直すか、出さない。
   - 左の列でインターフェースの名前が `イーサネ…` と切れる。速さの桁を詰めるか、名前の幅を広げる。
   - 真ん中のグラフの題の速さと左の列の速さが少しずれる（読む時刻か平均の取り方の違い）。同じ値を使う。
   - `/` の絞り込みの文字が procs・svc・net で共有される。画面ごとに持つか決める（procs で打ったものが net に残ると驚く）。
+  → トーストは移った先の名前で出し直す。名前の列を広げる（列の比を `[1.5, 3.2, 1.8]`）。左の列の速さは受信と送信の和なので、数の行に `rx+tx` と書く（グラフの題は片方ずつ）。
+    `/` は画面ごとに持ち、打っている途中で画面を変えると打つのを終える（v0.41.5）
 - [x] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
   → 左がドライブ（1 分の読み書き）、真ん中がマウントされたボリューム（容量・使用率・読み書き）、右が選んだドライブのグラフ（読み・書き・ビジー）と型番・種類・バス・容量。
   Windows は PhysicalDisk のパフォーマンスカウンター（PDH）と `IOCTL_STORAGE_QUERY_PROPERTY`（管理者は要らない）、Linux は `/proc/diskstats` と `/sys/block`、ボリュームはどの OS も sysinfo（v0.8.0）。
@@ -92,8 +94,10 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 - [x] macOS のコアの構成: `sysctl hw.perflevelN.*`（P / E コアと L2 の塊）。今は 1 論理 CPU = 1 コアで描く。
   → Apple silicon は IOKit のデバイスツリー（`cpus` の子の `cluster-type`・`cluster-id`）でクラスターごとの塊、L2 の大きさは sysctl。Intel の Mac は sysctl のコア数とスレッド数（v0.20.0）
-- [ ] Windows でプロセスのユーザー名が出るか確かめる `【実機】`（TESTING.md 3.x）。
+- [x] Windows でプロセスのユーザー名が出るか確かめる `【実機】`（TESTING.md 3.x）。
+  → TESTING.md 3.1 で確かめた（Windows 11 x64、v0.40.1、uchmk/yagura#3）
 - [ ] Windows ARM64（Snapdragon）の構成: `EfficiencyClass` が P / E を分けるか `【実機】`。
+  持ち主の PC は x64 で、Snapdragon の機械が無い（uchmk/yagura#10 は開いたまま。TESTING.md 1.2・2.3・3a.4）。
 - [ ] AMD の GL ドライバーで落ちる件（filer の TODO と同じ `atio6axx.dll`）。filer で原因が分かったら同じ対策を入れる。今は `config.toml` の `backend = "dx12"` で避けられる。
 - [x] macOS の GPU: IOKit の `IOAccelerator` の `PerformanceStatistics`（使用率・VRAM）。Pure Rust の `objc2-io-kit` で読めるか確かめる。
   → `objc2-io-kit` で読める。Apple silicon は使用率・Renderer / Tiler・使用中の統合メモリ、AMD は VRAM とセンサーも（v0.21.0）

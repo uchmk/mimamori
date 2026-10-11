@@ -528,7 +528,7 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
     let room = rr.left() - 16.0 - x;
 
     if app.mode == Mode::Filter {
-        pen.text(pos2(x, y), &pen.fit(&format!("/{}▏", app.filter), room), theme::fg());
+        pen.text(pos2(x, y), &pen.fit(&format!("/{}▏", app.filter()), room), theme::fg());
     } else if let Some((t, left)) = app.shown_toast() {
         pen.text(pos2(x, y), &pen.fit(t, room), theme::yellow());
         ui.ctx().request_repaint_after(left);
@@ -540,8 +540,8 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         };
         let state = tr(if paused { "status.paused" } else { "status.sampling" });
         let mut s = format!("{} · {state}", trf("status.interval", &[&fmt_interval(interval)]));
-        if !app.filter.is_empty() {
-            s += &format!(" · /{}", app.filter);
+        if !app.filter().is_empty() {
+            s += &format!(" · /{}", app.filter());
         }
         pen.text(pos2(x, y), &pen.fit(&s, room), if paused { theme::yellow() } else { theme::dim() });
     }

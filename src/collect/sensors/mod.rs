@@ -149,6 +149,15 @@ pub struct Chip<'a> {
 }
 
 impl Sensors {
+    /// The note's text key; on Windows it says when the machine has no
+    /// thermal zones at all, not only that Windows shows nothing else.
+    pub fn note_key(&self) -> Option<&'static str> {
+        match self.note? {
+            Note::ZonesOnly if !self.list.iter().any(|s| s.chip_id == "acpi") => Some("sensors.note.no_zones"),
+            n => Some(n.key()),
+        }
+    }
+
     /// The chips in list order.
     pub fn chips(&self) -> Vec<Chip<'_>> {
         let mut out: Vec<Chip> = Vec::new();
@@ -369,6 +378,19 @@ mod tests {
         for n in Note::ALL {
             assert_ne!(tr(n.key()), n.key());
         }
+        assert_ne!(tr("sensors.note.no_zones"), "sensors.note.no_zones");
+    }
+
+    #[test]
+    fn a_windows_machine_without_zones_says_so() {
+        let mut s = Sensors { list: vec![temp("gpu", "GPU", 42.0)], note: Some(Note::ZonesOnly) };
+        assert_eq!(s.note_key(), Some("sensors.note.no_zones"));
+        s.list.push(temp("acpi", "tz", 40.0));
+        assert_eq!(s.note_key(), Some("sensors.note.zones_only"));
+        s.note = Some(Note::Empty);
+        assert_eq!(s.note_key(), Some("sensors.note.empty"));
+        s.note = None;
+        assert_eq!(s.note_key(), None);
     }
 
     #[test]

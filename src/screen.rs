@@ -87,7 +87,7 @@ impl Screen {
             Self::Gpu => [1.7, 2.7, 1.9],
             Self::Procs => [0.9, 3.2, 2.0],
             Self::Svc => [0.9, 3.0, 2.1],
-            Self::Net => [1.2, 3.4, 1.9],
+            Self::Net => [1.5, 3.2, 1.8],
             Self::Disk => [1.6, 2.8, 1.6],
             Self::Sensors => [2.0, 2.6, 1.6],
             Self::Sys => [1.9, 2.6, 1.9],

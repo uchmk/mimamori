@@ -53,7 +53,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     }
     y += GAP;
     let starts = |s: Start| app.count_start(s).to_string();
-    let filter = if app.filter.is_empty() { "—".to_string() } else { format!("/{}", app.filter) };
+    let filter = if app.filter().is_empty() { "—".to_string() } else { format!("/{}", app.filter()) };
     let kind = tr(if app.svc_drivers { "svc.drivers" } else { "svc.services" });
     let rows = [
         (tr("svc.kind"), kind.to_string()),

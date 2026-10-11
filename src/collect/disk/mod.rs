@@ -328,6 +328,13 @@ impl Volume {
         self.total.saturating_sub(self.avail)
     }
 
+    /// Whether `name` is the volume's label rather than its device: a drive
+    /// letter's (Windows), told by the mount so a viewer on another OS sees
+    /// the same.
+    pub fn labelled(&self) -> bool {
+        self.mount.as_bytes().get(1) == Some(&b':')
+    }
+
     /// Percent used; `None` for an empty size.
     pub fn use_pct(&self) -> Option<f32> {
         (self.total > 0).then(|| self.used() as f32 * 100.0 / self.total as f32)

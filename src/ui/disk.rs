@@ -133,9 +133,10 @@ fn columns(w: f32, cw: f32) -> Vec<(Col, f32, f32, bool)> {
         .collect()
 }
 
-fn head(c: Col) -> &'static str {
+fn head(c: Col, labels: bool) -> &'static str {
     match c {
         Col::Mount => tr("disk.col.mount"),
+        Col::Name if labels => tr("disk.col.label"),
         Col::Name => tr("disk.col.device"),
         Col::Fs => tr("disk.col.fs"),
         Col::Size => tr("disk.col.size"),
@@ -232,8 +233,9 @@ fn vols(cx: &mut Cx, r: Rect) {
     let cols = columns(body.width() - 12.0, cx.pen.cw);
     let x0 = body.left() + 6.0;
     let h = row_at(body, body.top());
+    let labels = vols.first().is_some_and(Volume::labelled);
     for &(c, x, w, right) in &cols {
-        let label = cx.pen.fit(head(c), w);
+        let label = cx.pen.fit(head(c, labels), w);
         if right {
             cx.pen.text_r(pos2(x0 + x + w, h.center().y), &label, theme::dim());
         } else {
@@ -371,13 +373,16 @@ fn volume_rows(v: &Volume) -> Vec<(&'static str, String)> {
     };
     vec![
         (tr("disk.mount"), v.mount.clone()),
-        (tr("disk.device"), if v.name.is_empty() { dash() } else { v.name.clone() }),
+        (
+            if v.labelled() { tr("disk.label") } else { tr("disk.device") },
+            if v.name.is_empty() { tr("disk.nothing").to_string() } else { v.name.clone() },
+        ),
         (tr("disk.fs"), if v.fs.is_empty() { dash() } else { v.fs.clone() }),
         (tr("disk.size"), fmt_bytes(v.total)),
         (tr("disk.used"), used),
         (tr("disk.free"), fmt_bytes(v.avail)),
         (tr("disk.type"), tr(v.kind.key()).to_string()),
-        (tr("disk.flags"), if flags.is_empty() { dash() } else { flags.join(", ") }),
+        (tr("disk.flags"), if flags.is_empty() { tr("disk.nothing").to_string() } else { flags.join(", ") }),
         (tr("disk.drive"), v.drive.clone().unwrap_or_else(dash)),
     ]
 }
@@ -466,6 +471,19 @@ mod tests {
         // The mount point and the device share what is left.
         let cols = columns(200.0, 1.0);
         assert_eq!(cols[0].2, cols[1].2);
+    }
+
+    #[test]
+    fn a_drive_letter_has_a_label_and_blanks_say_none() {
+        let row = |v: &Volume, key: &str| volume_rows(v).into_iter().find(|(k, _)| *k == tr(key)).map(|(_, v)| v);
+        let c = Volume { mount: "C:\\".into(), fs: "NTFS".into(), ..Volume::default() };
+        assert!(c.labelled());
+        assert_eq!((row(&c, "disk.label"), row(&c, "disk.device")), (Some(tr("disk.nothing").to_string()), None));
+        assert_eq!(row(&c, "disk.flags"), Some(tr("disk.nothing").to_string()));
+        let root = Volume { mount: "/".into(), name: "/dev/sda2".into(), read_only: true, ..Volume::default() };
+        assert!(!root.labelled());
+        assert_eq!((row(&root, "disk.device"), row(&root, "disk.label")), (Some("/dev/sda2".to_string()), None));
+        assert_eq!(row(&root, "disk.flags"), Some(tr("disk.read_only").to_string()));
     }
 
     #[test]

@@ -31,7 +31,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
         y += ROW;
     }
     y += GAP;
-    let filter = if app.filter.is_empty() { "—".to_string() } else { format!("/{}", app.filter) };
+    let filter = if app.filter().is_empty() { "—".to_string() } else { format!("/{}", app.filter()) };
     let rows = [
         (tr("procs.sort"), app.sort.label().to_string()),
         (tr("procs.view"), tr(if app.tree { "procs.tree" } else { "procs.flat" }).to_string()),

@@ -184,7 +184,10 @@ fn processor(app: &App, hw: &Hardware) -> Vec<(&'static str, String)> {
         (tr("sys.socket"), socket),
         (tr("sys.cores"), n(cores)),
         (tr("sys.threads"), n(threads)),
-        (tr("sys.max_speed"), first.map(|c| c.max_mhz).filter(|&m| m > 0).map(|m| trf("sys.mhz", &[&m.to_string()])).unwrap_or_default()),
+        (
+            tr("sys.max_speed"),
+            first.map(|c| c.max_mhz).filter(|&m| m > 0).map(|m| trf("sys.mhz_firmware", &[&m.to_string()])).unwrap_or_default(),
+        ),
         (tr("sys.l1"), cache(0)),
         (tr("sys.l2"), cache(1)),
         (tr("sys.l3"), cache(2)),

@@ -91,8 +91,8 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     cx.pen.section(row_at(body, y), tr("sensors.all"));
     y += ROW;
     y = kv_rows(&cx.pen, body, y, &summary(s)) + GAP;
-    if let Some(n) = s.note {
-        para(&cx.pen, body, y, tr(n.key()), if s.list.is_empty() { theme::yellow() } else { theme::dim() });
+    if let Some(n) = s.note_key() {
+        para(&cx.pen, body, y, tr(n), if s.list.is_empty() { theme::yellow() } else { theme::dim() });
     }
 }
 
@@ -260,8 +260,8 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         let body = panel(&cx.pen, r, tr("sensors.detail"), "", cx.focused(Pane::Right));
         if m.sensor_read {
             let y = para(&cx.pen, body, body.top(), tr("sensors.none"), theme::dim()) + GAP;
-            if let Some(n) = m.sensors.note {
-                para(&cx.pen, body, y, tr(n.key()), theme::yellow());
+            if let Some(n) = m.sensors.note_key() {
+                para(&cx.pen, body, y, tr(n), theme::yellow());
             }
         }
         return;

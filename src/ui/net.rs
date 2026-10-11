@@ -52,6 +52,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     cx.scroll_list(Pane::Left, list, nics.len(), |cx, row, i| {
         let n = &nics[i];
         let cy = row.center().y;
+        // Both ways together; the middle graphs split them.
         let rr = if n.up {
             cx.pen.text_r(pos2(row.right() - 6.0, cy), &rate(n.rx_rate + n.tx_rate), theme::cyan())
         } else {
@@ -73,7 +74,7 @@ fn draw_left(cx: &mut Cx, r: Rect) {
     y += ROW;
     let list = &m.conns.list;
     let count = |f: &dyn Fn(&Conn) -> bool| list.iter().filter(|c| f(c)).count().to_string();
-    let filter = if app.filter.is_empty() { "—".to_string() } else { format!("/{}", app.filter) };
+    let filter = if app.filter().is_empty() { "—".to_string() } else { format!("/{}", app.filter()) };
     let rows = [
         (tr("net.listening"), count(&|c| c.listening())),
         (tr("net.established"), count(&|c| c.state == State::Established)),
