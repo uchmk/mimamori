@@ -1,10 +1,10 @@
-//! The ten screens behind the number keys and the three columns of each.
+//! The screens behind the number keys (and `D`) and the three columns of each.
 
 use ito_layout::{Dir, Node};
 use serde::{Deserialize, Serialize};
 
-/// One screen. All ten have their number from the first version so the keys
-/// never move; the ones not built yet say so when opened.
+/// One screen. The first ten have their number from the first version so
+/// the keys never move; devices came later and opens with `D`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Screen {
     Ovw,
@@ -17,11 +17,23 @@ pub enum Screen {
     Disk,
     Sensors,
     Sys,
+    Devices,
 }
 
 impl Screen {
-    pub const ALL: [Screen; 10] =
-        [Self::Ovw, Self::Cpu, Self::Mem, Self::Gpu, Self::Procs, Self::Svc, Self::Net, Self::Disk, Self::Sensors, Self::Sys];
+    pub const ALL: [Screen; 11] = [
+        Self::Ovw,
+        Self::Cpu,
+        Self::Mem,
+        Self::Gpu,
+        Self::Procs,
+        Self::Svc,
+        Self::Net,
+        Self::Disk,
+        Self::Sensors,
+        Self::Sys,
+        Self::Devices,
+    ];
 
     /// The name in the keymap (`screen cpu`), in `state.toml` and in a
     /// scripted run's report.
@@ -37,6 +49,7 @@ impl Screen {
             Self::Disk => "disk",
             Self::Sensors => "sensors",
             Self::Sys => "sys",
+            Self::Devices => "devices",
         }
     }
 
@@ -44,10 +57,13 @@ impl Screen {
         Self::ALL.into_iter().find(|x| x.name() == s || (s == "ovw" && *x == Self::Ovw))
     }
 
-    /// The key-like label on its tab: 1 to 9, then 0.
+    /// The key-like label on its tab: 1 to 9, then 0, then D.
     pub fn digit(self) -> char {
-        let i = self.index();
-        if i == 9 { '0' } else { char::from(b'1' + i as u8) }
+        match self.index() {
+            9 => '0',
+            10 => 'D',
+            i => char::from(b'1' + i as u8),
+        }
     }
 
     pub fn index(self) -> usize {
@@ -58,7 +74,17 @@ impl Screen {
     pub fn built(self) -> bool {
         matches!(
             self,
-            Self::Ovw | Self::Cpu | Self::Mem | Self::Gpu | Self::Procs | Self::Svc | Self::Net | Self::Disk | Self::Sensors | Self::Sys
+            Self::Ovw
+                | Self::Cpu
+                | Self::Mem
+                | Self::Gpu
+                | Self::Procs
+                | Self::Svc
+                | Self::Net
+                | Self::Disk
+                | Self::Sensors
+                | Self::Sys
+                | Self::Devices
         )
     }
 
@@ -75,6 +101,7 @@ impl Screen {
             Self::Disk => "tab.disk",
             Self::Sensors => "tab.sensors",
             Self::Sys => "tab.sys",
+            Self::Devices => "tab.devices",
         }
     }
 
@@ -91,6 +118,7 @@ impl Screen {
             Self::Disk => [1.6, 2.8, 1.6],
             Self::Sensors => [2.0, 2.6, 1.6],
             Self::Sys => [1.9, 2.6, 1.9],
+            Self::Devices => [1.4, 3.0, 2.0],
         }
     }
 
@@ -143,7 +171,8 @@ mod tests {
     #[test]
     fn digits_run_one_to_nine_then_zero() {
         let d: String = Screen::ALL.iter().map(|s| s.digit()).collect();
-        assert_eq!(d, "1234567890");
+        assert_eq!(d, "1234567890D");
+        assert_eq!(Screen::from_name("devices"), Some(Screen::Devices));
         assert_eq!(Screen::from_name("procs"), Some(Screen::Procs));
         assert_eq!(Screen::from_name("ovw"), Some(Screen::Ovw));
     }

@@ -11,7 +11,7 @@ one tile per physical core, grouped by the L3 cache they share (a CCD on
 Ryzen, the P- and E-cores on a hybrid Intel chip), with a bar per SMT thread
 inside each tile.
 
-> **v0.19** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys.
+> **v0.19** has all ten screens: overview, cpu, mem, gpu·npu, procs, svc, net, disk, sensors and sys. **v0.43** adds devices (`D`): USB and the rest of what Device Manager lists.
 > **v0.31** adds the fleet: other machines' summaries on one screen, over SSH or Tailscale (see [Fleet](#fleet)); **v0.41** lets it connect directly, with keys ([Direct connections](#direct-connections)).
 > **v0.35** lets you enter another machine's screens from its card, and switch machines with `[` / `]`.
 > What is still missing on each OS is in [TODO.md](TODO.md).
@@ -30,6 +30,7 @@ inside each tile.
 | `8` | disk     | The drives with their traffic now, and the totals of all of them; the selected drive's read, write and busy graphs stacked, each the column's width, over every mounted volume (mount point, device (on Windows its label), file system, size, used, free, use % turning yellow over 75 % and red over 90 %, read and write per second); the selected drive's SMART health (green when good, red when the drive predicts its failure, and why when it cannot be read), temperature with the drive's warning mark, what SMART counts (life used, turning yellow from 80 % and red at 100 %; hours powered on; lifetime writes; remapped, pending and media errors, yellow from the first), model, kind (SSD / HDD), bus, size, read and write rates, totals since boot (Linux and macOS; Windows keeps none) and volumes, and the selected volume with a bar of how full it is. `Enter` on a drive goes to its first volume, on a volume back to its drive. Read every interval |
 | `9` | sensors  | The chips with sensors (the CPU, the drives, the board's monitor chip, the GPU), each with its hottest temperature over the last minute, and the hottest of all; every temperature and fan (chip, sensor, now, the lowest and highest of the last minute, the chip's high mark and critical point; a temperature turns yellow within 10 °C of its high mark and red past it, a fan below its least turns red); the selected sensor's graph with its marks, and where it was read. Moving through the chips moves the sensors to each chip's first, and the chip follows the sensor; `Enter` on a chip goes to its first sensor, on a sensor back to its chip. On Windows with no ACPI thermal zones, it says so and how HWiNFO or LibreHardwareMonitor would add the temperatures. Read every interval |
 | `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own. Under the processor, the fleet agent: whether one listens on this machine's port (asked every 5 s while the screen shows), where it takes direct connections and its key, its version, process, what it allows, its interval and how many viewers it has, or, when none runs, the port, what `[agent] allow` would allow and how to start one; inside another machine's screens, that machine's agent |
+| `D` | devices  | What Device Manager lists: the classes (USB controllers and hubs, display adapters, network adapters, sound, storage, input, cameras, Bluetooth…) with their counts, red with a `!` while one of their devices has a problem; the class's devices (name, maker, status; a problem device red, a disabled one yellow, one with no driver dim; `t` lays every device out under the one it hangs off, so a hub shows what is plugged into it; filter with `/` by name, maker, driver, id or `VID:PID`); the selected device's class, kind, maker, status (with Windows' problem code and what it means), driver and its version, `VID:PID` or PCI `vendor:device`, USB revision and link speed, location, the devices it hangs off and its id (`y` copies it). Read every 5 s, and only while the screen shows, so a plugged-in stick appears within 5 s. Where each OS reads them from: [Building](#building) |
 | `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the battery on a laptop (`87% charging`, `87% plugged in`), the uptime or when it was last seen, the agent's version and what it allows, and what is wrong there (hot sensors, drives SMART warns about, failed services), yellow, or red when a service failed. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
@@ -45,7 +46,7 @@ column dividers. The heights are kept per screen in
 
 | Key | Does |
 | --- | ---- |
-| `1`–`0`, `Tab`, `Shift+Tab` | Go to a screen, next screen, previous screen |
+| `1`–`0`, `D`, `Tab`, `Shift+Tab` | Go to a screen (`D` devices), next screen, previous screen |
 | `j` `k` / `↓` `↑` | Down, up |
 | `gg` / `Home`, `G` / `End` | First row, last row |
 | `Ctrl+d`, `Ctrl+u`, `PageDown`, `PageUp` | Half a page, a page |
@@ -53,9 +54,9 @@ column dividers. The heights are kept per screen in
 | `Alt+Shift+←→↑↓` (macOS `Cmd+Ctrl+arrow`) | Move the focused column's divider (tsumugi's keys) |
 | `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) | Columns back to equal widths, and the panels in them to equal heights |
 | `Enter` | Open the selection (a gauge's screen, on the device for a GPU, NPU or drive; a process in procs, a service's or a socket's process). On a net interface: only the sockets on it. On disk: a drive's first volume, or a volume's drive. On sensors: a chip's first sensor, or a sensor's chip |
-| `/` | Filter processes, or on svc services by name and description, or on net sockets by protocol, address, state, PID and process (`Enter` keeps it, `Esc` drops it). Each of the three keeps its own |
+| `/` | Filter processes, or on svc services by name and description, or on net sockets by protocol, address, state, PID and process, or on devices by name, maker, driver, id and `VID:PID` (`Enter` keeps it, `Esc` drops it). Each of the four keeps its own |
 | `s` | Next sort column |
-| `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor |
+| `t` | Procs as a tree of parents and children, or a flat list. Siblings keep the sort; a process whose parent is filtered out hangs under its nearest shown ancestor. On devices: every device under the one it hangs off (a USB stick under its hub, the hub under its controller), or the class's list |
 | `u` | Procs' scope: every process, or only yours (the same as picking All / Mine in the left column). On net: every socket, or only the listening ones (TCP `LISTEN` and unconnected UDP). On svc (Windows): services, or drivers |
 | `x` | End the selected process, after asking (`y` / `Enter` ends it, `n` / `Esc` keeps it). Windows uses `TerminateProcess`; macOS and Linux send SIGTERM, then SIGKILL if it is still there after 3 s. Works on procs and on the top lists of overview, cpu and mem. On svc it stops the selected service instead |
 | `S`, `R` | On svc: start, restart the selected service, after asking. Windows asks the Service Control Manager (run yagura as administrator); Linux runs `systemctl` (root or polkit); macOS runs `launchctl kickstart` / `kill` in the domain the list came from (system jobs need `sudo`); a job that is not loaded is loaded from its plist first (`launchctl bootstrap`), while a disabled one is left disabled and the toast says the `launchctl enable` line. A start on a running service, or a stop on a stopped one, only says so |
@@ -63,7 +64,7 @@ column dividers. The heights are kept per screen in
 | `]`, `[` | Next, previous machine: this one, then each `[[host]]` that is up. The screen stays the same, so `2` then `]` `]` compares the CPUs of the machines. While another machine shows, the crumb starts with its name and the status bar has a cyan pill with it (red `lost` when its link drops) |
 | `P` | Pause / resume sampling |
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
-| `y` | Copy: on fleet's hint the sample `[[host]]` (three lines of TOML, pasted as they are), on another machine's card its address |
+| `y` | Copy: on devices the selected device's id (Windows' instance id, `USB\VID_…\…`), on fleet's hint the sample `[[host]]` (three lines of TOML, pasted as they are), on another machine's card its address |
 | `Ctrl+,` (macOS `Cmd+,`) | The settings screen, and back. See [Settings screen](#settings-screen) |
 | `?`, `F1` | Help: every key of the keymap |
 | `Ctrl+=` / `Ctrl++` / `Ctrl+;`, `Ctrl+-`, `Ctrl+0` (macOS `Cmd`) | Zoom in, out, back to 100%. The scale is every uchmk app's (common.toml's `scale`), so the others follow; `Ctrl+;` is for JIS keyboards |
@@ -185,7 +186,7 @@ What `run` can say in a keymap:
 
 | Command | Does |
 | ------- | ---- |
-| `screen overview` … `screen sys`, `screen next`, `screen prev` | Change screen |
+| `screen overview` … `screen sys`, `screen devices`, `screen next`, `screen prev` | Change screen |
 | `arrow N`, `arrow top`, `arrow bot`, `arrow 50%` | Move the selection by rows, to an end, by a share of the page |
 | `focus left`, `focus right` | Move between columns |
 | `resize left` / `right` / `up` / `down` | Move the focused column's divider |
@@ -194,7 +195,7 @@ What `run` can say in a keymap:
 | `interval +`, `interval -` | Sample less / more often |
 | `kill` | Ask, then end the selected process; on svc, stop the selected service |
 | `service start`, `service stop`, `service restart` | On svc: ask, then start, stop or restart the selected service |
-| `tree` | Procs as a tree, or a flat list |
+| `tree` | Procs (or devices) as a tree, or a flat list |
 | `scope`, `scope all`, `scope mine` | Switch procs' scope, or set it |
 | `fleet` | The fleet screen, and back |
 | `machine next`, `machine prev` | The next or previous machine's screens (this one, then the `[[host]]` that are up) |
@@ -458,6 +459,16 @@ The sensors screen reads:
 | Windows | While [HWiNFO](https://www.hwinfo.com/) runs with Shared Memory Support on, every chip it reads (cores, board, fans, drives, GPUs) from its shared memory; else, while [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) (or OpenHardwareMonitor) runs, its WMI classes. Both read the chips through their own driver; yagura ships none and needs no administrator. Always the ACPI thermal zones from the `Thermal Zone Information` performance counters (PDH). With neither tool running, fans and the cores' own temperatures are not readable, so the screen says so and names the tools; GPUs add their temperature and fan from D3DKMT (and NVML for NVIDIA), and the drives theirs from the disk reading |
 | Linux | `/sys/class/hwmon`: every chip's `temp*` (with `max` and `crit`) and `fan*` (with `min`), named by the chip and, for drives, their model. Where no chip has a temperature (many ARM boards), the `/sys/class/thermal` zones and their trip points instead. NVIDIA GPUs add theirs from NVML; an AMD GPU's own chip is not listed twice. A drive with no hwmon chip (SATA without `drivetemp`) adds the temperature smartctl read |
 | macOS | The SMC itself, through the `AppleSMC` user client: the temperatures with a known key, named (`TC0P` is "CPU proximity" on Intel Macs; Apple silicon's `Tp…` / `Te…` / `Tg…` families are numbered "CPU 1", "GPU 1"…), and every fan with its least and most rpm. On Apple silicon also the HID temperatures sysinfo reads, under their own chip with friendlier names ("CPU die 3", "SSD", "Battery") |
+
+The devices screen reads, with no administrator and no tool to install:
+
+| OS | Devices |
+| --- | --- |
+| Windows | SetupAPI: every present device of every class (`SetupDiGetClassDevsW` with `DIGCF_ALLCLASSES`), named as Device Manager names it (the friendly name, else the description) under the class's own, localised name (`SetupDiGetClassDescriptionW`), with the maker, driver service, `DEVPKEY_Device_DriverVersion`, the hardware id (`USB\VID_046D&PID_C52B&REV_1211`, `PCI\VEN_8086&DEV_A0ED`), the location and the parent (`DEVPKEY_Device_Parent`). The status and problem code come from `CM_Get_DevNode_Status`; devices Device Manager hides are left out. USB link speeds are not read |
+| Linux | sysfs: every USB device in `/sys/bus/usb/devices` (its interfaces decide the kind and the drivers when the device leaves them to it; `authorized` = 0 shows as disabled) and every PCI function in `/sys/bus/pci/devices` (no `driver` link: no driver), the parent from where each sits under `/sys/devices`, the driver's version from `/sys/module`. Names the device does not give come from `usb.ids` / `pci.ids` (the hwdata package) when one is installed; without it, the ids. Serial numbers are not read |
+| macOS | IOKit: every `IOUSBHostDevice` (name, maker, `VID:PID`, revision, speed, location) and `IOPCIDevice` (model, `vendor:device`, class) in the registry, each under the nearest such device above it, the driver being the class of the object matched to it. No `system_profiler`, so the 5-s reading stays light |
+
+Classes on macOS and Linux are yagura's own (from the USB and PCI class codes), named in yagura's language. Another machine's devices come from its agent, which must be v0.43 or newer (fleet protocol 6).
 
 The sys screen reads:
 

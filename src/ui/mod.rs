@@ -5,6 +5,7 @@
 
 mod confirm;
 mod cpu;
+mod devices;
 mod disk;
 pub mod fleet;
 mod gpu;
@@ -304,6 +305,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Disk => disk::draw(&mut cx, rects),
                     Screen::Sensors => sensors::draw(&mut cx, rects),
                     Screen::Sys => sys::draw(&mut cx, rects),
+                    Screen::Devices => devices::draw(&mut cx, rects),
                 }
             }
             for (i, r) in rects.into_iter().enumerate() {
@@ -450,6 +452,14 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
                 };
                 let source = if hw.source.is_empty() { "—" } else { hw.source.as_str() };
                 trf("crumb.sys", &[&sys::machine(app), &mem, source])
+            }
+        },
+        Screen::Devices => match &m.devices {
+            None => tr("misc.reading").to_string(),
+            Some(d) => {
+                let problems = d.list.iter().filter(|x| x.status.is_problem()).count().to_string();
+                let usb = d.list.iter().filter(|x| matches!(x.bus, crate::collect::devices::Bus::Usb { .. })).count().to_string();
+                trf("crumb.devices", &[&d.list.len().to_string(), &app.dev_classes.len().to_string(), &usb, &problems])
             }
         },
     };

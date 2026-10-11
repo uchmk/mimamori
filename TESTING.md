@@ -174,6 +174,18 @@ back to `[ ]`.
 - [ ] 3g.25 The settings screen's Fleet page has a `DIRECT CONNECTIONS` card: this machine's key (the same as `yagura --key` prints) and the `[[agent.viewer]]`, `[agent] listen` and keyed `[[host]]` lines, each copied by Copy and pasting as valid TOML (in Japanese with `language = "ja"`). Searching `key` in the settings finds it. — v0.41.0 (uchmk/yagura#12): searching `key` with `language = "ja"` found nothing; v0.42.2 also searches the config names.
 - [ ] 3g.10 Idle: with the fleet showing and three hosts up, the viewer's CPU stays low (it redraws when a summary or ping comes, about once a second per host), and the agent's own CPU is about that of the window's sampler.
 
+## 3h. Devices (`D`)
+
+- [ ] 3h.1 Windows, not administrator: `D` opens devices; the left column's classes and their counts match Device Manager's top level (View → Devices by type, hidden devices not shown), in the OS's language (on a Japanese Windows `ユニバーサル シリアル バス コントローラー`, `ディスプレイ アダプター`…); each class's devices carry the names Device Manager shows. The crumb reads `<n> devices · <n> classes · <n> USB`.
+- [ ] 3h.2 Windows: the right column's maker, driver version and hardware ids match the device's Properties (General, Driver, Details → Hardware Ids: `VID_xxxx&PID_xxxx`, `VEN_xxxx&DEV_xxxx`); `Location` matches Details → Location information; `Connected to` names the hub and controller above a USB device.
+- [ ] 3h.3 Windows: disable a device in Device Manager (a spare USB device or a virtual adapter): within 5 s it turns yellow and says `Disabled`; enable it again and it goes back. A device with a yellow mark in Device Manager is red here, its class gets a red `! `, and the status reads its meaning and code (`Not working (code 43)`, `No driver installed (code 28)`…) as the Properties' Device status does.
+- [ ] 3h.4 Plug in a USB stick (or a mouse): within 5 s it appears under its class and in the tree (`t`) under its hub; unplug it and it goes within 5 s. Leave the screen (`1`): nothing is read any more (no CPU time spent on it in Task Manager over a minute).
+- [ ] 3h.5 `t` shows every device under the one it hangs off (`├ ` / `└ ` / `│ `), the toast says so, and `t` again goes back to the class's list; `/ logi <Enter>` keeps the Logitech devices (by name, maker, driver, id or `046d`) and `Esc` drops it; `y` copies the instance id (`USB\VID_046D&PID_C52B\…`) and the toast says `Copied: …`.
+- [ ] 3h.6 Linux: the USB devices match `lsusb` (and `lsusb -t` for the tree under the root hubs) and the PCI ones `lspci -k` (the driver in use); without the hwdata package (`usb.ids` / `pci.ids`) the middle says so and unnamed devices read `USB 046d:c52b`; with it they read the names `lsusb` gives. `echo 0 | sudo tee /sys/bus/usb/devices/<n>/authorized` shows it as `Disabled`.
+- [ ] 3h.7 macOS: the USB devices match System Information → USB (names, makers, speeds, what hangs off each hub) and the PCI ones its PCI page (or Thunderbolt / Apple silicon's built-in devices); the driver column names the matched kext class.
+- [ ] 3h.8 Fleet: `Enter` on a v0.43 agent's card, then `D`, shows that machine's devices; an agent older than v0.43 shows `another version` on its card instead (protocol 6).
+- [ ] 3h.9 A narrow window drops the status, then the maker column; long names are cut with `…` and do not run into the next column; with `language = "ja"` the classes on macOS and Linux and every label read in Japanese.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.

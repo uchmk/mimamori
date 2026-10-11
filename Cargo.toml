@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.42.6"
+version = "0.43.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -68,6 +68,8 @@ plist = { version = "1.8", default-features = false }
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
     "Wdk_Graphics_Direct3D",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_Properties",
     "Win32_Foundation",
     "Win32_Graphics_Dxgi",
     "Win32_NetworkManagement_IpHelper",

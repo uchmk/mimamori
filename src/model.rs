@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, battery, disk, gpu, hw, net, sensors, svc};
+use crate::collect::{Mem, Msg, Proc, Static, battery, devices, disk, gpu, hw, net, sensors, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -97,6 +97,9 @@ pub struct Model {
     pub hw: Option<hw::Hardware>,
     /// A laptop's; `None` without a battery.
     pub battery: Option<battery::Battery>,
+    /// The last reading of devices, kept when the devices screen is left;
+    /// `None` until read once.
+    pub devices: Option<devices::Devices>,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -203,6 +206,7 @@ impl Model {
             }
             Msg::Hardware(h) => self.hw = Some(*h),
             Msg::Battery(b) => self.battery = b,
+            Msg::Devices(d) => self.devices = Some(*d),
         }
     }
 

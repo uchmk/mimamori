@@ -238,6 +238,7 @@ struct Cache {
     detail: Vec<(Discriminant<Msg>, Frame)>,
     svc: Option<Frame>,
     conns: Option<Frame>,
+    devices: Option<Frame>,
 }
 
 impl Cache {
@@ -251,6 +252,7 @@ impl Cache {
             Route::Detail => put(&mut self.detail),
             Route::Services => self.svc = Some(f),
             Route::Conns => self.conns = Some(f),
+            Route::Devices => self.devices = Some(f),
         }
     }
 
@@ -265,6 +267,9 @@ impl Cache {
         }
         if new.takes(Route::Conns) && !old.takes(Route::Conns) {
             out.extend(self.conns.clone());
+        }
+        if new.takes(Route::Devices) && !old.takes(Route::Devices) {
+            out.extend(self.devices.clone());
         }
         out
     }
@@ -378,6 +383,10 @@ fn hub(cfg: &Config, port: u16, direct: Option<SocketAddr>, ins: &Receiver<HubIn
             if want.conns != reading.conns {
                 let _ = ctl.send(Ctl::Net(want.conns));
                 cache.conns = None;
+            }
+            if want.devices != reading.devices {
+                let _ = ctl.send(Ctl::Devices(want.devices));
+                cache.devices = None;
             }
             reading = want;
         }

@@ -94,6 +94,10 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] sys: GPU とドライブの一覧への近道（gpu·npu・disk の画面へ飛ぶ）を置くか決める。
   → 新しいキーは足さず、左の列に「Graphics」「Drives」の節（名前・VRAM、型番・大きさ）を置き、末尾にその画面を開く keymap のキーを出す（v0.19.0）
 - [ ] sys の実機の確認 【実機】（TESTING.md 3f）。
+- [x] devices（D）: USB とデバイス マネージャーに出るハードの一覧（クラス・ドライバー・状態・問題のコード・つながりの木）。
+  → `collect/devices/`（Windows は SetupAPI と CfgMgr32、Linux は sysfs と pci.ids / usb.ids、macOS は IOKit の `IOUSBHostDevice` と `IOPCIDevice`）。
+  画面が出ている間だけ 5 秒ごと。fleet はプロトコル 6 の `Want.devices` (v0.43.0)
+- [ ] devices の実機の確認 【実機】（TESTING.md 3h）。
 
 ## 2. 構成と OS
 
@@ -156,6 +160,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `snow`（Pure Rust、`Noise_IK_25519_ChaChaPoly_BLAKE2s`）。`yagura --key` で鍵の組を作って見せ（`<設定>/yagura/key`）、見られる側は `[agent] listen` と
   `[[agent.viewer]]`（見る側の公開鍵）、見る側は `[[host]] key`（相手の公開鍵、既定のポート 7314）。知らない見る側・違う鍵は `Why::Denied`・`BadKey` で言う。
   設定の画面の Fleet に DIRECT CONNECTIONS の欄、sys の Fleet agent の節に直接の口と鍵 (v0.41.0)
+- [ ] fleet: カードの警告の数に、問題のあるデバイス（devices の画面の赤）を足す。devices は画面が出ている間だけ読むので、
+  svc と同じく出ていない間も間を空けて読むかを決めてから。
 
 ## 5. 配布
 

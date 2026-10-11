@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use ito_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc, disk, gpu, hw, net, sensors, svc};
+use crate::collect::{Ctl, Msg, Proc, devices, disk, gpu, hw, net, sensors, svc};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -39,6 +39,30 @@ const NUDGE: f32 = 0.03;
 const PROBE_EVERY: Duration = Duration::from_secs(5);
 /// Rows the overview lists in each of its two top lists.
 pub const OVW_TOP: usize = 5;
+
+/// A class in devices' left column.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DevClass {
+    pub name: String,
+    pub total: usize,
+    pub shown: usize,
+    pub problem: bool,
+}
+
+/// The lists a frame's readings changed.
+#[derive(Default)]
+struct Dirty {
+    svc: bool,
+    net: bool,
+    dev: bool,
+}
+
+/// Whether a device matches devices' filter (lower case).
+fn dev_matches(d: &devices::Device, f: &str) -> bool {
+    f.is_empty()
+        || [d.name.as_str(), d.vendor.as_str(), d.id.as_str(), d.driver.as_str()].iter().any(|s| s.to_lowercase().contains(f))
+        || d.ids().is_some_and(|i| i.contains(f))
+}
 
 /// A row of the overview's left column.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -307,6 +331,18 @@ pub struct App {
     net_key: Option<ConnKey>,
     /// net lists only the sockets waiting for others (`u`).
     pub net_listen: bool,
+    /// The classes devices' left column lists, after "all".
+    pub dev_classes: Vec<DevClass>,
+    /// The class selected, kept while the list is read again.
+    dev_class: Option<String>,
+    /// The device list as devices shows it: indices into `model.devices`.
+    pub dev_rows: Vec<usize>,
+    /// The branch lines in front of each device, while `dev_tree` is on.
+    pub dev_lines: Vec<String>,
+    /// devices as the tree of what hangs off what (`t`).
+    pub dev_tree: bool,
+    /// The device selected, kept while the list is read again.
+    dev_id: Option<String>,
     /// net lists only the sockets on this interface (`Enter` on it, `Esc`
     /// drops it); it follows the selection while set.
     pub net_nic: Option<String>,
@@ -341,9 +377,9 @@ pub struct App {
     next_act: u64,
     /// What each host was last told to send.
     sent_remote: Vec<Want>,
-    /// Whether this machine's sampler was last told to read services and
-    /// sockets.
-    sent_local: (bool, bool),
+    /// Whether this machine's sampler was last told to read services,
+    /// sockets and devices.
+    sent_local: (bool, bool, bool),
     /// Inside another machine's screens (`Enter` on its card, `[` / `]`).
     pub away: Option<Away>,
     /// The card selected.
@@ -409,6 +445,12 @@ impl App {
             net_rows: Vec::new(),
             net_key: None,
             net_listen: false,
+            dev_classes: Vec::new(),
+            dev_class: None,
+            dev_rows: Vec::new(),
+            dev_lines: Vec::new(),
+            dev_tree: false,
+            dev_id: None,
             net_nic: None,
             me: None,
             dirty: true,
@@ -432,7 +474,7 @@ impl App {
             asked: Vec::new(),
             next_act: 0,
             sent_remote: Vec::new(),
-            sent_local: (false, false),
+            sent_local: (false, false, false),
             away: None,
             fleet_sel: 0,
             fleet_cols: 1,
@@ -618,7 +660,7 @@ impl App {
 
     /// Fold in what the sampler sent and bring the lists up to date.
     pub fn pump(&mut self) {
-        let mut dirty = (false, false);
+        let mut dirty = Dirty::default();
         while let Ok(m) = self.rx.try_recv() {
             match &mut self.away {
                 // Kept up to date for the way back and this machine's card.
@@ -632,12 +674,14 @@ impl App {
                 self.peer_event(i, e, &mut dirty);
             }
         }
-        let (svc_dirty, net_dirty) = dirty;
-        if svc_dirty {
+        if dirty.svc {
             self.refresh_svc();
         }
-        if net_dirty && self.model.conn_read {
+        if dirty.net && self.model.conn_read {
             self.refresh_net();
+        }
+        if dirty.dev {
+            self.refresh_dev();
         }
         while let Ok((t, o)) = self.kill_rx.try_recv() {
             self.toast(kill_toast(&t, o));
@@ -666,15 +710,16 @@ impl App {
     }
 
     /// Fold a reading into the screens' model, noting the lists it changes
-    /// (services, sockets).
-    fn take(&mut self, m: Msg, (svc, net): &mut (bool, bool)) {
+    /// (services, sockets, devices).
+    fn take(&mut self, m: Msg, dirty: &mut Dirty) {
         match m {
             // The net filter matches process names too.
-            Msg::Procs { .. } => (self.dirty, *net) = (true, true),
-            Msg::Svc(_) => *svc = true,
-            Msg::Conns(_) => *net = true,
+            Msg::Procs { .. } => (self.dirty, dirty.net) = (true, true),
+            Msg::Svc(_) => dirty.svc = true,
+            Msg::Conns(_) => dirty.net = true,
+            Msg::Devices(_) => dirty.dev = true,
             // An interface's addresses may change under its narrowing.
-            Msg::Nics(_) if self.net_nic.is_some() => *net = true,
+            Msg::Nics(_) if self.net_nic.is_some() => dirty.net = true,
             _ => {}
         }
         self.model.apply(m);
@@ -682,7 +727,7 @@ impl App {
 
     /// News from a host's watcher: its card's, and its readings while its
     /// screens show.
-    fn peer_event(&mut self, i: usize, e: Event, dirty: &mut (bool, bool)) {
+    fn peer_event(&mut self, i: usize, e: Event, dirty: &mut Dirty) {
         let inside = self.away.as_ref().is_some_and(|a| a.peer == i);
         match e {
             Event::Msg(m) if inside => self.take(*m, dirty),
@@ -817,6 +862,8 @@ impl App {
         self.svc_name = None;
         self.net_key = None;
         self.net_nic = None;
+        self.dev_class = None;
+        self.dev_id = None;
         self.drag = None;
         self.stack_drag = None;
         self.pending.clear();
@@ -826,27 +873,33 @@ impl App {
         self.top_mem.clear();
         self.svc_rows.clear();
         self.net_rows.clear();
+        self.dev_rows.clear();
+        self.dev_lines.clear();
         self.dirty = true;
         self.refresh_svc();
         self.refresh_net();
+        self.refresh_dev();
     }
 
-    /// Tell the samplers what the screen shown needs: services and sockets
-    /// only while their screen shows, and another machine's readings only
-    /// while inside it.
+    /// Tell the samplers what the screen shown needs: services, sockets and
+    /// devices only while their screen shows, and another machine's readings
+    /// only while inside it.
     fn sync_sources(&mut self) {
-        let (svc, net) = (self.screen == Screen::Svc, self.screen == Screen::Net);
+        let (svc, net, dev) = (self.screen == Screen::Svc, self.screen == Screen::Net, self.screen == Screen::Devices);
         let away = self.away.as_ref().map(|a| a.peer);
-        let local = if away.is_some() { (false, false) } else { (svc, net) };
+        let local = if away.is_some() { (false, false, false) } else { (svc, net, dev) };
         if local.0 != self.sent_local.0 {
             let _ = self.ctl.send(Ctl::Services(local.0));
         }
         if local.1 != self.sent_local.1 {
             let _ = self.ctl.send(Ctl::Net(local.1));
         }
+        if local.2 != self.sent_local.2 {
+            let _ = self.ctl.send(Ctl::Devices(local.2));
+        }
         self.sent_local = local;
         for (i, tx) in self.fleet_tx.iter().enumerate() {
-            let want = if away == Some(i) { Want { detail: true, services: svc, conns: net } } else { Want::default() };
+            let want = if away == Some(i) { Want { detail: true, services: svc, conns: net, devices: dev } } else { Want::default() };
             if self.sent_remote.get(i) != Some(&want) {
                 let _ = tx.send(ToHost::Want(want));
                 if let Some(w) = self.sent_remote.get_mut(i) {
@@ -1056,6 +1109,64 @@ impl App {
         self.net_key = self.selected_conn().map(conn_key);
     }
 
+    /// The devices read, or none yet.
+    pub fn devices(&self) -> &[devices::Device] {
+        self.model.devices.as_ref().map_or(&[], |d| &d.list)
+    }
+
+    /// The device the devices screen has selected.
+    pub fn selected_dev(&self) -> Option<&devices::Device> {
+        let sel = self.view_of(Screen::Devices).sel[1];
+        self.dev_rows.get(sel).and_then(|&i| self.devices().get(i))
+    }
+
+    /// The class the devices screen's left column has selected; `None` is
+    /// "all".
+    pub fn selected_dev_class(&self) -> Option<&DevClass> {
+        self.view_of(Screen::Devices).sel[0].checked_sub(1).and_then(|i| self.dev_classes.get(i))
+    }
+
+    fn refresh_dev(&mut self) {
+        let f = self.filter_of(Screen::Devices);
+        let list = self.model.devices.as_ref().map_or(&[][..], |d| &d.list);
+        let mut classes: std::collections::BTreeMap<String, DevClass> = std::collections::BTreeMap::new();
+        let mut class_of = Vec::with_capacity(list.len());
+        for d in list {
+            let name = d.class();
+            let c = classes.entry(name.to_lowercase()).or_insert_with(|| DevClass { name: name.clone(), ..DevClass::default() });
+            c.total += 1;
+            c.shown += dev_matches(d, &f) as usize;
+            c.problem |= d.status.is_problem();
+            class_of.push(name);
+        }
+        self.dev_classes = classes.into_values().collect();
+        // The same class stays selected while classes come and go.
+        let at = match &self.dev_class {
+            Some(n) => self.dev_classes.iter().position(|c| c.name == *n).map_or(0, |i| i + 1),
+            None => 0,
+        };
+        self.views.entry(Screen::Devices).or_default().sel[0] = at;
+        let class = at.checked_sub(1).map(|i| self.dev_classes[i].name.clone());
+        let mut rows: Vec<usize> =
+            (0..list.len()).filter(|&i| class.as_ref().is_none_or(|c| class_of[i] == *c) && dev_matches(&list[i], &f)).collect();
+        // The tree keeps the names' order among siblings.
+        self.dev_lines = if self.dev_tree {
+            let t = devices::tree(list, &rows);
+            rows = t.iter().map(|r| r.0).collect();
+            t.into_iter().map(|r| r.1).collect()
+        } else {
+            Vec::new()
+        };
+        let found = self.dev_id.as_ref().and_then(|id| rows.iter().position(|&i| list[i].id == *id));
+        self.dev_class = class;
+        self.dev_rows = rows;
+        if let Some(pos) = found {
+            self.views.entry(Screen::Devices).or_default().sel[1] = pos;
+        }
+        self.clamp_all();
+        self.dev_id = self.selected_dev().map(|d| d.id.clone());
+    }
+
     /// The `/` text of this screen; empty where none is typed or the screen
     /// has no list to narrow.
     pub fn filter(&self) -> &str {
@@ -1072,6 +1183,7 @@ impl App {
         self.refresh_rows();
         self.refresh_svc();
         self.refresh_net();
+        self.refresh_dev();
     }
 
     pub fn mine_only(&self) -> bool {
@@ -1171,6 +1283,8 @@ impl App {
             (Screen::Sensors, Pane::Mid) => self.model.sensors.list.len(),
             (Screen::Sys, Pane::Left) => crate::ui::sys::rows(crate::ui::sys::lines(self), self.sys_room).len(),
             (Screen::Sys, Pane::Mid) => self.model.hw.as_ref().map_or(0, |h| h.slots.len()),
+            (Screen::Devices, Pane::Left) => 1 + self.dev_classes.len(),
+            (Screen::Devices, Pane::Mid) => self.dev_rows.len(),
             _ => 0,
         }
     }
@@ -1297,6 +1411,13 @@ impl App {
             (Screen::Svc, Pane::Mid) => self.svc_name = self.selected_svc().map(|s| s.name.clone()),
             (Screen::Svc, Pane::Left) => self.refresh_svc(),
             (Screen::Net, Pane::Mid) => self.net_key = self.selected_conn().map(conn_key),
+            (Screen::Devices, Pane::Mid) => self.dev_id = self.selected_dev().map(|d| d.id.clone()),
+            (Screen::Devices, Pane::Left) => {
+                self.dev_class = self.selected_dev_class().map(|c| c.name.clone());
+                self.views.entry(Screen::Devices).or_default().sel[1] = 0;
+                self.dev_id = None;
+                self.refresh_dev();
+            }
             // The chip and its sensors are selected together.
             (Screen::Sensors, Pane::Left) => {
                 if let Some(first) = self.selected_chip().map(|c| c.first) {
@@ -1604,8 +1725,9 @@ impl App {
             }
             Act::Enter if built => self.enter(),
             Act::Filter => {
-                // svc and net filter their own lists; anywhere else it is procs'.
-                if !matches!(self.screen, Screen::Svc | Screen::Net) {
+                // svc, net and devices filter their own lists; anywhere else
+                // it is procs'.
+                if !matches!(self.screen, Screen::Svc | Screen::Net | Screen::Devices) {
                     self.goto(Screen::Procs);
                 }
                 self.view_mut().focus = Pane::Mid.index();
@@ -1619,6 +1741,11 @@ impl App {
                 self.sort = self.sort.next();
                 self.refresh_rows();
                 self.toast(trf("toast.sort", &[self.sort.label()]));
+            }
+            Act::Tree if self.screen == Screen::Devices => {
+                self.dev_tree = !self.dev_tree;
+                self.refresh_dev();
+                self.toast(tr(if self.dev_tree { "toast.dev_tree_on" } else { "toast.tree_off" }));
             }
             Act::Tree => {
                 self.tree = !self.tree;
@@ -1664,6 +1791,10 @@ impl App {
             }
             Act::Settings => self.open_settings(),
             Act::Scale(to) => self.scale(to),
+            Act::Copy if self.screen == Screen::Devices => match self.selected_dev().map(|d| d.id.clone()) {
+                Some(id) => self.copy(id),
+                None => self.toast(tr("toast.copy_none")),
+            },
             Act::Copy => self.toast(tr("toast.copy_none")),
             Act::Quit => self.quit = true,
             Act::Escape => {
@@ -1731,6 +1862,7 @@ impl App {
             }
             (Screen::Procs, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
             (Screen::Svc, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
+            (Screen::Devices, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
             (Screen::Svc, Pane::Mid | Pane::Right) => match self.selected_svc().map(|s| (s.pid, s.name.clone())) {
                 Some((Some(pid), _)) => self.open_proc(pid),
                 Some((None, name)) => self.toast(trf("toast.svc_no_pid", &[&name])),
@@ -1875,6 +2007,17 @@ impl App {
             let sv = &self.model.services;
             let kind = if self.svc_drivers { "drivers" } else { "services" };
             s += &format!("svcs: {} of {} ({}, {kind})\n", self.svc_rows.len(), sv.list.len(), sv.source);
+        }
+        if let Some(d) = &self.model.devices {
+            let classes: Vec<&str> = self.dev_classes.iter().map(|c| c.name.as_str()).collect();
+            let problems = d.list.iter().filter(|v| v.status.is_problem()).count();
+            let tree = if self.dev_tree { ", tree" } else { "" };
+            s += &format!(
+                "devices: {} of {} ({problems} problems{tree}) classes: {}\n",
+                self.dev_rows.len(),
+                d.list.len(),
+                classes.join(" | ")
+            );
         }
         if self.model.nic_read {
             let names: Vec<&str> = self.model.nics.iter().map(|n| n.name.as_str()).collect();
@@ -2124,6 +2267,8 @@ mod tests {
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Sys);
         keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Devices);
+        keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Ovw);
         tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9), proc(8, "small", 1.0, 1)], total_threads: None }).unwrap();
         a.pump();
@@ -2280,7 +2425,10 @@ mod tests {
         // Its svc screen asks it for services, not this machine's sampler.
         let _ = ctl.try_iter().count();
         keys(&mut a, "6");
-        assert_eq!(wants0.try_iter().collect::<Vec<_>>(), [ToHost::Want(Want { detail: true, services: true, conns: false })]);
+        assert_eq!(
+            wants0.try_iter().collect::<Vec<_>>(),
+            [ToHost::Want(Want { detail: true, services: true, conns: false, devices: false })]
+        );
         assert!(ctl.try_recv().is_err());
         // Its [agent] allow lists nothing, so it is view only; sampling stays with it.
         keys(&mut a, "x");
@@ -2464,6 +2612,55 @@ mod tests {
         assert_eq!(a.screen, Screen::Procs);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
         assert!(matches!(ctl.try_iter().last(), Some(Ctl::Services(false))));
+    }
+
+    #[test]
+    fn devices_read_only_while_shown_filter_tree_and_copy() {
+        use devices::{Device, Devices, Status};
+        let (mut a, tx, ctl) = app();
+        keys(&mut a, "D");
+        assert_eq!(a.screen, Screen::Devices);
+        keys(&mut a, "5");
+        let got: Vec<Ctl> = ctl.try_iter().filter(|c| matches!(c, Ctl::Devices(_))).collect();
+        assert!(matches!(got[..], [Ctl::Devices(true), Ctl::Devices(false)]), "{got:?}");
+        let dev = |id: &str, parent: Option<&str>, name: &str, class: &str, status| Device {
+            id: id.into(),
+            parent: parent.map(Into::into),
+            name: name.into(),
+            class_name: class.into(),
+            status,
+            ..Device::default()
+        };
+        let list = vec![
+            // In name order, as the source sends them.
+            dev("cam", Some("hub"), "Camera", "Usb", Status::Problem(43)),
+            dev("mouse", Some("hub"), "Mouse", "Input", Status::Ok),
+            dev("hub", None, "Root hub", "Usb", Status::Ok),
+        ];
+        tx.send(Msg::Devices(Box::new(Devices { list, note: None }))).unwrap();
+        a.pump();
+        keys(&mut a, "D");
+        let names: Vec<(&str, usize, bool)> = a.dev_classes.iter().map(|c| (c.name.as_str(), c.total, c.problem)).collect();
+        assert_eq!(names, [("Input", 1, false), ("Usb", 2, true)]);
+        assert_eq!(a.dev_rows.len(), 3);
+        // The second class keeps only its own devices.
+        keys(&mut a, "j j");
+        assert_eq!(a.selected_dev_class().map(|c| c.name.as_str()), Some("Usb"));
+        assert_eq!(a.dev_rows.len(), 2);
+        keys(&mut a, "k k");
+        // The tree puts the mouse and the camera under the hub.
+        keys(&mut a, "t");
+        assert!(a.dev_tree);
+        let order: Vec<&str> = a.dev_rows.iter().map(|&i| a.devices()[i].id.as_str()).collect();
+        assert_eq!(order, ["hub", "cam", "mouse"]);
+        assert!(a.dev_lines[0].is_empty() && !a.dev_lines[1].is_empty());
+        assert_eq!(a.dev_rows.len(), 3);
+        keys(&mut a, "t / m o u <Enter>");
+        assert!(!a.dev_tree);
+        assert_eq!(a.selected_dev().map(|d| d.id.as_str()), Some("mouse"));
+        keys(&mut a, "y");
+        assert_eq!(a.copy.as_deref(), Some("mouse"));
+        assert!(a.report().contains("devices: 1 of 3 (1 problems) classes: Input | Usb"), "{}", a.report());
     }
 
     #[test]

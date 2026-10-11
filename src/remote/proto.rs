@@ -23,7 +23,7 @@ pub const PORT: u16 = 7313;
 /// The port of `[agent] listen`, the direct (Noise) one, when it names none.
 pub const DIRECT_PORT: u16 = 7314;
 /// Raised whenever a message changes shape.
-pub const PROTO: u16 = 5;
+pub const PROTO: u16 = 6;
 /// A frame larger than this is not ours (another service on the port). The
 /// process list of a busy machine is the largest that is.
 pub const MAX_FRAME: usize = 16 << 20;
@@ -129,6 +129,8 @@ pub struct Want {
     pub services: bool,
     /// On its net screen.
     pub conns: bool,
+    /// On its devices screen.
+    pub devices: bool,
 }
 
 /// Who the agent is, sent once when the viewer connects.

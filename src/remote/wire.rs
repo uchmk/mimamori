@@ -79,6 +79,8 @@ pub enum Route {
     Services,
     /// Only those on its net screen.
     Conns,
+    /// Only those on its devices screen.
+    Devices,
     /// What does not change: everyone who watches, and kept for those who
     /// start watching later.
     Static,
@@ -89,6 +91,7 @@ pub fn route(m: &Msg) -> Route {
         Msg::Static(_) | Msg::Hardware(_) => Route::Static,
         Msg::Svc(_) => Route::Services,
         Msg::Conns(_) => Route::Conns,
+        Msg::Devices(_) => Route::Devices,
         _ => Route::Detail,
     }
 }
@@ -100,6 +103,7 @@ impl Want {
             Route::Detail | Route::Static => self.detail,
             Route::Services => self.detail && self.services,
             Route::Conns => self.detail && self.conns,
+            Route::Devices => self.detail && self.devices,
         }
     }
 }
@@ -110,13 +114,14 @@ pub fn union(wants: impl IntoIterator<Item = Want>) -> Want {
         detail: a.detail || w.detail,
         services: a.services || (w.detail && w.services),
         conns: a.conns || (w.detail && w.conns),
+        devices: a.devices || (w.detail && w.devices),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collect::{Mem, Static, battery, disk, gpu, hw, net, sensors, svc, topo};
+    use crate::collect::{Mem, Static, battery, devices, disk, gpu, hw, net, sensors, svc, topo};
     use crate::remote::proto;
 
     fn every_msg() -> Vec<Msg> {
@@ -180,6 +185,18 @@ mod tests {
             Msg::Conns(net::Conns { list: vec![conn], source: "/proc/net", note: Some(net::Note::OtherUsers) }),
             Msg::Hardware(Box::new(hw::Hardware { source: "SMBIOS 3.3".into(), ..hw::Hardware::default() })),
             Msg::Battery(Some(battery::Battery { pct: 87.0, charging: true, plugged: true })),
+            Msg::Devices(Box::new(devices::Devices {
+                list: vec![devices::Device {
+                    id: r"USB\VID_046D&PID_C52B\5&1".into(),
+                    parent: Some("hub".into()),
+                    name: "USB Receiver".into(),
+                    kind: devices::Kind::Input,
+                    status: devices::Status::Problem(43),
+                    bus: devices::Bus::Usb { vid: 0x046d, pid: 0xc52b, rev: Some(0x1211), speed_kbps: Some(12_000) },
+                    ..devices::Device::default()
+                }],
+                note: Some(devices::Note::NoIds),
+            })),
         ]
     }
 
@@ -234,10 +251,15 @@ mod tests {
         assert_eq!(routes[5], Route::Services);
         assert_eq!(routes[9], Route::Conns);
         assert_eq!(routes[10], Route::Static);
+        assert_eq!(routes[12], Route::Devices);
         let watch = Want { detail: true, ..Want::default() };
         let svc = Want { services: true, ..watch };
         assert!(watch.takes(Route::Detail) && !watch.takes(Route::Services));
         assert!(svc.takes(Route::Services) && !svc.takes(Route::Conns));
+        let dev = Want { devices: true, ..watch };
+        assert!(dev.takes(Route::Devices) && !watch.takes(Route::Devices) && !dev.takes(Route::Services));
+        assert_eq!(union([Want { devices: true, ..Want::default() }]), Want::default());
+        assert_eq!(union([watch, dev]), dev);
         assert!(!Want::default().takes(Route::Static));
         // Services without watching the machine read nothing.
         let stray = Want { services: true, ..Want::default() };
