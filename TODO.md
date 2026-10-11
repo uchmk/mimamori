@@ -174,4 +174,6 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   `tsumugi-prefs`（画面の枠と部品、Language の行・CLOCK のカード・テーマのページ）を tsumugi v0.81.0 で切り出し、mimamori はその上に General・Theme・Fleet・Advanced の 4 ページ。
   色の定数をテーマを読む関数に換え、common.toml を 2 秒ごとに見て当て直す。`y` と、手引きの水色の行・設定の Copy でコピー（v0.32.0）
 - [ ] 設定の画面・テーマ・時計の実機の確認 【実機】（TESTING.md 5.9〜5.18）。
-- [ ] tsumugi の時計の曜日が `language = "ja"` でも英語（uchmk/yagura#11 の 5.11）。tsumugi の側の直しなので、tsumugi のセッションに伝える 【人】。
+- [x] tsumugi の時計の曜日が `language = "ja"` でも英語（uchmk/yagura#11 の 5.11）。tsumugi の側の直しなので、tsumugi のセッションに伝える。
+  → tsumugi v0.94.3 が `ito_common::Clock` の `text`・`full` を言語つきで使い、yagura と同じ 1 文字の `(日)` になった（tsumugi の再テストは uchmk/tsumugi#23 の 15.11）
+- [ ] fleet の直接つなぐ形の再テスト（TESTING.md 3g.22 の機械の名前の `addr`・3g.24・3g.25、v0.42.2 の直し）。持ち主がすぐにはできないので後で頼む 【実機】。
