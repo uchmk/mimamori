@@ -7,7 +7,7 @@ back to `[ ]`.
 
 ## 1. Start and idle
 
-- [ ] 1.1 Windows x64: `yagura.exe` opens on the overview within a second or two; the tabs, the three columns and the status bar are drawn; no console window appears.
+- [x] 1.1 Windows x64: `yagura.exe` opens on the overview within a second or two; the tabs, the three columns and the status bar are drawn; no console window appears.
 - [ ] 1.2 Windows ARM64: the same.
 - [ ] 1.3 macOS (Apple Silicon): the same; the window can be moved and resized normally.
 - [ ] 1.4 Linux (X11 and Wayland): the same.
@@ -20,7 +20,7 @@ back to `[ ]`.
 
 ## 2. Core layout (cpu screen, `2`)
 
-- [ ] 2.1 Windows, Ryzen with two CCDs: two groups labelled `L3 #0` and `L3 #1`, each with its cores; every tile has two thread bars (SMT); `Topology from` says `win32`.
+- [x] 2.1 Windows, Ryzen with two CCDs: two groups labelled `L3 #0` and `L3 #1`, each with its cores; every tile has two thread bars (SMT); `Topology from` says `win32`.
 - [ ] 2.2 Windows, hybrid Intel (12th gen or later): groups `P-cores` and `E-cores`; P-core tiles have two thread bars, E-core tiles one.
 - [ ] 2.3 Windows ARM64 (Snapdragon): note what groups and kinds are shown and whether they match the chip.
 - [ ] 2.4 macOS, Apple silicon: one group per cluster, `E-cores` / `P-cores` (with `· L2 #n` when a kind has more than one cluster, as on an M1 Pro / Max or M3 Pro), each tile one thread bar, the group header shows `L2` and its size (4 MiB / 12 or 16 MiB), and the summary's core count matches About This Mac; `Topology from` says `iokit`.
@@ -201,7 +201,7 @@ back to `[ ]`.
 
 ## 3i. Export
 
-- [ ] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from).
+- [x] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from).
 - [ ] 3i.2 `yagura --log-metrics usage.csv --every 2` writes the header and a row every 2 seconds; the numbers match the screens (CPU, memory, the network and disk rates, the busiest GPU, the hottest temperature, the battery on a laptop). Ctrl+C stops it; running it again appends rows without a second header. `--every 0` is refused.
 
 ## 3j. Zoomed graphs
@@ -243,7 +243,7 @@ Setup for all of them: put the `[[alert]]` of 3k.1 in config.toml (the settings 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.
 - [ ] 4.2 Keyboard: `Alt+Shift+Left/Right` (macOS `Cmd+Left/Right`, `Ctrl+Left/Right` or both) moves the focused column's divider; `Alt+Shift+Up` says "No divider on that side".
 - [ ] 4.3 `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) puts the columns back to equal widths.
-- [ ] 4.4 Quit and start again: each screen keeps the widths it was left with. `state.toml` is in the state folder (`%LOCALAPPDATA%\uchmk\yagura` on Windows, `~/Library/Application Support/uchmk/yagura/state` on macOS, `~/.local/state/uchmk/yagura` on Linux); one left in `<config dir>/uchmk/yagura/` by v0.38.0 is moved there on the first start, widths and heights and all.
+- [x] 4.4 Quit and start again: each screen keeps the widths it was left with. `state.toml` is in the state folder (`%LOCALAPPDATA%\uchmk\yagura` on Windows, `~/Library/Application Support/uchmk/yagura/state` on macOS, `~/.local/state/uchmk/yagura` on Linux); one left in `<config dir>/uchmk/yagura/` by v0.38.0 is moved there on the first start, widths and heights and all.
 - [ ] 4.5 macOS: every `Ctrl+…` key of the other platforms works with `Cmd` and with `Ctrl` alike (`Cmd+,` and `Ctrl+,` both open the settings, `Cmd+q` and `Ctrl+q` both quit).
 - [x] 4.6 Panels split their column evenly: the overview's graphs on a machine with CPU, memory, swap, two GPUs and a drive are two columns of three of the same size; cpu's cores, total and threads are thirds; gpu·npu's usage, engines and memory are thirds; disk's read, write and busy graphs are stacked, each the column's width and equally tall, over the volumes.
 - [ ] 4.7 Mouse: hovering the gap between two stacked panels shows the up-down cursor and a line; dragging it moves the panels while dragging; double-clicking it puts it halfway along the room it splits.
@@ -251,9 +251,9 @@ Setup for all of them: put the `[[alert]]` of 3k.1 in config.toml (the settings 
 
 ## 5. Settings
 
-- [ ] 5.1 `common.toml` with `language = "en"` and a `yagura/config.toml` with `interval = 2`: the status bar says `every 2 s`.
+- [x] 5.1 `common.toml` with `language = "en"` and a `yagura/config.toml` with `interval = 2`: the status bar says `every 2 s`.
 - [ ] 5.2 A `keymap.toml` with `prepend_keymap` adding a key: the key works and appears in `?` help.
-- [ ] 5.3 A broken `config.toml` (bad TOML): yagura still starts with defaults and says what was wrong.
+- [x] 5.3 A broken `config.toml` (bad TOML): yagura still starts with defaults and says what was wrong.
 - [x] 5.5 Windows: `language = "ja"` in `common.toml`: tabs, panels, toasts and `?` help are in Japanese and drawn in Meiryo (or Yu Gothic / MS Gothic, the list every uchmk app uses), with no boxes; long labels are cut with `…` and do not run into the next column. (Windows 11 x64 on v0.40.1, uchmk/yagura#11.)
 - [ ] 5.6 macOS: the same with Hiragino; and with `language = "auto"` on a Mac set to Japanese, the screens are in Japanese.
 - [ ] 5.7 Linux desktop (X11 and Wayland): the same with Noto Sans CJK (or IPA Gothic); `LANG=ja_JP.UTF-8` with `language = "auto"` gives Japanese.
