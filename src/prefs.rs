@@ -51,6 +51,8 @@ pub struct Prefs {
     tx: Sender<Reload>,
     pub rx: Receiver<Reload>,
     wake: Option<egui::Context>,
+    /// The OS's light or dark, for `system` (egui's lags a switch on Windows).
+    os_light: ito_common::OsLight,
 }
 
 impl Prefs {
@@ -72,6 +74,7 @@ impl Prefs {
             tx,
             rx,
             wake: None,
+            os_light: ito_common::OsLight::default(),
         }
     }
 
@@ -92,10 +95,12 @@ impl Prefs {
         p
     }
 
-    /// Look at the files every 2 s from now on, and wake `ctx` when one
-    /// has been read again.
+    /// Look at the files and the OS's light or dark every 2 s from now on,
+    /// and wake `ctx` when one has been read again.
     pub fn watch(&mut self, ctx: &egui::Context) {
         self.wake = Some(ctx.clone());
+        let os_ctx = ctx.clone();
+        self.os_light = ito_common::OsLight::watch(WATCH, move || os_ctx.request_repaint());
         let Some(base) = self.base.clone() else { return };
         let (common, themes, config) = (common_path(&base), themes_dir(&base), edit::config_path(&base));
         let mut paths = vec![common.clone(), config.clone(), themes.clone()];
@@ -217,7 +222,7 @@ impl Prefs {
     /// widgets follow when it changes. Called every frame (the OS may have
     /// gone light or dark).
     pub fn apply_theme(&mut self, ctx: &egui::Context) {
-        let os_light = ctx.system_theme() == Some(egui::Theme::Light);
+        let os_light = self.os_light.light_or(ctx.system_theme() == Some(egui::Theme::Light));
         let (choice, dark, light) = self.common.theme_choice(None);
         let colors = match ito_theme::pick(&self.themes, &choice, &dark, &light, os_light) {
             Ok(t) => {

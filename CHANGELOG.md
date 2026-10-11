@@ -4,6 +4,18 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.42.1] - 2026-10-11
+
+### 修正
+
+- `theme = "system"` で、Windows の明暗の切り替えに 1 回遅れてついてきていた（#11）。winit が uxtheme の値を読み直さずに聞くため、egui の
+  `system_theme` が 1 つ前の値を返す。レジストリの `AppsUseLightTheme` を 2 秒ごとに読む ito の `OsLight` を先に使い、分からないとき
+  （Windows 以外）だけ egui の値を使う（TESTING 5.17）。
+
+### 変更
+
+- ito の rev を v0.9.0（`a6c4793`）に上げた。
+
 ## [0.42.0] - 2026-10-11
 
 ### 追加
