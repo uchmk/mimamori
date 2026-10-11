@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{Receiver, Sender};
 use ito_layout::Node;
 
-use crate::collect::{Ctl, Msg, Proc, devices, disk, gpu, hw, net, sensors, svc};
+use crate::collect::{Ctl, Msg, Proc, containers, devices, disk, gpu, hw, net, sensors, svc};
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
@@ -60,6 +60,7 @@ struct Dirty {
     svc: bool,
     net: bool,
     dev: bool,
+    ct: bool,
 }
 
 /// Whether a device matches devices' filter (lower case).
@@ -67,6 +68,43 @@ fn dev_matches(d: &devices::Device, f: &str) -> bool {
     f.is_empty()
         || [d.name.as_str(), d.vendor.as_str(), d.id.as_str(), d.driver.as_str()].iter().any(|s| s.to_lowercase().contains(f))
         || d.ids().is_some_and(|i| i.contains(f))
+}
+
+/// Which containers the containers screen's left column lists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CtScope {
+    All,
+    Running,
+    Paused,
+    Stopped,
+}
+
+impl CtScope {
+    pub const ALL: [CtScope; 4] = [CtScope::All, CtScope::Running, CtScope::Paused, CtScope::Stopped];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            CtScope::All => "ct.scope.all",
+            CtScope::Running => "ct.scope.running",
+            CtScope::Paused => "ct.scope.paused",
+            CtScope::Stopped => "ct.scope.stopped",
+        }
+    }
+
+    pub fn has(self, s: containers::State) -> bool {
+        use containers::State::*;
+        match self {
+            CtScope::All => true,
+            CtScope::Running => s == Running,
+            CtScope::Paused => s == Paused,
+            CtScope::Stopped => !s.live(),
+        }
+    }
+}
+
+/// Whether a container matches the containers filter (lower case).
+fn ct_matches(c: &containers::Container, f: &str) -> bool {
+    f.is_empty() || [c.name.as_str(), c.image.as_str(), c.id.as_str()].iter().any(|s| s.to_lowercase().contains(f))
 }
 
 /// A row of the overview's left column.
@@ -352,6 +390,11 @@ pub struct App {
     pub dev_tree: bool,
     /// The device selected, kept while the list is read again.
     dev_id: Option<String>,
+    /// The container list as containers shows it: indices into
+    /// `model.containers`.
+    pub ct_rows: Vec<usize>,
+    /// The container selected, kept while the list is read again.
+    ct_id: Option<String>,
     /// net lists only the sockets on this interface (`Enter` on it, `Esc`
     /// drops it); it follows the selection while set.
     pub net_nic: Option<String>,
@@ -400,7 +443,7 @@ pub struct App {
     sent_remote: Vec<Want>,
     /// Whether this machine's sampler was last told to read services,
     /// sockets and devices.
-    sent_local: (bool, bool, bool),
+    sent_local: (bool, bool, bool, bool),
     /// Inside another machine's screens (`Enter` on its card, `[` / `]`).
     pub away: Option<Away>,
     /// The card selected.
@@ -473,6 +516,8 @@ impl App {
             dev_lines: Vec::new(),
             dev_tree: false,
             dev_id: None,
+            ct_rows: Vec::new(),
+            ct_id: None,
             net_nic: None,
             me: None,
             dirty: true,
@@ -503,7 +548,7 @@ impl App {
             asked: Vec::new(),
             next_act: 0,
             sent_remote: Vec::new(),
-            sent_local: (false, false, false),
+            sent_local: (false, false, false, false),
             away: None,
             fleet_sel: 0,
             fleet_cols: 1,
@@ -712,6 +757,9 @@ impl App {
         if dirty.dev {
             self.refresh_dev();
         }
+        if dirty.ct {
+            self.refresh_ct();
+        }
         while let Ok((t, o)) = self.kill_rx.try_recv() {
             self.toast(kill_toast(&t, o));
         }
@@ -791,6 +839,7 @@ impl App {
             Msg::Svc(_) => dirty.svc = true,
             Msg::Conns(_) => dirty.net = true,
             Msg::Devices(_) => dirty.dev = true,
+            Msg::Containers(_) => dirty.ct = true,
             // An interface's addresses may change under its narrowing.
             Msg::Nics(_) if self.net_nic.is_some() => dirty.net = true,
             _ => {}
@@ -937,6 +986,7 @@ impl App {
         self.net_nic = None;
         self.dev_class = None;
         self.dev_id = None;
+        self.ct_id = None;
         self.drag = None;
         self.stack_drag = None;
         self.pending.clear();
@@ -948,19 +998,22 @@ impl App {
         self.net_rows.clear();
         self.dev_rows.clear();
         self.dev_lines.clear();
+        self.ct_rows.clear();
         self.dirty = true;
         self.refresh_svc();
         self.refresh_net();
         self.refresh_dev();
+        self.refresh_ct();
     }
 
     /// Tell the samplers what the screen shown needs: services, sockets and
     /// devices only while their screen shows, and another machine's readings
     /// only while inside it.
     fn sync_sources(&mut self) {
-        let (svc, net, dev) = (self.screen == Screen::Svc, self.screen == Screen::Net, self.screen == Screen::Devices);
+        let (svc, net, dev, ct) =
+            (self.screen == Screen::Svc, self.screen == Screen::Net, self.screen == Screen::Devices, self.screen == Screen::Containers);
         let away = self.away.as_ref().map(|a| a.peer);
-        let local = if away.is_some() { (false, false, false) } else { (svc, net, dev) };
+        let local = if away.is_some() { (false, false, false, false) } else { (svc, net, dev, ct) };
         if local.0 != self.sent_local.0 {
             let _ = self.ctl.send(Ctl::Services(local.0));
         }
@@ -970,9 +1023,16 @@ impl App {
         if local.2 != self.sent_local.2 {
             let _ = self.ctl.send(Ctl::Devices(local.2));
         }
+        if local.3 != self.sent_local.3 {
+            let _ = self.ctl.send(Ctl::Containers(local.3));
+        }
         self.sent_local = local;
         for (i, tx) in self.fleet_tx.iter().enumerate() {
-            let want = if away == Some(i) { Want { detail: true, services: svc, conns: net, devices: dev } } else { Want::default() };
+            let want = if away == Some(i) {
+                Want { detail: true, services: svc, conns: net, devices: dev, containers: ct }
+            } else {
+                Want::default()
+            };
             if self.sent_remote.get(i) != Some(&want) {
                 let _ = tx.send(ToHost::Want(want));
                 if let Some(w) = self.sent_remote.get_mut(i) {
@@ -1240,6 +1300,36 @@ impl App {
         self.dev_id = self.selected_dev().map(|d| d.id.clone());
     }
 
+    /// The containers read, or none yet.
+    pub fn containers(&self) -> &[containers::Container] {
+        self.model.containers.as_ref().map_or(&[], |c| &c.list)
+    }
+
+    /// The container the containers screen has selected.
+    pub fn selected_ct(&self) -> Option<&containers::Container> {
+        let sel = self.view_of(Screen::Containers).sel[1];
+        self.ct_rows.get(sel).and_then(|&i| self.containers().get(i))
+    }
+
+    /// The scope the containers screen's left column has selected.
+    pub fn ct_scope(&self) -> CtScope {
+        CtScope::ALL[self.view_of(Screen::Containers).sel[0].min(CtScope::ALL.len() - 1)]
+    }
+
+    fn refresh_ct(&mut self) {
+        let f = self.filter_of(Screen::Containers);
+        let scope = self.ct_scope();
+        let list = self.model.containers.as_ref().map_or(&[][..], |c| &c.list);
+        let rows: Vec<usize> = (0..list.len()).filter(|&i| scope.has(list[i].state) && ct_matches(&list[i], &f)).collect();
+        let found = self.ct_id.as_ref().and_then(|id| rows.iter().position(|&i| list[i].id == *id));
+        self.ct_rows = rows;
+        if let Some(pos) = found {
+            self.views.entry(Screen::Containers).or_default().sel[1] = pos;
+        }
+        self.clamp_all();
+        self.ct_id = self.selected_ct().map(|c| c.id.clone());
+    }
+
     /// The `/` text of this screen; empty where none is typed or the screen
     /// has no list to narrow.
     pub fn filter(&self) -> &str {
@@ -1257,6 +1347,7 @@ impl App {
         self.refresh_svc();
         self.refresh_net();
         self.refresh_dev();
+        self.refresh_ct();
     }
 
     pub fn mine_only(&self) -> bool {
@@ -1358,6 +1449,8 @@ impl App {
             (Screen::Sys, Pane::Mid) => self.model.hw.as_ref().map_or(0, |h| h.slots.len()),
             (Screen::Devices, Pane::Left) => 1 + self.dev_classes.len(),
             (Screen::Devices, Pane::Mid) => self.dev_rows.len(),
+            (Screen::Containers, Pane::Left) => CtScope::ALL.len(),
+            (Screen::Containers, Pane::Mid) => self.ct_rows.len(),
             _ => 0,
         }
     }
@@ -1488,6 +1581,12 @@ impl App {
             (Screen::Svc, Pane::Left) => self.refresh_svc(),
             (Screen::Net, Pane::Mid) => self.net_key = self.selected_conn().map(conn_key),
             (Screen::Devices, Pane::Mid) => self.dev_id = self.selected_dev().map(|d| d.id.clone()),
+            (Screen::Containers, Pane::Mid) => self.ct_id = self.selected_ct().map(|c| c.id.clone()),
+            (Screen::Containers, Pane::Left) => {
+                self.views.entry(Screen::Containers).or_default().sel[1] = 0;
+                self.ct_id = None;
+                self.refresh_ct();
+            }
             (Screen::Devices, Pane::Left) => {
                 self.dev_class = self.selected_dev_class().map(|c| c.name.clone());
                 self.views.entry(Screen::Devices).or_default().sel[1] = 0;
@@ -1863,9 +1962,9 @@ impl App {
             }
             Act::Enter if built => self.enter(),
             Act::Filter => {
-                // svc, net and devices filter their own lists; anywhere else
+                // svc, net, devices and containers filter their own lists; anywhere else
                 // it is procs'.
-                if !matches!(self.screen, Screen::Svc | Screen::Net | Screen::Devices) {
+                if !matches!(self.screen, Screen::Svc | Screen::Net | Screen::Devices | Screen::Containers) {
                     self.goto(Screen::Procs);
                 }
                 self.view_mut().focus = Pane::Mid.index();
@@ -1930,6 +2029,10 @@ impl App {
             Act::Settings => self.open_settings(),
             Act::Scale(to) => self.scale(to),
             Act::Copy if self.screen == Screen::Devices => match self.selected_dev().map(|d| d.id.clone()) {
+                Some(id) => self.copy(id),
+                None => self.toast(tr("toast.copy_none")),
+            },
+            Act::Copy if self.screen == Screen::Containers => match self.selected_ct().map(|c| c.id.clone()) {
                 Some(id) => self.copy(id),
                 None => self.toast(tr("toast.copy_none")),
             },
@@ -2001,6 +2104,7 @@ impl App {
             (Screen::Procs, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
             (Screen::Svc, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
             (Screen::Devices, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
+            (Screen::Containers, Pane::Left) => self.view_mut().focus = Pane::Mid.index(),
             (Screen::Svc, Pane::Mid | Pane::Right) => match self.selected_svc().map(|s| (s.pid, s.name.clone())) {
                 Some((Some(pid), _)) => self.open_proc(pid),
                 Some((None, name)) => self.toast(trf("toast.svc_no_pid", &[&name])),
@@ -2156,6 +2260,10 @@ impl App {
                 d.list.len(),
                 classes.join(" | ")
             );
+        }
+        if let Some(c) = &self.model.containers {
+            let rt = c.runtime.map_or("none", |r| r.key());
+            s += &format!("containers: {} of {} ({rt}, {:?})\n", self.ct_rows.len(), c.list.len(), self.ct_scope());
         }
         if self.model.nic_read {
             let names: Vec<&str> = self.model.nics.iter().map(|n| n.name.as_str()).collect();
@@ -2413,6 +2521,8 @@ mod tests {
         assert_eq!(a.screen, Screen::Sys);
         keys(&mut a, "<Tab>");
         assert_eq!(a.screen, Screen::Devices);
+        keys(&mut a, "<Tab>");
+        assert_eq!(a.screen, Screen::Containers);
         // The fleet's tab comes after the last screen, then round.
         keys(&mut a, "<Tab>");
         assert!(a.fleet);
@@ -2588,7 +2698,7 @@ mod tests {
         keys(&mut a, "6");
         assert_eq!(
             wants0.try_iter().collect::<Vec<_>>(),
-            [ToHost::Want(Want { detail: true, services: true, conns: false, devices: false })]
+            [ToHost::Want(Want { detail: true, services: true, conns: false, devices: false, containers: false })]
         );
         assert!(ctl.try_recv().is_err());
         // Its [agent] allow lists nothing, so it is view only; sampling stays with it.
@@ -2794,6 +2904,39 @@ mod tests {
         assert_eq!(a.screen, Screen::Procs);
         assert_eq!(a.selected_proc().map(|p| p.pid), Some(7));
         assert!(matches!(ctl.try_iter().last(), Some(Ctl::Services(false))));
+    }
+
+    #[test]
+    fn containers_read_only_while_shown_scope_and_filter() {
+        use containers::{Container, Containers, State};
+        let (mut a, tx, ctl) = app();
+        keys(&mut a, "C");
+        assert_eq!(a.screen, Screen::Containers);
+        keys(&mut a, "1");
+        let got: Vec<Ctl> = ctl.try_iter().filter(|c| matches!(c, Ctl::Containers(_))).collect();
+        assert!(matches!(got[..], [Ctl::Containers(true), Ctl::Containers(false)]), "{got:?}");
+        let ct = |name: &str, state| Container {
+            id: format!("id-{name}"),
+            name: name.into(),
+            image: "img".into(),
+            state,
+            ..Container::default()
+        };
+        let list = vec![ct("web", State::Running), ct("db", State::Running), ct("old", State::Exited), ct("hold", State::Paused)];
+        tx.send(Msg::Containers(Box::new(Containers { list, runtime: Some(containers::Runtime::Docker), note: None }))).unwrap();
+        a.pump();
+        keys(&mut a, "C");
+        assert_eq!(a.ct_rows.len(), 4);
+        // The left column narrows to running, then to stopped.
+        keys(&mut a, "j");
+        assert_eq!((a.ct_scope(), a.ct_rows.len()), (CtScope::Running, 2));
+        keys(&mut a, "j j");
+        assert_eq!(a.selected_ct().map(|c| c.name.as_str()), Some("old"));
+        keys(&mut a, "k k <Enter>");
+        assert_eq!(a.focus(), Pane::Mid);
+        keys(&mut a, "/ d b <Enter>");
+        assert_eq!(a.selected_ct().map(|c| c.name.as_str()), Some("db"));
+        assert!(a.report().contains("containers: 1 of 4"), "{}", a.report());
     }
 
     #[test]

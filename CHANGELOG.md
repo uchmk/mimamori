@@ -4,6 +4,16 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.48.0] - 2026-10-11
+
+### 追加
+- containers 画面（`C`、`screen containers`）。Docker・Podman のコンテナを、左にスコープ（すべて・実行中・一時停止・停止。個数つき）、中に一覧（状態・名前・CPU%・メモリ・イメージ）、右に選んだ 1 つ（ID・イメージ・状態・作成・CPU・メモリと上限・プロセス数・直近 1 分の CPU とメモリのグラフ）で出す。`/` で名前・イメージ・ID を絞り込み、`y` で ID をコピー。
+- エンジンの Docker 互換 API を Unix ソケット（Windows は名前付きパイプ）で直接読む。`docker` コマンドも C のライブラリも要らない。`DOCKER_HOST`、`/var/run/docker.sock`、rootless と Podman のソケット、Windows の `docker_engine` と `podman-machine-default` を順に試し、見つからない・権限が無い・答えが読めないときは理由を中に書く。画面が出ている間だけ 3 秒ごとに、専用のスレッドで読む。
+- fleet: 見る側が別の機械のコンテナを `Want.containers` で頼める。`--snapshot` の JSON にも `containers` が入る。
+
+### 変更
+- fleet のプロトコルを 6 から 7 にした（`Want` に `containers` を足した）。見る側と agent のどちらかが v0.47 以前だと、カードは `another version` になる。両方を v0.48.0 にそろえること。
+
 ## [0.47.0] - 2026-10-11
 
 ### 追加

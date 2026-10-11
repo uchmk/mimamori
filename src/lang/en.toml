@@ -15,6 +15,7 @@ disk = "disk"
 sensors = "sensors"
 sys = "sys"
 devices = "devices"
+containers = "containers"
 fleet = "fleet"
 
 [header]
@@ -30,6 +31,7 @@ sensors = "{0} sensors · hottest {1} · {2} fans"
 sys = "{0} · {1} · {2}"
 sys_slots = "{0} in {1} of {2} slots"
 devices = "{0} devices · {1} classes · {2} USB · {3} with a problem"
+containers = "{0} containers · {1} running · {2}"
 fleet = "{0} machines · {1} up · this one and every [[host]] in config.toml"
 
 [misc]
@@ -655,6 +657,48 @@ no_ids = "No pci.ids / usb.ids (the hwdata package): the devices are named by th
 no_setupapi = "Windows' SetupAPI gave no device list."
 no_iokit = "The IOKit registry could not be asked."
 other_os = "This OS has no device list yet."
+
+[ct]
+scopes = "containers"
+count = "{0} containers"
+empty = "No container matches"
+detail = "container"
+none = "No container selected"
+id = "Id"
+image = "Image"
+status = "Status"
+created = "Created"
+cpu = "CPU"
+memory = "Memory"
+pids = "Processes"
+docker = "Docker"
+podman = "Podman"
+
+[ct.scope]
+all = "All"
+running = "Running"
+paused = "Paused"
+stopped = "Stopped"
+
+[ct.col]
+state = "STATE"
+name = "NAME"
+cpu = "CPU%"
+mem = "MEM"
+image = "IMAGE"
+
+[ct.state]
+running = "running"
+paused = "paused"
+restarting = "restarting"
+created = "created"
+exited = "exited"
+other = "other"
+
+[ct.note]
+none = "No Docker or Podman is listening (DOCKER_HOST, /var/run/docker.sock, the Podman socket, or the Windows pipe)."
+denied = "The engine's socket is there, but this user may not use it (the docker group, or rootless Podman)."
+failed = "The engine did not answer in time, or not in a way that could be read."
 
 [sensors]
 chips = "Chips"

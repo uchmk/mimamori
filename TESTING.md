@@ -187,6 +187,18 @@ back to `[ ]`.
 - [ ] 3h.8 Fleet: `Enter` on a v0.43 agent's card, then `D`, shows that machine's devices; an agent older than v0.43 shows `another version` on its card instead (protocol 6).
 - [ ] 3h.9 A narrow window drops the status, then the maker column; long names are cut with `…` and do not run into the next column; with `language = "ja"` the classes on macOS and Linux and every label read in Japanese.
 
+## 3m. Containers (`C`)
+
+- [ ] 3m.1 Linux with Docker running a few containers (`docker run -d nginx`, one stopped, one `docker pause`d): `C` opens containers; the left column counts All / Running / Paused / Stopped as `docker ps -a` does; the middle lists state, name, CPU %, memory and image, running ones first; the crumb reads `<n> containers · <n> running · Docker`.
+- [ ] 3m.2 The CPU % and memory of a busy container (`docker run --rm -d busybox sh -c 'while :; do :; done'`) match `docker stats --no-stream` (memory without the page cache); a stopped one shows `—`. The right column's id, image, status, created time, memory against its limit (`docker run -m 256m`) and process count match `docker inspect`.
+- [ ] 3m.3 `docker stop` / `docker start` a container: within 3 s its state changes; leave the screen (`1`): nothing is read any more (no `docker` API traffic in `journalctl -u docker` / `strace`).
+- [ ] 3m.4 `/ ngi <Enter>` keeps the containers by name, image or id and `Esc` drops it; `y` copies the id and the toast says `Copied: …`.
+- [ ] 3m.5 Windows with Docker Desktop (named pipe `\.\pipe\docker_engine`) and with `DOCKER_HOST=npipe:////./pipe/docker_engine`: the same list appears; with Docker Desktop stopped the middle says no Docker or Podman is listening.
+- [ ] 3m.6 Podman: rootless (`systemctl --user start podman.socket`) and on Windows / macOS with a Podman machine: the crumb says Podman and the list matches `podman ps -a`.
+- [ ] 3m.7 Linux as a user outside the `docker` group: the middle says the socket is there but this user may not use it.
+- [ ] 3m.8 Fleet: `Enter` on a v0.48 agent's card, then `C`, shows that machine's containers; an agent older than v0.48 shows `another version` on its card (protocol 7).
+- [ ] 3m.9 A narrow window drops the image, then the memory column; long names are cut with `…`; with `language = "ja"` every label reads in Japanese.
+
 ## 3i. Export
 
 - [ ] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from).

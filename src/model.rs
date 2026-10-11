@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use crate::collect::{Mem, Msg, Proc, Static, battery, devices, disk, gpu, hw, net, sensors, svc};
+use crate::collect::{Mem, Msg, Proc, Static, battery, containers, devices, disk, gpu, hw, net, sensors, svc};
 
 /// Samples kept for the graphs and the heatmap: a minute at the default
 /// interval.
@@ -237,6 +237,10 @@ pub struct Model {
     /// The last reading of devices, kept when the devices screen is left;
     /// `None` until read once.
     pub devices: Option<devices::Devices>,
+    /// The last reading of containers; `None` until read once.
+    pub containers: Option<containers::Containers>,
+    /// Each live container's CPU percent and memory bytes, by id.
+    pub ct_hist: HashMap<String, (Ring, Ring)>,
 }
 
 fn pct(part: u64, whole: u64) -> f32 {
@@ -344,6 +348,17 @@ impl Model {
             Msg::Hardware(h) => self.hw = Some(*h),
             Msg::Battery(b) => self.battery = b,
             Msg::Devices(d) => self.devices = Some(*d),
+            Msg::Containers(c) => {
+                let mut hist = std::mem::take(&mut self.ct_hist);
+                hist.retain(|id, _| c.list.iter().any(|x| x.id == *id && x.state.live()));
+                for x in c.list.iter().filter(|x| x.state.live()) {
+                    let (cpu, mem) = hist.entry(x.id.clone()).or_default();
+                    cpu.push(x.cpu.unwrap_or(0.0));
+                    mem.push(x.mem.unwrap_or(0) as f32);
+                }
+                self.ct_hist = hist;
+                self.containers = Some(*c);
+            }
         }
     }
 

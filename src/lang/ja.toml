@@ -13,6 +13,7 @@ disk = "ディスク"
 sensors = "センサー"
 sys = "システム"
 devices = "デバイス"
+containers = "コンテナ"
 fleet = "フリート"
 
 [header]
@@ -28,6 +29,7 @@ sensors = "センサー {0} · 最高 {1} · ファン {2}"
 sys = "{0} · {1} · {2}"
 sys_slots = "{0}（{2} スロット中 {1} を使用）"
 devices = "デバイス {0} · 種類 {1} · USB {2} · 問題 {3}"
+containers = "コンテナ {0} · 実行中 {1} · {2}"
 fleet = "機械 {0} · 応答 {1} · この機械と config.toml の [[host]]"
 
 [misc]
@@ -654,6 +656,48 @@ no_setupapi = "Windows の SetupAPI がデバイスの一覧を返しません�
 no_iokit = "IOKit のレジストリに問い合わせできませんでした。"
 other_os = "この OS ではまだデバイスの一覧を読めません。"
 
+[ct]
+scopes = "コンテナ"
+count = "{0} 個"
+empty = "当てはまるコンテナはありません"
+detail = "コンテナ"
+none = "コンテナが選ばれていません"
+id = "ID"
+image = "イメージ"
+status = "状態"
+created = "作成"
+cpu = "CPU"
+memory = "メモリ"
+pids = "プロセス"
+docker = "Docker"
+podman = "Podman"
+
+[ct.scope]
+all = "すべて"
+running = "実行中"
+paused = "一時停止"
+stopped = "停止"
+
+[ct.col]
+state = "状態"
+name = "名前"
+cpu = "CPU%"
+mem = "MEM"
+image = "イメージ"
+
+[ct.state]
+running = "実行中"
+paused = "一時停止"
+restarting = "再起動中"
+created = "作成済み"
+exited = "停止"
+other = "不明"
+
+[ct.note]
+none = "Docker も Podman も待ち受けていません（DOCKER_HOST・/var/run/docker.sock・Podman のソケット・Windows のパイプ）。"
+denied = "エンジンのソケットはありますが、このユーザーは使えません（docker グループ、または rootless の Podman）。"
+failed = "エンジンが時間内に答えなかったか、読める形で答えませんでした。"
+
 [sensors]
 chips = "チップ"
 chip_count = "チップ {0}"
@@ -757,18 +801,19 @@ remote_runs_plain = "{0} のエージェントが実行します。"
 "A page up" = "1 ページ上へ"
 "CPU" = "CPU"
 "Clear the filter (and on net the interface)" = "絞り込みを消す（net ではインターフェースも）"
-"Copy (devices: the id; fleet: the sample [[host]], or the machine's address)" = "コピー（devices: ID。fleet: [[host]] の見本、または機械のアドレス）"
+"Copy (devices and containers: the id; fleet: the sample [[host]], or the machine's address)" = "コピー（devices・containers: ID。fleet: [[host]] の見本、または機械のアドレス）"
 "Close" = "閉じる"
 "Column to the left" = "左の列へ"
 "Column to the right" = "右の列へ"
 "Columns back to equal widths" = "列の幅を等分に戻す"
 "Delete a character" = "1 文字消す"
+"Containers (Docker, Podman)" = "コンテナ（Docker・Podman）"
 "Devices (Device Manager, USB)" = "デバイス（デバイス マネージャー・USB）"
 "Disks" = "ディスク"
 "Down" = "下へ"
 "Drop the filter" = "絞り込みをやめる"
 "End the process; on svc, stop the service" = "プロセスを終了する。svc ではサービスを停止する"
-"Filter processes, services, connections or devices" = "プロセス・サービス・接続・デバイスを絞り込む"
+"Filter processes, services, connections, devices or containers" = "プロセス・サービス・接続・デバイス・コンテナを絞り込む"
 "First row" = "先頭の行へ"
 "Fleet: every machine" = "フリート: すべての機械"
 "Next machine (this one, then the hosts that are up)" = "次の機械（この機械、続いて接続している host）"

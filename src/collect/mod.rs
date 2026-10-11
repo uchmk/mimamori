@@ -7,6 +7,7 @@
 //! its own.
 
 pub mod battery;
+pub mod containers;
 pub mod devices;
 pub mod disk;
 pub mod gpu;
@@ -117,6 +118,8 @@ pub enum Msg {
     Battery(Option<battery::Battery>),
     /// Only while the devices screen wants them, every [`DEV_EVERY`].
     Devices(Box<devices::Devices>),
+    /// Only while the containers screen wants them, every [`CT_EVERY`].
+    Containers(Box<containers::Containers>),
 }
 
 #[derive(Debug)]
@@ -130,6 +133,8 @@ pub enum Ctl {
     Net(bool),
     /// Read devices (at once, then every [`DEV_EVERY`]) or stop reading them.
     Devices(bool),
+    /// Read containers (at once, then every [`CT_EVERY`]) or stop reading them.
+    Containers(bool),
     /// Sample processes every this many rounds (2 in the window); 0 stops:
     /// the fleet agent reads them only while a viewer watches.
     Procs(u32),
@@ -158,6 +163,10 @@ pub const NET_EVERY: Duration = Duration::from_secs(2);
 /// How often devices are read while wanted: a plugged device shows within
 /// this, and walking every device each interval is more than it needs.
 pub const DEV_EVERY: Duration = Duration::from_secs(5);
+
+/// How often containers are read while wanted: each running one's stats
+/// are a request of its own to the engine.
+pub const CT_EVERY: Duration = Duration::from_secs(3);
 
 /// Start the sampler; `wake` is repainted after every message (the agent has
 /// no window and passes `None`).
@@ -210,13 +219,15 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
     let mut net_next: Option<Instant> = None;
     let mut devs = devices::Reader::default();
     let mut dev_next: Option<Instant> = None;
+    let mut cts = containers::Reader::default();
+    let mut ct_next: Option<Instant> = None;
     let mut paused = false;
     let mut procs_every: u32 = 2;
     // The first CPU reading needs a gap after the first refresh.
     let mut next = Instant::now() + interval.max(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
     let mut tick: u64 = 0;
     loop {
-        let due = if paused { None } else { [Some(next), Some(svc_next), net_next, dev_next].into_iter().flatten().min() };
+        let due = if paused { None } else { [Some(next), Some(svc_next), net_next, dev_next, ct_next].into_iter().flatten().min() };
         let got = match due {
             Some(t) => ctl.recv_timeout(t.saturating_duration_since(Instant::now())),
             None => ctl.recv().map_err(|_| RecvTimeoutError::Disconnected),
@@ -255,6 +266,13 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
                 dev_next = on.then(|| Instant::now() + DEV_EVERY);
                 continue;
             }
+            Ok(Ctl::Containers(on)) => {
+                if on && !send(Msg::Containers(Box::new(cts.read()))) {
+                    return;
+                }
+                ct_next = on.then(|| Instant::now() + CT_EVERY);
+                continue;
+            }
             Ok(Ctl::Procs(n)) => {
                 procs_every = n;
                 // A new watcher gets them on the next round.
@@ -285,6 +303,14 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
                 return;
             }
             dev_next = Some(Instant::now() + DEV_EVERY);
+        }
+        if let Some(t) = ct_next
+            && Instant::now() >= t
+        {
+            if !send(Msg::Containers(Box::new(cts.read()))) {
+                return;
+            }
+            ct_next = Some(Instant::now() + CT_EVERY);
         }
         if Instant::now() < next {
             continue;

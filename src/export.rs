@@ -37,6 +37,7 @@ struct Snapshot<'a> {
     battery: &'a Option<collect::battery::Battery>,
     hardware: &'a Option<collect::hw::Hardware>,
     devices: &'a Option<collect::devices::Devices>,
+    containers: &'a Option<collect::containers::Containers>,
 }
 
 #[derive(Serialize)]
@@ -73,6 +74,7 @@ fn complete(m: &Model) -> bool {
         && m.sensor_read
         && m.hw.is_some()
         && m.devices.is_some()
+        && m.containers.is_some()
 }
 
 /// Everything, as JSON.
@@ -82,6 +84,7 @@ pub fn snapshot() -> Result<String, String> {
     let _ = ctl.send(Ctl::Services(true));
     let _ = ctl.send(Ctl::Net(true));
     let _ = ctl.send(Ctl::Devices(true));
+    let _ = ctl.send(Ctl::Containers(true));
     let mut m = Model::default();
     let end = Instant::now() + PATIENCE;
     while !complete(&m) {
@@ -106,6 +109,7 @@ pub fn snapshot() -> Result<String, String> {
         battery: &m.battery,
         hardware: &m.hw,
         devices: &m.devices,
+        containers: &m.containers,
     };
     serde_json::to_string_pretty(&snap).map_err(|e| e.to_string())
 }
@@ -230,6 +234,7 @@ mod tests {
             battery: &m.battery,
             hardware: &m.hw,
             devices: &m.devices,
+            containers: &m.containers,
         };
         let v: serde_json::Value = serde_json::from_str(&serde_json::to_string(&snap).unwrap()).unwrap();
         assert!(v["cpu"]["usage"].is_array() && v["mem"]["total"].is_number());

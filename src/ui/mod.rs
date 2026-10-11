@@ -4,6 +4,7 @@
 //! once the frame is drawn, so drawing only ever reads the state.
 
 mod confirm;
+mod containers;
 mod cpu;
 mod devices;
 mod disk;
@@ -315,6 +316,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
                     Screen::Sensors => sensors::draw(&mut cx, rects),
                     Screen::Sys => sys::draw(&mut cx, rects),
                     Screen::Devices => devices::draw(&mut cx, rects),
+                    Screen::Containers => containers::draw(&mut cx, rects),
                 }
             }
             for (i, r) in rects.into_iter().enumerate() {
@@ -477,6 +479,14 @@ fn draw_crumb(pen: &Pen, app: &App, r: Rect) {
                 let problems = d.list.iter().filter(|x| x.status.is_problem()).count().to_string();
                 let usb = d.list.iter().filter(|x| matches!(x.bus, crate::collect::devices::Bus::Usb { .. })).count().to_string();
                 trf("crumb.devices", &[&d.list.len().to_string(), &app.dev_classes.len().to_string(), &usb, &problems])
+            }
+        },
+        Screen::Containers => match &m.containers {
+            None => tr("misc.reading").to_string(),
+            Some(c) => {
+                let running = c.list.iter().filter(|x| x.state == crate::collect::containers::State::Running).count();
+                let runtime = c.runtime.map_or("—", |r| tr(r.key()));
+                trf("crumb.containers", &[&c.list.len().to_string(), &running.to_string(), runtime])
             }
         },
     };

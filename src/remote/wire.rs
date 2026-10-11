@@ -81,6 +81,8 @@ pub enum Route {
     Conns,
     /// Only those on its devices screen.
     Devices,
+    /// Only those on its containers screen.
+    Containers,
     /// What does not change: everyone who watches, and kept for those who
     /// start watching later.
     Static,
@@ -92,6 +94,7 @@ pub fn route(m: &Msg) -> Route {
         Msg::Svc(_) => Route::Services,
         Msg::Conns(_) => Route::Conns,
         Msg::Devices(_) => Route::Devices,
+        Msg::Containers(_) => Route::Containers,
         _ => Route::Detail,
     }
 }
@@ -104,6 +107,7 @@ impl Want {
             Route::Services => self.detail && self.services,
             Route::Conns => self.detail && self.conns,
             Route::Devices => self.detail && self.devices,
+            Route::Containers => self.detail && self.containers,
         }
     }
 }
@@ -115,13 +119,14 @@ pub fn union(wants: impl IntoIterator<Item = Want>) -> Want {
         services: a.services || (w.detail && w.services),
         conns: a.conns || (w.detail && w.conns),
         devices: a.devices || (w.detail && w.devices),
+        containers: a.containers || (w.detail && w.containers),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collect::{Mem, Static, battery, devices, disk, gpu, hw, net, sensors, svc, topo};
+    use crate::collect::{Mem, Static, battery, containers, devices, disk, gpu, hw, net, sensors, svc, topo};
     use crate::remote::proto;
 
     fn every_msg() -> Vec<Msg> {
@@ -197,6 +202,18 @@ mod tests {
                 }],
                 note: Some(devices::Note::NoIds),
             })),
+            Msg::Containers(Box::new(containers::Containers {
+                list: vec![containers::Container {
+                    id: "b3f1c2d4e5f6".into(),
+                    name: "web".into(),
+                    state: containers::State::Running,
+                    cpu: Some(12.5),
+                    mem: Some(1 << 20),
+                    ..containers::Container::default()
+                }],
+                runtime: Some(containers::Runtime::Podman),
+                note: None,
+            })),
         ]
     }
 
@@ -252,12 +269,15 @@ mod tests {
         assert_eq!(routes[9], Route::Conns);
         assert_eq!(routes[10], Route::Static);
         assert_eq!(routes[12], Route::Devices);
+        assert_eq!(routes[13], Route::Containers);
         let watch = Want { detail: true, ..Want::default() };
         let svc = Want { services: true, ..watch };
         assert!(watch.takes(Route::Detail) && !watch.takes(Route::Services));
         assert!(svc.takes(Route::Services) && !svc.takes(Route::Conns));
         let dev = Want { devices: true, ..watch };
         assert!(dev.takes(Route::Devices) && !watch.takes(Route::Devices) && !dev.takes(Route::Services));
+        let ct = Want { containers: true, ..watch };
+        assert!(ct.takes(Route::Containers) && !watch.takes(Route::Containers) && !ct.takes(Route::Devices));
         assert_eq!(union([Want { devices: true, ..Want::default() }]), Want::default());
         assert_eq!(union([watch, dev]), dev);
         assert!(!Want::default().takes(Route::Static));

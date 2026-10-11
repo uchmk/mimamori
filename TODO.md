@@ -111,6 +111,13 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `collect/devices/`（Windows は SetupAPI と CfgMgr32、Linux は sysfs と pci.ids / usb.ids、macOS は IOKit の `IOUSBHostDevice` と `IOPCIDevice`）。
   画面が出ている間だけ 5 秒ごと。fleet はプロトコル 6 の `Want.devices` (v0.43.0)
 - [ ] devices の実機の確認 【実機】（TESTING.md 3h）。
+- [x] containers（C）: Docker・Podman のコンテナの一覧（状態・CPU・メモリ・イメージ・直近 1 分のグラフ）。
+  → `collect/containers/`（エンジンの Docker 互換 API を Unix ソケット / Windows の名前付きパイプで。`docker` コマンドは使わない）。
+  画面が出ている間だけ 3 秒ごと。fleet はプロトコル 7 の `Want.containers` (v0.48.0)
+- [ ] containers の実機の確認 【実機】（TESTING.md 3m）。
+- [ ] containers: ランタイムが無い Linux で cgroup（`/sys/fs/cgroup`）から LXC・systemd-nspawn などを拾う。
+- [ ] containers: 開始・停止・再起動の操作（`svcctl` と同じ確認の形で）。
+- [ ] containers: fleet のカードの警告に、止まっているコンテナ・再起動を繰り返すコンテナの数を足す。
 
 ## 2. 構成と OS
 

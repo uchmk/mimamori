@@ -515,7 +515,7 @@ mod tests {
         });
         let (rx, want) = watch_with(addr);
         assert!(matches!(next(&rx), Event::Up(_)));
-        let w = Want { detail: true, services: true, conns: false, devices: false };
+        let w = Want { detail: true, services: true, conns: false, devices: false, containers: false };
         want.send(ToHost::Want(w)).unwrap();
         assert_eq!(said_rx.recv_timeout(Duration::from_secs(5)), Ok(w));
         assert_eq!(next(&rx), Event::Down(Why::Closed));

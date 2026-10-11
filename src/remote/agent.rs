@@ -239,6 +239,7 @@ struct Cache {
     svc: Option<Frame>,
     conns: Option<Frame>,
     devices: Option<Frame>,
+    containers: Option<Frame>,
 }
 
 impl Cache {
@@ -253,6 +254,7 @@ impl Cache {
             Route::Services => self.svc = Some(f),
             Route::Conns => self.conns = Some(f),
             Route::Devices => self.devices = Some(f),
+            Route::Containers => self.containers = Some(f),
         }
     }
 
@@ -270,6 +272,9 @@ impl Cache {
         }
         if new.takes(Route::Devices) && !old.takes(Route::Devices) {
             out.extend(self.devices.clone());
+        }
+        if new.takes(Route::Containers) && !old.takes(Route::Containers) {
+            out.extend(self.containers.clone());
         }
         out
     }
@@ -387,6 +392,10 @@ fn hub(cfg: &Config, port: u16, direct: Option<SocketAddr>, ins: &Receiver<HubIn
             if want.devices != reading.devices {
                 let _ = ctl.send(Ctl::Devices(want.devices));
                 cache.devices = None;
+            }
+            if want.containers != reading.containers {
+                let _ = ctl.send(Ctl::Containers(want.containers));
+                cache.containers = None;
             }
             reading = want;
         }

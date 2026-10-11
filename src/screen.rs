@@ -18,10 +18,11 @@ pub enum Screen {
     Sensors,
     Sys,
     Devices,
+    Containers,
 }
 
 impl Screen {
-    pub const ALL: [Screen; 11] = [
+    pub const ALL: [Screen; 12] = [
         Self::Ovw,
         Self::Cpu,
         Self::Mem,
@@ -33,6 +34,7 @@ impl Screen {
         Self::Sensors,
         Self::Sys,
         Self::Devices,
+        Self::Containers,
     ];
 
     /// The name in the keymap (`screen cpu`), in `state.toml` and in a
@@ -50,6 +52,7 @@ impl Screen {
             Self::Sensors => "sensors",
             Self::Sys => "sys",
             Self::Devices => "devices",
+            Self::Containers => "containers",
         }
     }
 
@@ -57,11 +60,12 @@ impl Screen {
         Self::ALL.into_iter().find(|x| x.name() == s || (s == "ovw" && *x == Self::Ovw))
     }
 
-    /// The key-like label on its tab: 1 to 9, then 0, then D.
+    /// The key-like label on its tab: 1 to 9, then 0, then D, then C.
     pub fn digit(self) -> char {
         match self.index() {
             9 => '0',
             10 => 'D',
+            11 => 'C',
             i => char::from(b'1' + i as u8),
         }
     }
@@ -85,6 +89,7 @@ impl Screen {
                 | Self::Sensors
                 | Self::Sys
                 | Self::Devices
+                | Self::Containers
         )
     }
 
@@ -102,6 +107,7 @@ impl Screen {
             Self::Sensors => "tab.sensors",
             Self::Sys => "tab.sys",
             Self::Devices => "tab.devices",
+            Self::Containers => "tab.containers",
         }
     }
 
@@ -119,6 +125,7 @@ impl Screen {
             Self::Sensors => [2.0, 2.6, 1.6],
             Self::Sys => [1.9, 2.6, 1.9],
             Self::Devices => [1.4, 3.0, 2.0],
+            Self::Containers => [1.3, 3.2, 2.0],
         }
     }
 
@@ -171,7 +178,7 @@ mod tests {
     #[test]
     fn digits_run_one_to_nine_then_zero() {
         let d: String = Screen::ALL.iter().map(|s| s.digit()).collect();
-        assert_eq!(d, "1234567890D");
+        assert_eq!(d, "1234567890DC");
         assert_eq!(Screen::from_name("devices"), Some(Screen::Devices));
         assert_eq!(Screen::from_name("procs"), Some(Screen::Procs));
         assert_eq!(Screen::from_name("ovw"), Some(Screen::Ovw));
