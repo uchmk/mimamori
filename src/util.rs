@@ -27,9 +27,18 @@ pub fn fmt_uptime(secs: u64) -> String {
     }
 }
 
+/// A clock time in this machine's time zone: `2026-10-10 18:15`. Where the
+/// time zone gives no single answer, UTC and says so.
+pub fn fmt_local(secs: u64) -> String {
+    use chrono::TimeZone;
+    match i64::try_from(secs).ok().and_then(|s| chrono::Local.timestamp_opt(s, 0).single()) {
+        Some(t) => t.format("%Y-%m-%d %H:%M").to_string(),
+        None => format!("{} UTC", fmt_epoch(secs)),
+    }
+}
+
 /// A clock time from seconds since the epoch, in UTC: `2026-10-10 09:15`.
-/// The process start in the detail column; good enough without a time zone
-/// crate, and labelled UTC where it is shown.
+/// The boot time on the sys screen, labelled UTC where it is shown.
 pub fn fmt_epoch(secs: u64) -> String {
     let days = (secs / 86400) as i64;
     let rem = secs % 86400;
@@ -102,5 +111,13 @@ mod tests {
     fn formats_an_epoch_in_utc() {
         assert_eq!(fmt_epoch(0), "1970-01-01 00:00");
         assert_eq!(fmt_epoch(1_791_623_700), "2026-10-10 09:15");
+    }
+
+    #[test]
+    fn formats_an_epoch_in_local_time() {
+        use chrono::TimeZone;
+        let want = chrono::Local.timestamp_opt(1_791_623_700, 0).unwrap().format("%Y-%m-%d %H:%M").to_string();
+        assert_eq!(fmt_local(1_791_623_700), want);
+        assert!(!fmt_local(1_791_623_700).ends_with("UTC"));
     }
 }

@@ -16,6 +16,8 @@ mod pdh;
 pub mod sensors;
 pub mod svc;
 pub mod topo;
+#[cfg(windows)]
+mod wts;
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -306,11 +308,19 @@ struct ProcSampler {
     users: Users,
     users_at: Instant,
     names: HashMap<String, String>,
+    #[cfg(windows)]
+    wts: wts::Wts,
 }
 
 impl ProcSampler {
     fn new() -> Self {
-        Self { users: Users::new_with_refreshed_list(), users_at: Instant::now(), names: HashMap::new() }
+        Self {
+            users: Users::new_with_refreshed_list(),
+            users_at: Instant::now(),
+            names: HashMap::new(),
+            #[cfg(windows)]
+            wts: wts::Wts::default(),
+        }
     }
 
     fn sample(&mut self, sys: &mut System) -> (Vec<Proc>, Option<u64>) {
@@ -326,6 +336,8 @@ impl ProcSampler {
         if self.users_at.elapsed() > Duration::from_secs(60) {
             self.users.refresh();
             self.names.clear();
+            #[cfg(windows)]
+            self.wts.forget();
             self.users_at = Instant::now();
         }
         let threads = thread_counts();
@@ -359,9 +371,54 @@ impl ProcSampler {
                 status: p.status().to_string(),
             });
         }
+        // Not elevated, sysinfo cannot open other users' processes: no owner,
+        // no memory. WTS has both without opening them.
+        #[cfg(windows)]
+        if out.iter().any(|p| p.user.is_none() || p.mem == 0) {
+            fill(&mut out, &self.wts.read());
+        }
         let total = threads.map(|t| t.values().map(|&n| n as u64).sum());
         (out, total)
     }
+}
+
+/// What WTS lists of a process (`wts.rs`).
+#[cfg(any(windows, test))]
+struct Seen {
+    name: String,
+    user: Option<String>,
+    /// The working set, in WTS's unit (see [`wts_unit`]).
+    mem: u64,
+}
+
+/// The owner and memory sysinfo could not read, from WTS. A pid only counts
+/// where the name matches too: the two lists are read moments apart.
+#[cfg(any(windows, test))]
+fn fill(out: &mut [Proc], seen: &HashMap<u32, Seen>) {
+    let same = |p: &Proc| seen.get(&p.pid).filter(|s| s.name.eq_ignore_ascii_case(&p.name));
+    let unit = wts_unit(out.iter().filter_map(|p| Some((same(p)?.mem, p.mem))));
+    for p in out.iter_mut() {
+        let Some(s) = same(p) else { continue };
+        if p.user.is_none() {
+            p.user = s.user.clone();
+        }
+        if p.mem == 0 {
+            p.mem = s.mem * unit;
+        }
+    }
+}
+
+/// The working set is documented in bytes but is said to come in KiB on
+/// some versions: learnt from the processes both lists read, by the middle
+/// ratio. Bytes when none can tell.
+#[cfg(any(windows, test))]
+fn wts_unit(pairs: impl Iterator<Item = (u64, u64)>) -> u64 {
+    let mut ratios: Vec<f64> = pairs.filter(|&(w, s)| w > 0 && s > 0).map(|(w, s)| s as f64 / w as f64).collect();
+    if ratios.is_empty() {
+        return 1;
+    }
+    ratios.sort_by(f64::total_cmp);
+    if ratios[ratios.len() / 2] > 32.0 { 1024 } else { 1 }
 }
 
 #[cfg(not(windows))]
@@ -430,6 +487,44 @@ fn thread_counts() -> Option<HashMap<u32, u32>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wts_fills_the_owner_and_memory_sysinfo_could_not_read() {
+        let p =
+            |pid, name: &str, user: Option<&str>, mem| Proc { pid, name: name.into(), user: user.map(Into::into), mem, ..Proc::default() };
+        let seen = |name: &str, user: Option<&str>, mem| Seen { name: name.into(), user: user.map(Into::into), mem };
+        let mut out = vec![
+            p(10, "yagura.exe", Some("me"), 40 << 20),
+            p(20, "svchost.exe", None, 0),
+            p(30, "lsass.exe", None, 0),
+            p(40, "dwm.exe", None, 0),
+            p(50, "Idle", None, 0),
+        ];
+        let wts: HashMap<u32, Seen> = [
+            (10, seen("yagura.exe", Some("me"), 41 << 20)),
+            (20, seen("svchost.exe", Some("LOCAL SERVICE"), 8 << 20)),
+            (30, seen("LSASS.EXE", Some("SYSTEM"), 20 << 20)),
+            (40, seen("notepad.exe", Some("me"), 5 << 20)), // the pid came round again
+            (50, seen("Idle", None, 0)),
+        ]
+        .into();
+        fill(&mut out, &wts);
+        let got: Vec<(Option<&str>, u64)> = out.iter().map(|p| (p.user.as_deref(), p.mem)).collect();
+        assert_eq!(got, [(Some("me"), 40 << 20), (Some("LOCAL SERVICE"), 8 << 20), (Some("SYSTEM"), 20 << 20), (None, 0), (None, 0)]);
+    }
+
+    #[test]
+    fn the_wts_unit_is_learnt_from_processes_both_read() {
+        assert_eq!(wts_unit([(41 << 20, 40 << 20), (10 << 20, 11 << 20)].into_iter()), 1);
+        assert_eq!(wts_unit([(41 << 10, 40 << 20), (10 << 10, 11 << 20), (0, 5)].into_iter()), 1024);
+        assert_eq!(wts_unit(std::iter::empty()), 1);
+        let mut out =
+            vec![Proc { pid: 1, name: "a".into(), mem: 4 << 20, ..Proc::default() }, Proc { pid: 2, name: "b".into(), ..Proc::default() }];
+        let seen: HashMap<u32, Seen> =
+            [(1, Seen { name: "a".into(), user: None, mem: 4 << 10 }), (2, Seen { name: "b".into(), user: None, mem: 3 << 10 })].into();
+        fill(&mut out, &seen);
+        assert_eq!(out[1].mem, 3 << 20);
+    }
 
     #[test]
     fn threads_come_from_field_20_past_the_name() {

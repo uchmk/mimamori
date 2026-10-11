@@ -4,6 +4,21 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.41.4] - 2026-10-11
+
+### 修正
+
+- Windows で管理者でないと、procs のほかのユーザーのプロセス（SYSTEM の svchost・lsass・dwm など）の USER が `—`、MEM が `0 B` だった。欠けがあるときだけ `WTSEnumerateProcessesExW` を読み、持ち主の名前とワーキング セットを埋める（タスク マネージャーと同じ権限で出る）（uchmk/yagura#3）。
+- gpu·npu の画面で、Windows の dwm の専用メモリがカードの総量（16 GiB）より大きい 38.1 GiB と出ていた。総量を超える値は `—` にする（uchmk/yagura#4）。
+- gpu·npu の画面で、Windows の AMD のドライバーの版が `—` だった。DXGI の UMD の版（dxdiag の「ドライバーのバージョン」と同じ数）を出す。どのベンダーでも出る（uchmk/yagura#4）。
+- procs の右の列の開始の時刻が UTC で出ていた。手元の時刻で出す（sys の起動の時刻は UTC のまま）（uchmk/yagura#4）。
+- net の画面で、Windows の `Bluetooth ネットワーク接続` が出ず、消えた装置の名残（`Wi-Fi 2`〜`Wi-Fi 5`、`Not Present` か隠れた Wi-Fi Direct）が切断として出ていた。消えた装置と、止まっている Wi-Fi Direct の仮想アダプターを落とし、Bluetooth PAN はいつも出す（uchmk/yagura#6）。
+
+### 変更
+
+- 実機（Windows 11 x64、管理者でない）で net の画面を確かめた結果を TESTING.md に記した（3c.2・3c.3・3c.7・3c.8・3c.10）。3c.11 の「loopback も出す」は、OS が出すとき（Linux の `lo`、macOS の `lo0`）とした。Windows のループバックの擬似インターフェースは何も数えないので出さない（uchmk/yagura#6）。
+- CLAUDE.md の「持ち主の PC への依頼」に、開いている Issue と PR が GitHub Project に集まることを書いた。
+
 ## [0.41.3] - 2026-10-11
 
 ### 修正

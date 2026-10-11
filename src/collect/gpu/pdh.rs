@@ -4,13 +4,13 @@
 
 use std::ptr::null_mut;
 
-use ::windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIFactory1};
+use ::windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIDevice, IDXGIFactory1};
 use ::windows::Win32::System::Performance::{
     PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhOpenQueryW,
 };
-use ::windows::core::{PCWSTR, w};
+use ::windows::core::{Interface, PCWSTR, w};
 
-use super::windows::{Adapter, fold, luid_name};
+use super::windows::{Adapter, fold, luid_name, umd_version};
 use super::{Device, vendor_name};
 use crate::collect::pdh::array;
 
@@ -86,6 +86,9 @@ fn adapters() -> Vec<Adapter> {
         if out.iter().any(|a| a.luid == luid) {
             continue;
         }
+        // The user-mode driver's version; DXGI answers it for IDXGIDevice.
+        // SAFETY: a GUID pointer for the call to read.
+        let driver = unsafe { adapter.CheckInterfaceSupport(&IDXGIDevice::IID) }.ok().map(umd_version);
         let len = d.Description.iter().position(|&c| c == 0).unwrap_or(d.Description.len());
         out.push(Adapter {
             luid,
@@ -94,6 +97,7 @@ fn adapters() -> Vec<Adapter> {
             pci: Some(format!("{:04x}:{:04x}", d.VendorId, d.DeviceId)),
             dedicated: d.DedicatedVideoMemory as u64,
             shared: d.SharedSystemMemory as u64,
+            driver,
             software: d.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0,
         });
     }

@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.41.3"
+version = "0.41.4"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -85,6 +85,7 @@ windows = { version = "0.62", features = [
     "Win32_System_Ole",
     "Win32_System_Performance",
     "Win32_System_Power",
+    "Win32_System_RemoteDesktop",
     "Win32_System_Services",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",

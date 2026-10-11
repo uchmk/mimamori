@@ -9,7 +9,7 @@ use crate::collect::Proc;
 use crate::config::theme::{self, ROW, ramp};
 use crate::i18n::{tr, trf};
 use crate::screen::Pane;
-use crate::util::{fmt_bytes, fmt_epoch};
+use crate::util::{fmt_bytes, fmt_local};
 
 pub fn draw(cx: &mut Cx, [left, mid, right]: [Rect; 3]) {
     draw_left(cx, left);
@@ -163,7 +163,7 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         (tr("procs.pid"), p.pid.to_string()),
         (tr("procs.parent"), p.ppid.map_or_else(dash, |x| x.to_string())),
         (tr("procs.user"), p.user.clone().unwrap_or_else(dash)),
-        (tr("procs.start"), if p.start == 0 { dash() } else { format!("{} UTC", fmt_epoch(p.start)) }),
+        (tr("procs.start"), if p.start == 0 { dash() } else { fmt_local(p.start) }),
         (tr("procs.threads"), p.threads.map_or_else(dash, |t| t.to_string())),
         (tr("procs.status"), p.status.clone()),
         (tr("procs.memory"), fmt_bytes(p.mem)),

@@ -7,12 +7,16 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 - [x] procs: プロセスの終了（`x`、確認のオーバーレイを挟む。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL）。
 - [x] procs: 木の表示（親子）と、スコープ（All / Mine）の切り替えのキー。
-- [ ] procs: Windows で管理者でないと、ほかのユーザーのプロセス（SYSTEM の svchost・lsass・dwm など）の USER が `—`、MEM が `0 B` になる（uchmk/yagura#3）。タスク マネージャーは同じ権限で出す。
+- [x] procs: Windows で管理者でないと、ほかのユーザーのプロセス（SYSTEM の svchost・lsass・dwm など）の USER が `—`、MEM が `0 B` になる（uchmk/yagura#3）。タスク マネージャーは同じ権限で出す。
   sysinfo は `PROCESS_QUERY_LIMITED_INFORMATION` に落とすが、トークンもワーキング セットも読めない。`WTSEnumerateProcessesExW`（レベル 1: SID とワーキング セット、ハンドルが要らない）で欠けたものを埋める案。
+  → 欠けがあるときだけ WTS を読み、PID と名前が合うものの USER（`LookupAccountSidW`、SID ごとにキャッシュ）と MEM を埋める。ワーキング セットの単位（バイトか KiB）は両方が読めたプロセスとの比で決める（v0.41.4、TESTING.md 3.11）。
 - [x] gpu·npu（`4`）: 使用率・VRAM・温度。Windows は PDH の `GPU Engine` カウンタ、Linux は `/sys/class/drm` と amdgpu / i915 の sysfs、NVIDIA は NVML を動的に読む（無ければ出さない）。NPU は見本の「設計」タブの限界のとおり、取れる OS だけ。
-- [ ] gpu·npu: Windows の dwm の専用メモリが 38.1 GiB と出た（PDH の `GPU Process Memory` の値そのまま。カードは 16 GiB、uchmk/yagura#4）。カードの総量を超える値は `—` にするか、総量で抑える。
-- [ ] gpu·npu: Windows の AMD でドライバーの版が `—`（dxdiag は 32.0.31041.1004、uchmk/yagura#4）。DXGI の `CheckInterfaceSupport` の UMD の版か、レジストリの `DriverVersion` から取る。
-- [ ] procs: 右の列の開始の時刻が UTC で出る（`ui/procs.rs` の `fmt_epoch`、uchmk/yagura#4）。手元の時刻にする。
+- [x] gpu·npu: Windows の dwm の専用メモリが 38.1 GiB と出た（PDH の `GPU Process Memory` の値そのまま。カードは 16 GiB、uchmk/yagura#4）。カードの総量を超える値は `—` にするか、総量で抑える。
+  → 総量を超える値は `—` にする（抑えると嘘の数が出る。v0.41.4、TESTING.md 3a.14）。
+- [x] gpu·npu: Windows の AMD でドライバーの版が `—`（dxdiag は 32.0.31041.1004、uchmk/yagura#4）。DXGI の `CheckInterfaceSupport` の UMD の版か、レジストリの `DriverVersion` から取る。
+  → DXGI の `CheckInterfaceSupport(IDXGIDevice)` の UMD の版（dxdiag と同じ数）。どのベンダーでも出る（v0.41.4、TESTING.md 3a.15）。
+- [x] procs: 右の列の開始の時刻が UTC で出る（`ui/procs.rs` の `fmt_epoch`、uchmk/yagura#4）。手元の時刻にする。
+  → `util::fmt_local`（chrono の `Local`）。sys の起動の時刻は UTC のまま（v0.41.4、TESTING.md 3.12）。
 - [x] svc（`6`）: Windows のサービス、Linux の systemd のユニット、macOS の launchd。読むだけから始める。
 - [x] svc: 開始・停止・再起動のキー（確認を挟む。Windows は `ControlService`、Linux は `systemctl`、macOS は `launchctl kickstart` / `kill`）。権限が足りないときの言い方も。
 - [x] svc: macOS の launchd の plist（`/Library/LaunchDaemons` など）を読み、止まっている・無効のジョブ、コマンドとファイルも出す。今は `launchctl list` だけ。
@@ -31,6 +35,14 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] net: 選んだインターフェースで接続を絞る（ローカルのアドレスがそのインターフェースのもの）か決める。今は全部を出している。
   → 選ぶだけでは絞らない（左の選択はいつもあるので、ほとんどが隠れる）。インターフェースで `Enter` を押すと絞り、どのアドレスにも付いたもの（`0.0.0.0`・`::`）は残す。選択を動かせば追い、`Esc` で外す（v0.7.5）。
 - [ ] net の実機の確認 `【実機】`（TESTING.md 3c）。
+  3c.2・3c.3・3c.7・3c.8・3c.10 は済み（uchmk/yagura#6）。3c.1 は Bluetooth が出ず、消えた `Wi-Fi 2`〜`5` が出ていたので v0.41.4 で直した。もう一度見てもらう。
+- [ ] net: Windows で消えた装置（`Not Present`）と隠れた Wi-Fi Direct を落とし、Bluetooth PAN はいつも残すようにした（v0.41.4）。Wi-Fi 3・5 が本当に Wi-Fi Direct だったかは
+  `Get-NetAdapter -IncludeHidden | fl Name,InterfaceDescription,Status` で確かめる `【実機】`。違えば隠れた装置を見分けるほかの手（`MIB_IF_ROW2` の `ConnectorPresent` と `HardwareInterface`、ifType）を探す。
+- [ ] net: 実機の小さな指摘（uchmk/yagura#6）。
+  - `Enter` で絞った後に `j` で移ると、絞り込みは追うがトーストは前のインターフェースの名前のまま。移ったときはトーストを出し直すか、出さない。
+  - 左の列でインターフェースの名前が `イーサネ…` と切れる。速さの桁を詰めるか、名前の幅を広げる。
+  - 真ん中のグラフの題の速さと左の列の速さが少しずれる（読む時刻か平均の取り方の違い）。同じ値を使う。
+  - `/` の絞り込みの文字が procs・svc・net で共有される。画面ごとに持つか決める（procs で打ったものが net に残ると驚く）。
 - [x] disk（`8`）: ドライブごとの使用量と読み書きの速さ。
   → 左がドライブ（1 分の読み書き）、真ん中がマウントされたボリューム（容量・使用率・読み書き）、右が選んだドライブのグラフ（読み・書き・ビジー）と型番・種類・バス・容量。
   Windows は PhysicalDisk のパフォーマンスカウンター（PDH）と `IOCTL_STORAGE_QUERY_PROPERTY`（管理者は要らない）、Linux は `/proc/diskstats` と `/sys/block`、ボリュームはどの OS も sysinfo（v0.8.0）。

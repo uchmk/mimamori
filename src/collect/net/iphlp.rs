@@ -89,6 +89,8 @@ fn interfaces() -> Option<Vec<Row>> {
                 connector: flags & 4 != 0,
                 // IfOperStatusUp.
                 oper_up: r.OperStatus.0 == 1,
+                // IfOperStatusNotPresent.
+                gone: r.OperStatus.0 == 6,
                 speed: r.ReceiveLinkSpeed,
                 rx: r.InOctets,
                 tx: r.OutOctets,

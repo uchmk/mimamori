@@ -22,6 +22,8 @@ pub struct Adapter {
     /// Bytes.
     pub dedicated: u64,
     pub shared: u64,
+    /// The user-mode driver's version, as dxdiag shows it.
+    pub driver: Option<String>,
     /// The Basic Render Driver: left out.
     pub software: bool,
 }
@@ -29,6 +31,13 @@ pub struct Adapter {
 /// The LUID a DXGI adapter is called by in the counters.
 pub fn luid_name(high: i32, low: u32) -> String {
     format!("luid_0x{:08x}_0x{low:08x}", high as u32)
+}
+
+/// The user-mode driver's version from DXGI's `CheckInterfaceSupport`:
+/// four 16-bit parts, highest first (`32.0.31041.1004`).
+pub fn umd_version(v: i64) -> String {
+    let v = v as u64;
+    format!("{}.{}.{}.{}", v >> 48, v >> 32 & 0xffff, v >> 16 & 0xffff, v & 0xffff)
 }
 
 /// The LUID back out of a device id (`luid:0x00000000_0x0000d1a5`).
@@ -178,6 +187,14 @@ pub fn fold(
         d.pci = a.pci.clone();
         d.vram_total = (a.dedicated > 0).then_some(a.dedicated);
         d.shared_total = (a.shared > 0).then_some(a.shared);
+        d.driver = a.driver.clone();
+        // The process counter can read more than the card holds (dwm at 38 GiB
+        // on a 16 GiB card): such a reading is no reading.
+        if let Some(total) = d.vram_total {
+            for p in &mut d.procs {
+                p.mem = p.mem.filter(|&m| m <= total);
+            }
+        }
         if d.vram_total.is_none() {
             d.why.push((Field::Vram, Why::NoVram));
         }
@@ -281,6 +298,13 @@ mod tests {
     }
 
     #[test]
+    fn reads_the_umd_version() {
+        let v = (32i64 << 48) | (31041 << 16) | 1004;
+        assert_eq!(umd_version(v), "32.0.31041.1004");
+        assert_eq!(umd_version((32i64 << 48) | (15 << 32) | (6614 << 16) | 3), "32.15.6614.3");
+    }
+
+    #[test]
     fn spaces_engine_types() {
         assert_eq!(spaced("VideoDecode"), "Video Decode");
         assert_eq!(spaced("3D"), "3D");
@@ -295,6 +319,7 @@ mod tests {
             pci: Some("1002:747e".into()),
             dedicated: 16 << 30,
             shared: 32 << 30,
+            driver: Some("32.0.31041.1004".into()),
             software: false,
         }
     }
@@ -311,7 +336,10 @@ mod tests {
         ];
         let dedicated = [(format!("{AMD}_phys_0"), 2.0 * (1u64 << 30) as f64)];
         let shared = [(format!("{AMD}_phys_0"), 1.0 * (1u64 << 30) as f64)];
-        let proc_mem = [(format!("pid_100_{AMD}_phys_0"), 512.0 * 1024.0 * 1024.0)];
+        let proc_mem = [
+            (format!("pid_100_{AMD}_phys_0"), 512.0 * 1024.0 * 1024.0),
+            (format!("pid_200_{AMD}_phys_0"), 38.1 * (1u64 << 30) as f64), // more than the card holds
+        ];
         let devs = fold(&[amd()], &engines, &dedicated, &shared, &proc_mem);
         assert_eq!(devs.len(), 1);
         let d = &devs[0];
@@ -325,7 +353,8 @@ mod tests {
         // Busiest first; pid 400 used nothing and holds nothing.
         let pids: Vec<u32> = d.procs.iter().map(|p| p.pid).collect();
         assert_eq!(pids, [100, 200, 300]);
-        assert_eq!(d.procs[0].mem, Some(512 << 20));
+        assert_eq!((d.procs[0].mem, d.procs[1].mem), (Some(512 << 20), None));
+        assert_eq!(d.driver.as_deref(), Some("32.0.31041.1004"));
         assert_eq!(d.why(Field::Temp), Some(Why::WinSensors));
         assert_eq!(d.why(Field::Vram), None);
     }

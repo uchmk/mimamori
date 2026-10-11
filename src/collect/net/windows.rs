@@ -26,6 +26,8 @@ pub struct Row {
     pub filter: bool,
     pub connector: bool,
     pub oper_up: bool,
+    /// IfOperStatusNotPresent: a removed device's leftover (Wi-Fi 2, 3…).
+    pub gone: bool,
     /// Bits per second.
     pub speed: u64,
     pub rx: u64,
@@ -40,6 +42,9 @@ const PROP_VIRTUAL: u32 = 53;
 const TUNNEL: u32 = 131;
 /// NdisPhysicalMediumBluetooth.
 const MEDIUM_BLUETOOTH: u32 = 10;
+/// The description of the adapters behind Wi-Fi Direct (Miracast, mobile
+/// hotspot); `Get-NetAdapter` hides them.
+const WIFI_DIRECT: &str = "Microsoft Wi-Fi Direct Virtual Adapter";
 
 fn kind(r: &Row) -> Kind {
     match r.ty {
@@ -53,18 +58,20 @@ fn kind(r: &Row) -> Kind {
 }
 
 /// The adapters worth a row: a physical one with its connector (even when
-/// unplugged, so a dead cable shows), or any that is up with an address
-/// (VPNs, Hyper-V switches). Each GUID once, without the filter layers and
-/// the loopback pseudo-interface, which counts nothing.
+/// unplugged, so a dead cable shows), Bluetooth PAN (which has no connector
+/// flag), or any that is up with an address (VPNs, Hyper-V switches). Each
+/// GUID once, without the filter layers, the loopback pseudo-interface
+/// (which counts nothing), leftovers of removed devices, and the Wi-Fi
+/// Direct adapters Windows hides while they are down.
 pub fn pick(rows: &[Row], ips: &HashMap<u32, (Vec<String>, Vec<String>)>) -> Vec<Nic> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
     for r in rows {
-        if r.filter || r.ty == LOOPBACK {
+        if r.filter || r.ty == LOOPBACK || r.gone || (!r.oper_up && r.desc.starts_with(WIFI_DIRECT)) {
             continue;
         }
         let (ipv4, ipv6) = ips.get(&r.index).cloned().unwrap_or_default();
-        let keep = (r.hardware && r.connector) || (r.oper_up && !(ipv4.is_empty() && ipv6.is_empty()));
+        let keep = (r.hardware && r.connector) || r.medium == MEDIUM_BLUETOOTH || (r.oper_up && !(ipv4.is_empty() && ipv6.is_empty()));
         if !keep || !seen.insert(r.guid) {
             continue;
         }
@@ -161,15 +168,19 @@ mod tests {
         // Up but with no address: a WAN miniport.
         let wan = Row { oper_up: true, ..row(13, 5, "WAN Miniport", 23) };
         let vswitch = Row { oper_up: true, ..row(14, 6, "vEthernet (WSL)", 6) };
-        // Bluetooth PAN: ifType Ethernet on hardware, listed even when no phone is paired in.
-        let bt = Row { hardware: true, connector: true, medium: 10, ..row(15, 7, "Bluetooth Network Connection", 6) };
+        // Bluetooth PAN: ifType Ethernet on hardware but no connector flag, listed even when no phone is paired in.
+        let bt = Row { hardware: true, medium: 10, ..row(15, 7, "Bluetooth Network Connection", 6) };
+        // A Wi-Fi adapter that was removed, and the hidden Wi-Fi Direct one.
+        let stale = Row { hardware: true, connector: true, gone: true, ..row(16, 8, "Wi-Fi 2", 71) };
+        let direct =
+            Row { hardware: true, connector: true, desc: format!("{WIFI_DIRECT} #2"), ..row(17, 9, "Local Area Connection* 1", 71) };
         let ips = HashMap::from([
             (4, (vec!["192.168.1.2/24".to_string()], vec![])),
             (1, (vec!["127.0.0.1/8".to_string()], vec![])),
             (12, (vec!["10.6.0.2/32".to_string()], vec![])),
             (14, (vec![], vec!["fe80::1/64".to_string()])),
         ]);
-        let got = pick(&[eth, wifi, filter, dup, lo, vpn, wan, vswitch, bt], &ips);
+        let got = pick(&[eth, wifi, filter, dup, lo, vpn, wan, vswitch, bt, stale, direct], &ips);
         let names: Vec<_> = got.iter().map(|n| n.name.as_str()).collect();
         assert_eq!(names, ["Ethernet", "Wi-Fi", "WireGuard", "vEthernet (WSL)", "Bluetooth Network Connection"]);
         assert_eq!(
