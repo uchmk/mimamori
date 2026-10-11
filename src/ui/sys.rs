@@ -253,12 +253,33 @@ pub fn machine(app: &App) -> String {
     }
 }
 
+/// The left column's rows as drawn, with `room` cells for a value: a value
+/// too long for its row goes on under its key. 0 leaves each on one row.
+pub fn rows(lines: Vec<Line>, room: usize) -> Vec<Line> {
+    if room == 0 {
+        return lines;
+    }
+    let mut out = Vec::with_capacity(lines.len());
+    for l in lines {
+        match l {
+            Line::Kv(k, v) if crate::util::width(&v) > room => {
+                out.extend(gpu::wrap_at(&v, room).into_iter().enumerate().map(|(i, part)| Line::Kv(if i == 0 { k } else { "" }, part)));
+            }
+            l => out.push(l),
+        }
+    }
+    out
+}
+
 fn draw_left(cx: &mut Cx, r: Rect) {
     let app = cx.app;
     let lines = lines(app);
     let body = panel(&cx.pen, r, tr("sys.machine"), "", cx.focused(Pane::Left));
     let longest = lines.iter().map(|l| if let Line::Kv(k, _) = l { cx.pen.width(k) } else { 0.0 }).fold(0.0, f32::max);
     let kw = (longest + cx.pen.cw * 2.0).clamp(cx.pen.cw * 6.0, (body.width() * 0.5).max(cx.pen.cw * 6.0));
+    let room = (((body.width() - kw - 4.0) / cx.pen.cw).floor().max(0.0) as usize).max(8);
+    cx.out.sys_room = Some(room);
+    let lines = rows(lines, room);
     cx.scroll_list(Pane::Left, body, lines.len(), |cx, row, i| match &lines[i] {
         Line::Head(h) => cx.pen.section(row, h),
         Line::Kv(k, v) => cx.pen.kv(row, kw, k, v),
@@ -318,6 +339,14 @@ fn place(s: &Slot, unified: bool) -> String {
     if s.locator.is_empty() && unified { tr("sys.in_package").to_string() } else { s.locator.clone() }
 }
 
+/// The slot's name in the list: its place, with its bank first where
+/// another slot has the same name (boards that call each channel's slots
+/// `DIMM 0` and `DIMM 1`).
+fn name(s: &Slot, all: &[Slot], unified: bool) -> String {
+    let twin = !s.bank.is_empty() && all.iter().filter(|o| o.locator == s.locator).count() > 1;
+    if twin { format!("{} · {}", s.bank, place(s, unified)) } else { place(s, unified) }
+}
+
 /// MT/s, as it runs if that is said, else as rated.
 fn speed(s: &Slot) -> String {
     match if s.configured > 0 { s.configured } else { s.speed } {
@@ -326,16 +355,16 @@ fn speed(s: &Slot) -> String {
     }
 }
 
-fn cell(s: &Slot, unified: bool, col: Col) -> (String, Color32) {
+fn cell(s: &Slot, all: &[Slot], unified: bool, col: Col) -> (String, Color32) {
     if !s.present {
         return match col {
-            Col::Slot => (place(s, unified), theme::dim()),
+            Col::Slot => (name(s, all, unified), theme::dim()),
             Col::Size => (tr("sys.empty").to_string(), theme::dim()),
             _ => (String::new(), theme::dim()),
         };
     }
     match col {
-        Col::Slot => (place(s, unified), theme::fg()),
+        Col::Slot => (name(s, all, unified), theme::fg()),
         Col::Size => (s.size.map_or_else(|| "—".to_string(), fmt_bytes), theme::cyan()),
         Col::Kind => (s.kind.clone(), theme::fg()),
         Col::Speed => (speed(s), theme::fg()),
@@ -380,7 +409,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         let s = &hw.slots[i];
         let cy = row.center().y;
         for &(col, x, w, right) in &cols {
-            let (text, color) = cell(s, hw.unified, col);
+            let (text, color) = cell(s, &hw.slots, hw.unified, col);
             let text = cx.pen.fit(&text, w);
             if right {
                 cx.pen.text_r(pos2(x0 + x + w, cy), &text, color);
@@ -427,7 +456,10 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         return;
     };
     let unified = hw.is_some_and(|h| h.unified);
-    let body = panel(&cx.pen, r, &place(s, unified), &s.bank, cx.focused(Pane::Right));
+    let title = name(s, hw.map_or(&[], |h| &h.slots), unified);
+    // The bank goes beside the title unless the title has it already.
+    let info = if title == place(s, unified) { s.bank.as_str() } else { "" };
+    let body = panel(&cx.pen, r, &title, info, cx.focused(Pane::Right));
     kv_rows(&cx.pen, body, body.top(), &detail_rows(s, unified));
 }
 
@@ -435,6 +467,27 @@ fn draw_right(cx: &mut Cx, r: Rect) {
 mod tests {
     use super::*;
     use crate::collect::hw::{Ecc, Note};
+
+    #[test]
+    fn long_values_go_on_under_their_key() {
+        // A direct connection's key is 44 characters of base64.
+        let key = "ZK2b7tq0m4C9yV1hXo3fWlP6sQe8RjN5aUiDgTcBvHw=";
+        let lines = vec![Line::Head("agent"), Line::Kv("state", "listening".into()), Line::Kv("key", key.into())];
+        assert_eq!(rows(lines.clone(), 0), lines);
+        assert_eq!(rows(lines.clone(), 44), lines);
+        assert_eq!(
+            rows(lines, 20),
+            [
+                Line::Head("agent"),
+                Line::Kv("state", "listening".into()),
+                Line::Kv("key", key[..20].into()),
+                Line::Kv("", key[20..40].into()),
+                Line::Kv("", key[40..].into()),
+            ]
+        );
+        let at = rows(vec![Line::Kv("allow", "kill, svc start, svc stop".into())], 12);
+        assert_eq!(at, [Line::Kv("allow", "kill, svc".into()), Line::Kv("", "start, svc".into()), Line::Kv("", "stop".into())]);
+    }
 
     #[test]
     fn narrow_lists_drop_the_maker_then_the_type() {
@@ -479,10 +532,22 @@ mod tests {
         assert_eq!(speed(&s), trf("sys.mts", &["6000"]));
         // An empty slot is named and dim; unified memory has no name of its own.
         assert_eq!(
-            cell(&Slot { locator: "DIMM_B1".into(), ..Slot::default() }, false, Col::Size),
+            cell(&Slot { locator: "DIMM_B1".into(), ..Slot::default() }, &[], false, Col::Size),
             (tr("sys.empty").to_string(), theme::dim())
         );
         assert_eq!(place(&Slot::default(), true), tr("sys.in_package"));
+        // Slots named alike in each channel are told apart by their bank.
+        let slot = |bank: &str, locator: &str| Slot { bank: bank.into(), locator: locator.into(), ..Slot::default() };
+        let twins = [
+            slot("P0 CHANNEL A", "DIMM 0"),
+            slot("P0 CHANNEL A", "DIMM 1"),
+            slot("P0 CHANNEL B", "DIMM 0"),
+            slot("P0 CHANNEL B", "DIMM 1"),
+        ];
+        let names: Vec<String> = twins.iter().map(|s| name(s, &twins, false)).collect();
+        assert_eq!(names, ["P0 CHANNEL A · DIMM 0", "P0 CHANNEL A · DIMM 1", "P0 CHANNEL B · DIMM 0", "P0 CHANNEL B · DIMM 1"]);
+        let apart = [slot("BANK 0", "DIMM_A1"), slot("BANK 1", "DIMM_B1")];
+        assert_eq!(name(&apart[1], &apart, false), "DIMM_B1");
     }
 
     #[test]

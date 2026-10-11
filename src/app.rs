@@ -234,6 +234,8 @@ pub struct Out {
     pub click: Option<(Pane, usize, bool)>,
     pub scroll: [Option<usize>; 3],
     pub visible: [usize; 3],
+    /// Cells a value has on a row of the sys screen's left column.
+    pub sys_room: Option<usize>,
     pub pane_rects: [Option<egui::Rect>; 3],
     pub tab: Option<Screen>,
     /// A divider dragged, released or double-clicked.
@@ -270,6 +272,9 @@ pub struct App {
     pub stack_drag: Option<(Screen, Pane, Node<u8>)>,
     views: HashMap<Screen, View>,
     pub visible: [usize; 3],
+    /// Cells a value had on the sys screen's left column, last drawn; longer
+    /// ones go on under their key, so the rows to select follow it.
+    pub sys_room: usize,
     pub mode: Mode,
     pending: Vec<Key>,
     pub filter: String,
@@ -380,6 +385,7 @@ impl App {
             stack_drag: None,
             views: new_views(),
             visible: [1; 3],
+            sys_room: 0,
             mode: Mode::Normal,
             pending: Vec::new(),
             filter: String::new(),
@@ -1126,7 +1132,7 @@ impl App {
             (Screen::Disk, Pane::Mid) => self.model.disks.volumes.len(),
             (Screen::Sensors, Pane::Left) => self.model.sensors.chips().len(),
             (Screen::Sensors, Pane::Mid) => self.model.sensors.list.len(),
-            (Screen::Sys, Pane::Left) => crate::ui::sys::lines(self).len(),
+            (Screen::Sys, Pane::Left) => crate::ui::sys::rows(crate::ui::sys::lines(self), self.sys_room).len(),
             (Screen::Sys, Pane::Mid) => self.model.hw.as_ref().map_or(0, |h| h.slots.len()),
             _ => 0,
         }
@@ -1165,6 +1171,9 @@ impl App {
             }
         }
         self.visible = out.visible.map(|v| v.max(1));
+        if let Some(r) = out.sys_room {
+            self.sys_room = r;
+        }
         if let Some(m) = out.help_max {
             self.help_scroll = self.help_scroll.min(m);
         }

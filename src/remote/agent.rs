@@ -506,13 +506,23 @@ fn viewer(s: TcpStream, hub: &Sender<HubIn>, direct: Option<&Direct>) {
     };
     match halves {
         Ok((who, r, w)) => {
-            if let Err(e) = talk(&s, r, w, &who, hub) {
+            if let Err(e) = talk(&s, r, w, &who, hub)
+                && !gone(&e)
+            {
                 say(format_args!("yagura agent: {who}: {e}"));
             }
         }
-        Err(e) => say(format_args!("yagura agent: {peer}: {e}")),
+        Err(e) if !gone(&e) => say(format_args!("yagura agent: {peer}: {e}")),
+        Err(_) => {}
     }
     let _ = s.shutdown(Shutdown::Both);
+}
+
+/// Whether `e` is only the other side going away (a viewer closed, the sys
+/// screen's probe done), which is not worth a line in the log.
+fn gone(e: &io::Error) -> bool {
+    use io::ErrorKind::*;
+    matches!(e.kind(), UnexpectedEof | ConnectionReset | ConnectionAborted | BrokenPipe)
 }
 
 /// Tells the hub a viewer is gone however its thread ends.
@@ -580,6 +590,17 @@ mod tests {
     use crate::collect::Proc;
     use crate::collect::svc::{Service, Start};
     use crate::svcctl::Action;
+
+    #[test]
+    fn a_viewer_leaving_is_not_logged() {
+        use io::ErrorKind::*;
+        for k in [UnexpectedEof, ConnectionReset, ConnectionAborted, BrokenPipe] {
+            assert!(gone(&io::Error::from(k)), "{k:?}");
+        }
+        for k in [TimedOut, WouldBlock, InvalidData, PermissionDenied] {
+            assert!(!gone(&io::Error::from(k)), "{k:?}");
+        }
+    }
 
     fn allow(words: &[&str]) -> Vec<String> {
         words.iter().map(|w| w.to_string()).collect()

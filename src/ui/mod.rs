@@ -216,9 +216,11 @@ pub fn row_at(body: Rect, y: f32) -> Rect {
 /// Key and value rows from `y` down, as many as fit in `body`; returns the
 /// `y` under the last one.
 pub fn kv_rows(pen: &Pen, body: Rect, mut y: f32, rows: &[(&str, String)]) -> f32 {
-    // The keys' column fits the longest key, up to half the row.
+    // The keys' column fits the longest key, up to half the row, or more when the values are short.
     let longest = rows.iter().map(|(k, _)| pen.width(k)).fold(0.0, f32::max);
-    let kw = (longest + pen.cw * 2.0).clamp(pen.cw * 6.0, (body.width() * 0.5).max(pen.cw * 6.0));
+    let widest = rows.iter().map(|(_, v)| pen.width(v)).fold(0.0, f32::max);
+    let cap = (body.width() * 0.5).max(body.width() - widest - pen.cw * 2.0).max(pen.cw * 6.0);
+    let kw = (longest + pen.cw * 2.0).clamp(pen.cw * 6.0, cap);
     for (k, v) in rows {
         if y + ROW > body.bottom() + 0.5 {
             break;

@@ -62,13 +62,30 @@ fn wrap(pen: &Pen, s: &str, w: f32) -> Vec<String> {
     wrap_at(s, ((w / pen.cw).floor() as usize).max(8))
 }
 
-/// [`wrap`] in cells.
-fn wrap_at(s: &str, room: usize) -> Vec<String> {
+/// [`wrap`] in cells. A word longer than a line (a key, a path) is cut
+/// where the lines end.
+pub(super) fn wrap_at(s: &str, room: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
     let mut used = 0;
     for (unit, spaced) in units(s) {
         let n = crate::util::width(unit);
+        if n > room {
+            if !line.is_empty() {
+                lines.push(std::mem::take(&mut line));
+                used = 0;
+            }
+            for c in unit.chars() {
+                let k = crate::util::cells(c);
+                if !line.is_empty() && used + k > room {
+                    lines.push(std::mem::take(&mut line));
+                    used = 0;
+                }
+                line.push(c);
+                used += k;
+            }
+            continue;
+        }
         let mut gap = usize::from(spaced && !line.is_empty());
         if !line.is_empty() && used + gap + n > room {
             lines.push(std::mem::take(&mut line));
@@ -345,5 +362,7 @@ mod tests {
         assert_eq!(wrap_at("no memory of its own", 10), ["no memory", "of its own"]);
         assert_eq!(wrap_at("専用のメモリが無い", 8), ["専用のメ", "モリが無", "い"]);
         assert_eq!(wrap_at("sysfs に使用率が無い", 12), ["sysfs に使用", "率が無い"]);
+        // A word longer than a line is cut where the lines end.
+        assert_eq!(wrap_at("key abcdefghij xy", 4), ["key", "abcd", "efgh", "ij", "xy"]);
     }
 }

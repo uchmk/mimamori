@@ -337,17 +337,23 @@ fn smart_rows(s: &Smart) -> Vec<(&'static str, String, Color32)> {
 fn drive_rows(d: &Drive) -> Vec<(&'static str, String)> {
     let dash = || "—".to_string();
     let yes_no = |b: bool| tr(if b { "disk.yes" } else { "disk.no" }).to_string();
-    let since = |t: Option<u64>| t.map_or_else(dash, |b| trf("disk.total", &[&fmt_bytes(b)]));
-    vec![
+    let mut rows = vec![
         (tr("disk.model"), if d.model.is_empty() { dash() } else { d.model.clone() }),
         (tr("disk.type"), tr(d.kind.key()).to_string()),
         (tr("disk.bus"), d.bus.map_or_else(dash, str::to_string)),
         (tr("disk.size"), d.size.map_or_else(dash, fmt_bytes)),
         (tr("disk.removable_key"), yes_no(d.removable)),
-        (tr("disk.read"), since(d.read_total)),
-        (tr("disk.write"), since(d.write_total)),
-        (tr("disk.volumes"), if d.volumes.is_empty() { dash() } else { d.volumes.join(", ") }),
-    ]
+        (tr("disk.read"), rate(d.read_rate)),
+        (tr("disk.write"), rate(d.write_rate)),
+    ];
+    // Windows' counters keep only the speed, not how much since boot.
+    for (key, t) in [("disk.read_boot", d.read_total), ("disk.write_boot", d.write_total)] {
+        if let Some(b) = t {
+            rows.push((tr(key), fmt_bytes(b)));
+        }
+    }
+    rows.push((tr("disk.volumes"), if d.volumes.is_empty() { dash() } else { d.volumes.join(", ") }));
+    rows
 }
 
 fn volume_rows(v: &Volume) -> Vec<(&'static str, String)> {
@@ -399,7 +405,8 @@ fn draw_right(cx: &mut Cx, r: Rect) {
     let n = 1 + usize::from(d.temp.is_some()) + smart.len() + rows.len();
     let rects = match vol {
         Some(_) => {
-            let want = 26.0 + 6.0 + ROW * n as f32;
+            // The frame, the gap the split takes and a little slack, so the last row is not cut.
+            let want = 26.0 + 6.0 + GAP + ROW * n as f32 + 2.0;
             let ratio = want.min(r.height() * 0.65) / r.height().max(1.0);
             cx.stack(Pane::Right, r, stacks::split(Dir::Down, ratio, Node::Leaf(0), Node::Leaf(1)))
         }

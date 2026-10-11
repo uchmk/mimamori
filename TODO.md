@@ -7,6 +7,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 
 - [x] procs: プロセスの終了（`x`、確認のオーバーレイを挟む。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL）。
 - [x] procs: 木の表示（親子）と、スコープ（All / Mine）の切り替えのキー。
+- [ ] procs: Windows で管理者でないと、ほかのユーザーのプロセス（SYSTEM の svchost・lsass・dwm など）の USER が `—`、MEM が `0 B` になる（uchmk/yagura#3）。タスク マネージャーは同じ権限で出す。
+  sysinfo は `PROCESS_QUERY_LIMITED_INFORMATION` に落とすが、トークンもワーキング セットも読めない。`WTSEnumerateProcessesExW`（レベル 1: SID とワーキング セット、ハンドルが要らない）で欠けたものを埋める案。
 - [x] gpu·npu（`4`）: 使用率・VRAM・温度。Windows は PDH の `GPU Engine` カウンタ、Linux は `/sys/class/drm` と amdgpu / i915 の sysfs、NVIDIA は NVML を動的に読む（無ければ出さない）。NPU は見本の「設計」タブの限界のとおり、取れる OS だけ。
 - [x] svc（`6`）: Windows のサービス、Linux の systemd のユニット、macOS の launchd。読むだけから始める。
 - [x] svc: 開始・停止・再起動のキー（確認を挟む。Windows は `ControlService`、Linux は `systemctl`、macOS は `launchctl kickstart` / `kill`）。権限が足りないときの言い方も。
@@ -35,6 +37,8 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   温度は Windows が `StorageDeviceTemperatureProperty`（SSD は 5 秒ごと、ほかは 1 分の確認で）、Linux が hwmon、無ければ smartctl の値。
   右の列に「Health」と「Temperature」の行、壊れかけのドライブは左の名前も赤。hwmon のチップに無いドライブの温度は sensors の画面にも出る（v0.12.0）。
 - [ ] disk: Windows で `IOCTL_STORAGE_PREDICT_FAILURE` に答えないドライブ（実機の 3d.8 で分かる）があれば、WMI の `MSFT_PhysicalDisk` の `HealthStatus` と `StorageReliabilityCounter`（管理者）を足す。
+  → NVMe は答えた（uchmk/yagura#2、Samsung 990 EVO Plus）。WMI の counter は温度・Wear だけで、通電時間とエラーは空。NVMe には足しても得るものが無い。SATA の機械で 3d.8 と 3d.17 を見てから決める。
+  寿命の消費は yagura が 1%、`Get-StorageReliabilityCounter` の `Wear` が 0 だった。yagura は NVMe の health ログの Percentage Used をそのまま出している。OS が丸めているのか別の数なのかは、CrystalDiskInfo か smartctl のある機械で比べる `【実機】`。
 - [x] disk: macOS の NVMe のドライブの温度と SMART の中身（IOKit の `IONVMeSMARTInterface`）。
   → `NVMe SMART Capable` の付いた親の user client を `IOCreatePlugInInterfaceForService` で開き、`SMARTReadData` の 512 バイトを `disk::nvme_log` で読む。sudo は要らない（v0.14.0）。
 - [x] disk: macOS の SATA のドライブの SMART の中身（`IOATASMARTInterface` の `SMARTReadData` と、温度は属性 194）。今は内蔵の SATA の Mac（古い Intel の Mac）と、SMART を通す外付けのケースだけが対象。
