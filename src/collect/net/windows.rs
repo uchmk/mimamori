@@ -28,8 +28,8 @@ pub struct Row {
     pub oper_up: bool,
     /// IfOperStatusNotPresent: a removed device's leftover (Wi-Fi 2, 3…).
     pub gone: bool,
-    /// NCF_HIDDEN in the adapter's class key: one of a card's extra
-    /// interfaces that Windows keeps out of its own lists.
+    /// One of a card's extra interfaces that Windows keeps out of its own
+    /// lists: NCF_HIDDEN in its class key, or left out by `Get-NetAdapter`.
     pub hidden: bool,
     /// Bits per second.
     pub speed: u64,
@@ -68,6 +68,18 @@ pub fn parse_guid(s: &str) -> Option<u128> {
 /// `NetCfgInstanceId` and `Characteristics`.
 pub fn hidden(entries: impl IntoIterator<Item = (String, u32)>) -> HashSet<u128> {
     entries.into_iter().filter(|(_, c)| c & NCF_HIDDEN != 0).filter_map(|(id, _)| parse_guid(&id)).collect()
+}
+
+/// The hardware interfaces `Get-NetAdapter` leaves out, given the GUIDs
+/// it lists (`MSFT_NetAdapter`'s default enumeration skips the hidden
+/// ones). The extra ports of a Wi-Fi card (Wi-Fi 3, Wi-Fi 5) have no class
+/// key of their own, so this is the only place that tells. Nothing when it
+/// listed nothing: a failed answer must not hide every card.
+pub fn unlisted(rows: &[Row], listed: &HashSet<u128>) -> HashSet<u128> {
+    if listed.is_empty() {
+        return HashSet::new();
+    }
+    rows.iter().filter(|r| r.hardware && !r.gone && !listed.contains(&r.guid)).map(|r| r.guid).collect()
 }
 
 fn kind(r: &Row) -> Kind {
@@ -236,6 +248,23 @@ mod tests {
             ("not a guid".to_string(), 0x8),
         ]);
         assert_eq!(set, HashSet::from([g]));
+    }
+
+    #[test]
+    fn hardware_interfaces_get_netadapter_leaves_out_are_hidden() {
+        let wifi = Row { hardware: true, connector: true, ..row(9, 2, "Wi-Fi", 71) };
+        // Extra ports of the same card: no class key, not listed.
+        let extra = Row { hardware: true, connector: true, ..row(12, 3, "Wi-Fi 3", 71) };
+        let extra2 = Row { hardware: true, connector: true, ..row(3, 4, "Wi-Fi 5", 71) };
+        // Not present: dropped anyway, so not counted here.
+        let stale = Row { hardware: true, connector: true, gone: true, ..row(14, 5, "Wi-Fi 2", 71) };
+        // Software interfaces are left to the other rules.
+        let tunnel = Row { oper_up: true, ..row(1, 6, "Teredo Tunneling Pseudo-Interface", 131) };
+        let rows = [wifi, extra, extra2, stale, tunnel];
+        assert_eq!(unlisted(&rows, &HashSet::from([2])), HashSet::from([3, 4]));
+        assert_eq!(unlisted(&rows, &HashSet::from([2, 3, 4])), HashSet::new());
+        // No answer hides nothing.
+        assert_eq!(unlisted(&rows, &HashSet::new()), HashSet::new());
     }
 
     #[test]

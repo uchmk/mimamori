@@ -1,6 +1,7 @@
 //! The IP helper: the interface table with each adapter's counters, the
 //! unicast addresses, and the TCP and UDP tables with their owning PIDs;
-//! and the network class keys in the registry, for the hidden adapters.
+//! and, for the hidden adapters, the network class keys in the registry and
+//! the adapters `Get-NetAdapter` lists (WMI).
 
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
@@ -20,6 +21,7 @@ use windows::core::{PCWSTR, PWSTR, w};
 
 use super::windows::{self as fold, Row};
 use super::{Conn, Conns, Nic, Note, Proto};
+use crate::collect::wmi;
 
 fn wide(s: &[u16]) -> String {
     let n = s.iter().position(|&c| c == 0).unwrap_or(s.len());
@@ -119,6 +121,34 @@ fn hidden() -> HashSet<u128> {
     set
 }
 
+/// The GUIDs of the adapters `Get-NetAdapter` lists, `None` when WMI does
+/// not answer.
+fn net_adapters() -> Option<HashSet<u128>> {
+    let svc = wmi::connect(r"root\StandardCimv2")?;
+    let ids = wmi::rows(&svc, "SELECT InterfaceGuid FROM MSFT_NetAdapter", |o| wmi::text(o, "InterfaceGuid"))?;
+    Some(ids.iter().filter_map(|id| fold::parse_guid(id)).collect())
+}
+
+/// [`net_adapters`], asked again only when the hardware interfaces change
+/// (the query takes a while), or half a minute after it gave nothing.
+fn listed(rows: &[Row]) -> HashSet<u128> {
+    type Last = (Vec<u128>, Instant, HashSet<u128>);
+    static LAST: Mutex<Option<Last>> = Mutex::new(None);
+    let mut now: Vec<u128> = rows.iter().filter(|r| r.hardware && !r.gone).map(|r| r.guid).collect();
+    now.sort_unstable();
+    now.dedup();
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((was, at, set)) = &*last
+        && *was == now
+        && (!set.is_empty() || at.elapsed() < Duration::from_secs(30))
+    {
+        return set.clone();
+    }
+    let set = net_adapters().unwrap_or_default();
+    *last = Some((now, Instant::now(), set.clone()));
+    set
+}
+
 /// `None` when the interface table could not be read.
 fn interfaces() -> Option<Vec<Row>> {
     let mut t = Mib::<MIB_IF_TABLE2>(std::ptr::null_mut());
@@ -129,7 +159,7 @@ fn interfaces() -> Option<Vec<Row>> {
     // SAFETY: NumEntries rows follow the header in the table the call returned.
     let rows = unsafe { std::slice::from_raw_parts((*t.0).Table.as_ptr(), (*t.0).NumEntries as usize) };
     let hidden = hidden();
-    let rows = rows
+    let mut rows: Vec<Row> = rows
         .iter()
         .map(|r| {
             let flags = r.InterfaceAndOperStatusFlags._bitfield;
@@ -157,6 +187,10 @@ fn interfaces() -> Option<Vec<Row>> {
             }
         })
         .collect();
+    let unlisted = fold::unlisted(&rows, &listed(&rows));
+    for r in &mut rows {
+        r.hidden |= unlisted.contains(&r.guid);
+    }
     Some(rows)
 }
 

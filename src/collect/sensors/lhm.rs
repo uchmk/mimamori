@@ -67,27 +67,16 @@ pub use wmi::Reader;
 mod wmi {
     use std::time::{Duration, Instant};
 
-    use ::windows::Win32::System::Com::{
-        CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoSetProxyBlanket, EOAC_NONE, RPC_C_AUTHN_LEVEL_CALL,
-        RPC_C_IMP_LEVEL_IMPERSONATE,
-    };
-    use ::windows::Win32::System::Variant::{VARIANT, VT_BSTR, VT_R4, VT_R8, VariantClear};
-    use ::windows::Win32::System::Wmi::{
-        IEnumWbemClassObject, IWbemClassObject, IWbemLocator, IWbemServices, WBEM_FLAG_FORWARD_ONLY, WBEM_FLAG_RETURN_IMMEDIATELY,
-        WBEM_INFINITE, WbemLocator,
-    };
-    use ::windows::core::{BSTR, HSTRING, PCWSTR};
+    use ::windows::Win32::System::Wmi::IWbemServices;
 
     use super::{Row, Sensor, fold};
+    use crate::collect::wmi::{self as w, number, rows, text};
 
     /// How long to wait before looking for the tool again.
     const RETRY: Duration = Duration::from_secs(10);
     /// The namespaces, newest first, with the name shown as the source.
     const TOOLS: [(&str, &str); 2] =
         [("root\\LibreHardwareMonitor", "LibreHardwareMonitor"), ("root\\OpenHardwareMonitor", "OpenHardwareMonitor")];
-    /// `RPC_C_AUTHN_WINNT` and `RPC_C_AUTHZ_NONE`, as WMI's samples set them.
-    const AUTHN_WINNT: u32 = 10;
-    const AUTHZ_NONE: u32 = 0;
 
     pub struct Reader {
         conn: Option<(IWbemServices, &'static str)>,
@@ -98,9 +87,7 @@ mod wmi {
     impl Reader {
         /// Starts COM on this (the collect) thread; connects on the first read.
         pub fn new() -> Self {
-            // SAFETY: called once on the thread that then uses the reader; a
-            // thread already in COM keeps its apartment, which works too.
-            let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+            w::init();
             Self { conn: None, hardware: Vec::new(), tried: None }
         }
 
@@ -111,7 +98,7 @@ mod wmi {
                     return None;
                 }
                 self.tried = Some(Instant::now());
-                self.conn = connect();
+                self.conn = TOOLS.iter().find_map(|&(ns, tool)| w::connect(ns).map(|svc| (svc, tool)));
                 self.hardware.clear();
             }
             let (svc, tool) = self.conn.as_ref()?;
@@ -130,50 +117,6 @@ mod wmi {
         }
     }
 
-    fn connect() -> Option<(IWbemServices, &'static str)> {
-        // SAFETY: COM calls with owned arguments; the interfaces release
-        // themselves when dropped.
-        unsafe {
-            let locator: IWbemLocator = CoCreateInstance(&WbemLocator, None, CLSCTX_INPROC_SERVER).ok()?;
-            TOOLS.iter().find_map(|&(ns, tool)| {
-                let none = BSTR::new();
-                let svc = locator.ConnectServer(&BSTR::from(ns), &none, &none, &none, 0, &none, None).ok()?;
-                let blanket = CoSetProxyBlanket(
-                    &svc,
-                    AUTHN_WINNT,
-                    AUTHZ_NONE,
-                    PCWSTR::null(),
-                    RPC_C_AUTHN_LEVEL_CALL,
-                    RPC_C_IMP_LEVEL_IMPERSONATE,
-                    None,
-                    EOAC_NONE,
-                );
-                blanket.ok().map(|_| (svc, tool))
-            })
-        }
-    }
-
-    /// Every row of `query`, through `each`.
-    fn rows<T>(svc: &IWbemServices, query: &str, each: impl Fn(&IWbemClassObject) -> Option<T>) -> Option<Vec<T>> {
-        // SAFETY: as in `connect`.
-        unsafe {
-            let flags = WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY;
-            let list: IEnumWbemClassObject = svc.ExecQuery(&BSTR::from("WQL"), &BSTR::from(query), flags, None).ok()?;
-            let mut out = Vec::new();
-            loop {
-                let mut row = [None];
-                let mut got = 0;
-                if list.Next(WBEM_INFINITE, &mut row, &mut got).is_err() || got == 0 {
-                    break;
-                }
-                if let Some(v) = row[0].as_ref().and_then(&each) {
-                    out.push(v);
-                }
-            }
-            Some(out)
-        }
-    }
-
     fn sensors(svc: &IWbemServices) -> Option<Vec<Row>> {
         let q = "SELECT Identifier, Name, SensorType, Value, Parent FROM Sensor WHERE SensorType = 'Temperature' OR SensorType = 'Fan'";
         rows(svc, q, |o| {
@@ -189,39 +132,6 @@ mod wmi {
 
     fn hardware(svc: &IWbemServices) -> Option<Vec<(String, String)>> {
         rows(svc, "SELECT Identifier, Name FROM Hardware", |o| Some((text(o, "Identifier")?, text(o, "Name")?)))
-    }
-
-    /// A property as it comes, cleared again after `f` looks at it.
-    fn property<T>(o: &IWbemClassObject, name: &str, f: impl Fn(&VARIANT) -> Option<T>) -> Option<T> {
-        let mut v = VARIANT::default();
-        // SAFETY: `v` is a valid VARIANT that `Get` fills and VariantClear frees.
-        unsafe {
-            o.Get(&HSTRING::from(name), 0, &mut v, None, None).ok()?;
-            let out = f(&v);
-            let _ = VariantClear(&mut v);
-            out
-        }
-    }
-
-    fn text(o: &IWbemClassObject, name: &str) -> Option<String> {
-        property(o, name, |v| {
-            // SAFETY: the union is read as the type its tag says.
-            unsafe { (v.Anonymous.Anonymous.vt == VT_BSTR).then(|| v.Anonymous.Anonymous.Anonymous.bstrVal.to_string()) }
-        })
-    }
-
-    fn number(o: &IWbemClassObject, name: &str) -> Option<f32> {
-        property(o, name, |v| {
-            // SAFETY: as in `text`.
-            unsafe {
-                let inner = &v.Anonymous.Anonymous;
-                match inner.vt {
-                    VT_R4 => Some(inner.Anonymous.fltVal),
-                    VT_R8 => Some(inner.Anonymous.dblVal as f32),
-                    _ => None,
-                }
-            }
-        })
     }
 }
 

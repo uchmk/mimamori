@@ -17,6 +17,8 @@ pub mod sensors;
 pub mod svc;
 pub mod topo;
 #[cfg(windows)]
+mod wmi;
+#[cfg(windows)]
 mod wts;
 
 use std::collections::HashMap;

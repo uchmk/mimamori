@@ -289,7 +289,18 @@ fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
     let sys = line(1);
     pen.text(pos2(sys.left(), sys.center().y), &pen.fit(&c.system, sys.width()), theme::dim());
 
-    for (k, g) in c.gauges.iter().enumerate() {
+    // A long reason takes the facts' line when there are none, and a down
+    // card's reason as many lines from the bottom as it needs, up to the
+    // graphs': why it is down matters more than its old facts and numbers.
+    let cells = (inner.width() / pen.cw).floor() as usize;
+    let reason = match (c.faded, c.facts.is_empty()) {
+        (true, _) => wrap(&c.last, cells, LINES - 3),
+        (false, true) => wrap(&c.last, cells, 2),
+        (false, false) => vec![c.last.as_str()],
+    };
+    let first = LINES - reason.len();
+
+    for (k, g) in c.gauges.iter().enumerate().take_while(|(k, _)| 2 + k < first.min(5)) {
         let row = line(2 + k);
         let y = row.center().y;
         pen.text(pos2(row.left(), y), g.label, theme::dim());
@@ -303,15 +314,9 @@ fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
         pen.p.line_segment([pos2(spark.left(), spark.bottom()), pos2(spark.right(), spark.bottom())], Stroke::new(1.0, theme::line()));
     }
 
-    // A long reason takes the facts' line when there are none, or when the
-    // host is down: why it is down matters more than its old facts.
-    let (facts, last) = (line(5), line(6));
-    let (top, rest) = match c.facts.is_empty() || c.faded {
-        true => split(pen, &c.last, last.width()),
-        false => ("", c.last.as_str()),
-    };
-    if top.is_empty() {
-        // Dim names, values in the text colour.
+    if first > 5 {
+        // Dim names, values in the text colour (dimmed on a down card).
+        let facts = line(5);
         let mut x = facts.left();
         let y = facts.center().y;
         for (k, (name, value, color)) in c.facts.iter().enumerate() {
@@ -321,26 +326,51 @@ fn draw_card(pen: &Pen, r: Rect, c: &Card, selected: bool) {
             x = pen.text(pos2(x, y), &format!("{name} "), theme::dim()).right();
             x = pen.text(pos2(x, y), value, fade(*color)).right();
         }
-    } else {
-        pen.text(pos2(facts.left(), facts.center().y), top, c.last_c);
     }
-    pen.text(pos2(last.left(), last.center().y), &pen.fit(rest, last.width()), c.last_c);
+    for (k, text) in reason.iter().enumerate() {
+        let row = line(first + k);
+        pen.text(pos2(row.left(), row.center().y), &pen.fit(text, row.width()), c.last_c);
+    }
 }
 
-/// The words of `s` that fit in `w` and the rest; all of it second when it
-/// fits whole.
-fn split<'s>(pen: &Pen, s: &'s str, w: f32) -> (&'s str, &'s str) {
-    if pen.width(s) <= w {
-        return ("", s);
-    }
-    let mut cut = 0;
-    for (i, _) in s.match_indices(' ') {
-        if pen.width(&s[..i]) > w {
-            break;
+/// `s` in lines of `cells` cells, at most `most` of them, the last holding
+/// all that is left (cut with `…` when drawn). Lines break at a space or
+/// next to a wide character, so Japanese wraps too; one line when it fits.
+fn wrap(s: &str, cells: usize, most: usize) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = s.trim();
+    while out.len() + 1 < most && crate::util::width(rest) > cells {
+        let (mut used, mut cut) = (0, 0);
+        let mut prev_wide = false;
+        for (i, ch) in rest.char_indices() {
+            let w = crate::util::cells(ch);
+            let wide = w > 1;
+            // Not before closing punctuation, so `、` stays on its line.
+            if i > 0 && (ch == ' ' || wide || prev_wide) && !"、。，．？！）」』".contains(ch) {
+                cut = i;
+            }
+            used += w;
+            if used > cells {
+                break;
+            }
+            prev_wide = wide;
         }
-        cut = i;
+        if cut == 0 {
+            // One word longer than the line: break inside it.
+            let mut used = 0;
+            cut = rest
+                .char_indices()
+                .find(|(_, ch)| {
+                    used += crate::util::cells(*ch);
+                    used > cells
+                })
+                .map_or(rest.len(), |(i, _)| i.max(rest.chars().next().map_or(1, char::len_utf8)));
+        }
+        out.push(rest[..cut].trim_end());
+        rest = rest[cut..].trim_start();
     }
-    if cut == 0 { ("", s) } else { (&s[..cut], s[cut..].trim_start()) }
+    out.push(rest);
+    out
 }
 
 /// The lines of the hint: what is said, its colour, and what a click on it
@@ -396,6 +426,23 @@ fn hint(cx: &mut Cx, r: Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reason_wraps_in_japanese_too() {
+        assert_eq!(wrap("closed", 30, 4), ["closed"]);
+        assert_eq!(wrap("nothing listens there now", 12, 4), ["nothing", "listens", "there now"]);
+        // The last line holds the rest, to be cut with `…`.
+        assert_eq!(wrap("a b c d e f", 3, 2), ["a b", "c d e f"]);
+        // No spaces: next to wide characters, never before `、`.
+        let ja = "そこで待っているものがありません — ssh -L か tailscale serve、相手の [agent] listen は動いていますか？";
+        let lines = wrap(ja, 36, 4);
+        assert_eq!(lines.len(), 3, "{lines:?}");
+        assert!(lines.iter().all(|l| crate::util::width(l) <= 36), "{lines:?}");
+        assert!(lines.iter().all(|l| !l.starts_with('、') && !l.starts_with('？')), "{lines:?}");
+        assert_eq!(lines.concat().replace(' ', ""), ja.replace(' ', ""), "nothing lost");
+        // A word longer than the line breaks inside it.
+        assert_eq!(wrap("abcdefgh", 3, 4), ["abc", "def", "gh"]);
+    }
 
     #[test]
     fn the_card_counts_warnings_and_says_the_battery() {
