@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.46.0] - 2026-10-11
+
+### 追加
+- しきい値のアラート。config.toml の `[[alert]]`（`metric` は cpu・mem・swap・gpu・temp・disk・battery、`above` か `below`、`for` 秒、`name`）を手元の機械の値で見て、`for` 秒続いたら 1 回だけ知らせる（条件が外れるまで再通知しない）。ルールは既定では無い。
+- `[notify]`（`system`・`sound`・`sound_name`・`focus_mode`・`webhook`・`webhook_format`）。tsumugi の `[notify]` と同じ言葉で、通知・音・webhook（ntfy・Slack・JSON）の出し方を決める。実装は ito の新しいクレート `ito-notify`（ito v0.16.0）。
+- ito の `rev` を `ito-notify` を含む 4ed3fd1 に上げた。
+
 ## [0.45.0] - 2026-10-11
 
 ### 追加

@@ -87,6 +87,10 @@ pub struct Settings {
     pub viewers: Vec<ViewerKey>,
     /// `[[host]]`: the other machines on the fleet screen.
     pub hosts: Vec<Host>,
+    /// `[notify]`: how a fired alert reaches a person.
+    pub notify: crate::alert::Notify,
+    /// `[[alert]]`: the threshold rules.
+    pub alerts: Vec<crate::alert::Rule>,
     pub warnings: Vec<String>,
 }
 
@@ -104,6 +108,8 @@ impl Default for Settings {
             listen: None,
             viewers: Vec::new(),
             hosts: Vec::new(),
+            notify: crate::alert::Notify::default(),
+            alerts: Vec::new(),
             warnings: Vec::new(),
         }
     }
@@ -287,6 +293,8 @@ pub fn load(base: Option<&Path>) -> Settings {
                     },
                     "agent" => agent(v, &mut s, &mut warn),
                     "host" => s.hosts = hosts(v, &mut warn),
+                    "notify" => s.notify = crate::alert::parse_notify(v, &mut warn),
+                    "alert" => s.alerts = crate::alert::parse_rules(v, &mut warn),
                     other => warn.push(format!("config.toml: unknown setting `{other}`")),
                 }
             }

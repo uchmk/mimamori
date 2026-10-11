@@ -713,6 +713,19 @@ hint = "{0} further back · {1} closer · {2} close"
 empty = "Nothing recorded yet"
 note = "{0} s a point"
 
+[alert]
+cpu = "CPU"
+mem = "Memory"
+swap = "Swap"
+gpu = "GPU"
+temp = "Temperature"
+disk = "Disk"
+battery = "Battery"
+above = "{0} is over {1}"
+below = "{0} is under {1}"
+now = "{0} is {1}"
+now_on = "{0} is {1} on {2}"
+
 [confirm]
 title = "End process?"
 name = "Name"

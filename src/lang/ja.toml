@@ -711,6 +711,19 @@ hint = "{0} さらに過去へ · {1} 近くへ · {2} 閉じる"
 empty = "まだ記録がありません"
 note = "1 点 {0} 秒"
 
+[alert]
+cpu = "CPU"
+mem = "メモリ"
+swap = "スワップ"
+gpu = "GPU"
+temp = "温度"
+disk = "ディスク"
+battery = "バッテリー"
+above = "{0} が {1} を超えました"
+below = "{0} が {1} を下回りました"
+now = "{0} は {1}"
+now_on = "{0} は {2} で {1}"
+
 [confirm]
 title = "プロセスを終了しますか？"
 name = "名前"

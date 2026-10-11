@@ -224,6 +224,36 @@ file is new): UTC time, CPU %, load average, memory and swap, network and disk
 bytes per second, the busiest GPU %, the hottest temperature, battery % and
 the process count. A number the machine does not give is an empty cell.
 
+## Alerts
+
+`[[alert]]` rules in config.toml watch this machine, and `[notify]` says how a
+fired one reaches you. `[notify]` has the same words as tsumugi's (the code
+is ito's `ito-notify`):
+
+```toml
+[notify]
+system = true                 # the system's notification (default)
+sound = false                 # a sound of the system's
+sound_name = "alert"          # chime, low, alert or default
+focus_mode = true             # Windows: no sound while focus mode is on
+webhook = "https://ntfy.sh/my-topic"   # also send it here (empty: nowhere)
+webhook_format = "ntfy"       # ntfy, slack or json
+
+[[alert]]
+metric = "cpu"                # cpu, mem, swap, gpu, temp, disk or battery
+above = 90                    # or: below = 15
+for = 30                      # seconds it has to hold (default 10)
+name = "CPU is busy"          # optional; else "CPU is over 90%"
+```
+
+`cpu`, `mem`, `swap`, `gpu` (the busiest) and `disk` (the fullest volume) are
+percentages, `temp` is the hottest sensor in °C, `battery` the charge. A rule
+fires once when it has held for `for` seconds and again only after it has
+stopped holding; the status bar shows it too. There are no rules until you
+write them. Only this machine's readings are watched, also while another
+machine's screens show. A mistake in a rule is warned about on the settings
+screen's warnings and the rule is left out.
+
 ## Fleet
 
 The fleet screen (`F`) shows other machines next to this one. On each of them

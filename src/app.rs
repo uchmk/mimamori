@@ -363,6 +363,8 @@ pub struct App {
     pub zoom: Option<Zoom>,
     /// The range the last zoom looked back over; the next starts there.
     zoom_range: Range,
+    /// What the `[[alert]]` rules have seen of this machine.
+    alerts: crate::alert::Tracker,
     kill_tx: Sender<(Target, Outcome)>,
     kill_rx: Receiver<(Target, Outcome)>,
     svc_tx: Sender<(svcctl::Target, svcctl::Outcome)>,
@@ -470,6 +472,7 @@ impl App {
             confirm: None,
             zoom: None,
             zoom_range: Range::default(),
+            alerts: crate::alert::Tracker::default(),
             kill_tx,
             kill_rx,
             svc_tx,
@@ -712,11 +715,30 @@ impl App {
             self.dirty = false;
             self.refresh_rows();
         }
+        self.check_alerts();
         self.clamp_all();
         // Dropped once it has had its time, or the frame after it would ask
         // for another frame forever.
         if self.toast.is_some() && self.toast_left().is_none() {
             self.toast = None;
+        }
+    }
+
+    /// The `[[alert]]` rules against this machine's readings (the home one
+    /// while another machine's screens show): what fires is toasted here and
+    /// told as `[notify]` asks.
+    fn check_alerts(&mut self) {
+        let rules = &self.prefs.settings.alerts;
+        if rules.is_empty() && self.alerts.is_idle() {
+            return;
+        }
+        let m = self.away.as_ref().map_or(&self.model, |a| &a.home);
+        let fired = self.alerts.step(rules, Instant::now(), |metric| metric.read(m));
+        let host = m.st.as_ref().map(|s| s.host.clone()).unwrap_or_default();
+        for f in fired {
+            let (title, body) = f.words(&host);
+            self.toast(format!("{title}: {body}"));
+            crate::alert::tell(&self.prefs.settings.notify, &title, &body);
         }
     }
 

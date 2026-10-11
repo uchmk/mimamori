@@ -197,6 +197,14 @@ back to `[ ]`.
 - [ ] 3j.1 Double click the graph on overview (any gauge), cpu (total), mem (memory and swap), gpu (usage, memory), net (receive, send), disk (read, write, busy) and sensors: it opens over the window with the title, the range (5 min), the latest value, avg / min / max, a scale at the quarters and `… ago` / `now` under it. Clicks and the main keys do nothing while it is open; `Esc`, `q` and `Enter` close it.
 - [ ] 3j.2 `]` and `[` (also the arrows, `l` and `h`) step 5 min → 15 min → 1 hour and back; the line keeps moving while it is open; after an hour of running the 1 hour view fills the width; the next zoom opens at the range the last one was left at. With `every 2 s` the time marks double.
 
+## 3k. Alerts
+
+- [ ] 3k.1 With `[[alert]] metric = "cpu", above = 0, for = 0` in config.toml, a notification from the system appears within a second or two (a toast on Windows, Notification Center on macOS, notify-send on Linux) titled "CPU is over 0%", and the status bar toast says it too. It does not repeat while CPU stays above 0. Change the rule to `above = 100` and back to `above = 0`: it fires again.
+- [ ] 3k.2 `[notify] sound = true` plays the sound named by `sound_name` (try chime, low, alert, default); with focus mode on in Windows and `focus_mode = true` there is none.
+- [ ] 3k.3 `[notify] webhook = "https://ntfy.sh/<a topic of yours>"` delivers the alert to the ntfy app on a phone; `webhook_format = "slack"` and `"json"` reach a Slack incoming webhook and a server that logs the JSON.
+- [ ] 3k.4 While another machine's screens show (fleet, Enter on a host), a rule on this machine still fires.
+- [ ] 3k.5 A bad rule (`metric = "fans"`, or both `above` and `below`) shows in the settings screen's warnings and the other rules still work.
+
 ## 4. Resizing the columns
 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.
