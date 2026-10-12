@@ -186,18 +186,20 @@ back to `[ ]`.
 - [ ] 3h.7 macOS: the USB devices match System Information → USB (names, makers, speeds, what hangs off each hub) and the PCI ones its PCI page (or Thunderbolt / Apple silicon's built-in devices); the driver column names the matched kext class.
 - [ ] 3h.8 Fleet: `Enter` on a v0.43 agent's card, then `D`, shows that machine's devices; an agent older than v0.43 shows `another version` on its card instead (protocol 6).
 - [ ] 3h.9 A narrow window drops the maker column, then the status; long names are cut with `…` and do not run into the next column; with `language = "ja"` the classes on macOS and Linux and every label read in Japanese.
+- [ ] 3h.10 Fleet (v0.52): a device with a problem (Device Manager shows a yellow mark, e.g. a disabled-by-error one) adds `device problems N` to this machine's card within a minute, even with the devices screen never opened; `N` is the number the devices screen shows in red.
 
 ## 3m. Containers (`C`)
 
 - [ ] 3m.1 Linux with Docker running a few containers (`docker run -d nginx`, one stopped, one `docker pause`d): `C` opens containers; the left column counts All / Running / Paused / Stopped as `docker ps -a` does; the middle lists state, name, CPU %, memory and image, running ones first; the crumb reads `<n> containers · <n> running · Docker`.
 - [ ] 3m.2 The CPU % and memory of a busy container (`docker run --rm -d busybox sh -c 'while :; do :; done'`) match `docker stats --no-stream` (memory without the page cache); a stopped one shows `—`. The right column's id, image, status, created time, memory against its limit (`docker run -m 256m`) and process count match `docker inspect`.
-- [ ] 3m.3 `docker stop` / `docker start` a container: within 3 s its state changes; leave the screen (`1`): nothing is read any more (no `docker` API traffic in `journalctl -u docker` / `strace`).
+- [ ] 3m.3 `docker stop` / `docker start` a container: within 3 s its state changes; leave the screen (`1`): it is read only once a minute, for the fleet card (little `docker` API traffic in `journalctl -u docker` / `strace`).
 - [ ] 3m.4 `/ ngi <Enter>` keeps the containers by name, image or id and `Esc` drops it; `y` copies the id and the toast says `Copied: …`.
 - [ ] 3m.5 Windows with Docker Desktop (named pipe `\.\pipe\docker_engine`) and with `DOCKER_HOST=npipe:////./pipe/docker_engine`: the same list appears; with Docker Desktop stopped the middle says no Docker or Podman is listening.
 - [ ] 3m.6 Podman: rootless (`systemctl --user start podman.socket`) and on Windows / macOS with a Podman machine: the crumb says Podman and the list matches `podman ps -a`.
 - [ ] 3m.7 Linux as a user outside the `docker` group: the middle says the socket is there but this user may not use it.
 - [ ] 3m.8 Fleet: `Enter` on a v0.48 agent's card, then `C`, shows that machine's containers; an agent older than v0.48 shows `another version` on its card (protocol 7).
 - [ ] 3m.9 A narrow window drops the image, then the memory column; long names are cut with `…`; with `language = "ja"` every label reads in Japanese.
+- [ ] 3m.10 Fleet (v0.52): a container that exits with an error (`docker run -d busybox false`) or restarts in a loop (`--restart always`) adds `containers down 1` to this machine's card within a minute, even with the containers screen never opened; one that exits cleanly (`docker run busybox true`) does not.
 
 ## 3i. Export
 

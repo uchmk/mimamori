@@ -117,9 +117,11 @@ pub enum Msg {
     Hardware(Box<hw::Hardware>),
     /// Every interval, before the sensors; `None` without a battery.
     Battery(Option<battery::Battery>),
-    /// Only while the devices screen wants them, every [`DEV_EVERY`].
+    /// Every [`DEV_EVERY`] while the devices screen wants them, every
+    /// [`DEV_IDLE`] otherwise (the problem ones are counted on the fleet card).
     Devices(Box<devices::Devices>),
-    /// Only while the containers screen wants them, every [`CT_EVERY`].
+    /// Every [`CT_EVERY`] while the containers screen wants them, every
+    /// [`CT_IDLE`] otherwise (the stopped ones are counted on the fleet card).
     Containers(Box<containers::Containers>),
     /// Every [`session::EVERY`]: the logins and the power plan.
     Session(session::Session),
@@ -134,9 +136,11 @@ pub enum Ctl {
     Services(bool),
     /// Read sockets (at once, then every [`NET_EVERY`]) or stop reading them.
     Net(bool),
-    /// Read devices (at once, then every [`DEV_EVERY`]) or stop reading them.
+    /// Read devices at once and then every [`DEV_EVERY`], or go back to every
+    /// [`DEV_IDLE`].
     Devices(bool),
-    /// Read containers (at once, then every [`CT_EVERY`]) or stop reading them.
+    /// Read containers at once and then every [`CT_EVERY`], or go back to
+    /// every [`CT_IDLE`].
     Containers(bool),
     /// Sample processes every this many rounds (2 in the window); 0 stops:
     /// the fleet agent reads them only while a viewer watches.
@@ -170,6 +174,25 @@ pub const DEV_EVERY: Duration = Duration::from_secs(5);
 /// How often containers are read while wanted: each running one's stats
 /// are a request of its own to the engine.
 pub const CT_EVERY: Duration = Duration::from_secs(3);
+
+/// How often devices and containers are read while no screen shows them, for
+/// the counts on the fleet card.
+pub const DEV_IDLE: Duration = Duration::from_secs(60);
+pub const CT_IDLE: Duration = Duration::from_secs(60);
+
+/// The first idle reads wait this long (staggered after [`SVC_FIRST`]).
+const DEV_FIRST: Duration = Duration::from_secs(12);
+const CT_FIRST: Duration = Duration::from_secs(14);
+
+/// The gap until the next devices read.
+fn dev_gap(wanted: bool) -> Duration {
+    if wanted { DEV_EVERY } else { DEV_IDLE }
+}
+
+/// The gap until the next containers read.
+fn ct_gap(wanted: bool) -> Duration {
+    if wanted { CT_EVERY } else { CT_IDLE }
+}
 
 /// Start the sampler; `wake` is repainted after every message (the agent has
 /// no window and passes `None`).
@@ -221,9 +244,11 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
     let mut sensors = sensors::Reader::new();
     let mut net_next: Option<Instant> = None;
     let mut devs = devices::Reader::default();
-    let mut dev_next: Option<Instant> = None;
+    let mut dev_on = false;
+    let mut dev_next = Instant::now() + DEV_FIRST;
     let mut cts = containers::Reader::default();
-    let mut ct_next: Option<Instant> = None;
+    let mut ct_on = false;
+    let mut ct_next = Instant::now() + CT_FIRST;
     let mut session_next = Instant::now();
     let mut paused = false;
     let mut procs_every: u32 = 2;
@@ -234,7 +259,7 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
         let due = if paused {
             None
         } else {
-            [Some(next), Some(svc_next), Some(session_next), net_next, dev_next, ct_next].into_iter().flatten().min()
+            [Some(next), Some(svc_next), Some(session_next), net_next, Some(dev_next), Some(ct_next)].into_iter().flatten().min()
         };
         let got = match due {
             Some(t) => ctl.recv_timeout(t.saturating_duration_since(Instant::now())),
@@ -271,14 +296,16 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
                 if on && !send(Msg::Devices(Box::new(devs.read()))) {
                     return;
                 }
-                dev_next = on.then(|| Instant::now() + DEV_EVERY);
+                dev_on = on;
+                dev_next = Instant::now() + dev_gap(on);
                 continue;
             }
             Ok(Ctl::Containers(on)) => {
                 if on && !send(Msg::Containers(Box::new(cts.read()))) {
                     return;
                 }
-                ct_next = on.then(|| Instant::now() + CT_EVERY);
+                ct_on = on;
+                ct_next = Instant::now() + ct_gap(on);
                 continue;
             }
             Ok(Ctl::Procs(n)) => {
@@ -304,21 +331,17 @@ fn run(tx: &Sender<Msg>, ctl: &Receiver<Ctl>, wake: &Option<egui::Context>, mut 
             }
             net_next = Some(Instant::now() + NET_EVERY);
         }
-        if let Some(t) = dev_next
-            && Instant::now() >= t
-        {
+        if Instant::now() >= dev_next {
             if !send(Msg::Devices(Box::new(devs.read()))) {
                 return;
             }
-            dev_next = Some(Instant::now() + DEV_EVERY);
+            dev_next = Instant::now() + dev_gap(dev_on);
         }
-        if let Some(t) = ct_next
-            && Instant::now() >= t
-        {
+        if Instant::now() >= ct_next {
             if !send(Msg::Containers(Box::new(cts.read()))) {
                 return;
             }
-            ct_next = Some(Instant::now() + CT_EVERY);
+            ct_next = Instant::now() + ct_gap(ct_on);
         }
         if Instant::now() >= session_next {
             if !send(Msg::Session(session::read())) {
@@ -606,5 +629,8 @@ mod tests {
         assert_eq!(svc_gap(true), SVC_EVERY);
         assert_eq!(svc_gap(false), SVC_IDLE);
         assert!(SVC_FIRST < SVC_IDLE && SVC_EVERY < SVC_IDLE);
+        assert_eq!((dev_gap(true), dev_gap(false)), (DEV_EVERY, DEV_IDLE));
+        assert_eq!((ct_gap(true), ct_gap(false)), (CT_EVERY, CT_IDLE));
+        assert!(DEV_FIRST < DEV_IDLE && CT_FIRST < CT_IDLE);
     }
 }

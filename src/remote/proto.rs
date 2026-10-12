@@ -25,7 +25,7 @@ pub const DIRECT_PORT: u16 = 7314;
 /// Where `[agent] metrics` serves `/metrics` when no port is given.
 pub const METRICS_PORT: u16 = 9314;
 /// Raised whenever a message changes shape.
-pub const PROTO: u16 = 8;
+pub const PROTO: u16 = 9;
 /// A frame larger than this is not ours (another service on the port). The
 /// process list of a busy machine is the largest that is.
 pub const MAX_FRAME: usize = 16 << 20;
@@ -196,11 +196,19 @@ pub struct Warn {
     pub drives: u16,
     /// Services that failed; `None` until services are read.
     pub failed: Option<u16>,
+    /// Devices with a problem; `None` until devices are read.
+    pub devices: Option<u16>,
+    /// Containers restarting or exited with an error; `None` until read.
+    pub containers: Option<u16>,
 }
 
 impl Warn {
     pub fn total(&self) -> u32 {
-        u32::from(self.hot) + u32::from(self.drives) + u32::from(self.failed.unwrap_or(0))
+        u32::from(self.hot)
+            + u32::from(self.drives)
+            + u32::from(self.failed.unwrap_or(0))
+            + u32::from(self.devices.unwrap_or(0))
+            + u32::from(self.containers.unwrap_or(0))
     }
 }
 
@@ -356,10 +364,10 @@ mod tests {
             gpu: Some(("RTX 4070".into(), 40.0)),
             temp: Some(61.0),
             battery: Some(Battery { pct: 87.0, charging: true, plugged: true }),
-            warn: Warn { hot: 1, drives: 0, failed: Some(2) },
+            warn: Warn { hot: 1, drives: 0, failed: Some(2), devices: Some(1), containers: None },
             viewers: 3,
         };
-        assert_eq!(sum.warn.total(), 3);
+        assert_eq!(sum.warn.total(), 4);
         let mut wire = Vec::new();
         write_frame(&mut wire, &FromAgent::Hello(hello.clone())).unwrap();
         write_frame(&mut wire, &FromAgent::Summary(sum.clone())).unwrap();
@@ -439,7 +447,7 @@ mod tests {
             gpu: Some(("RTX 4070".into(), 40.0)),
             temp: Some(61.0),
             battery: Some(Battery { pct: 87.0, charging: true, plugged: true }),
-            warn: Warn { hot: 1, drives: 0, failed: Some(2) },
+            warn: Warn { hot: 1, drives: 0, failed: Some(2), devices: Some(1), containers: None },
             viewers: 1,
         }
     }

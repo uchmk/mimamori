@@ -248,11 +248,17 @@ fn sum_facts(s: &Summary) -> Vec<(&'static str, String, Color32)> {
 /// when nothing warns.
 pub fn warn_text(w: &Warn) -> Option<(String, bool)> {
     let failed = w.failed.unwrap_or(0);
-    let parts: Vec<String> = [("fleet.warn_hot", w.hot), ("fleet.warn_drives", w.drives), ("fleet.warn_failed", failed)]
-        .into_iter()
-        .filter(|(_, n)| *n > 0)
-        .map(|(k, n)| trf(k, &[&n.to_string()]))
-        .collect();
+    let parts: Vec<String> = [
+        ("fleet.warn_hot", w.hot),
+        ("fleet.warn_drives", w.drives),
+        ("fleet.warn_failed", failed),
+        ("fleet.warn_devices", w.devices.unwrap_or(0)),
+        ("fleet.warn_containers", w.containers.unwrap_or(0)),
+    ]
+    .into_iter()
+    .filter(|(_, n)| *n > 0)
+    .map(|(k, n)| trf(k, &[&n.to_string()]))
+    .collect();
     (w.total() > 0).then(|| (parts.join(" · "), failed > 0))
 }
 
@@ -448,12 +454,16 @@ mod tests {
     fn the_card_counts_warnings_and_says_the_battery() {
         assert_eq!(warn_text(&Warn::default()), None);
         // Services not read yet count as none failed.
-        assert_eq!(warn_text(&Warn { hot: 0, drives: 0, failed: None }), None);
-        let (text, red) = warn_text(&Warn { hot: 2, drives: 0, failed: Some(0) }).unwrap();
+        assert_eq!(warn_text(&Warn { hot: 0, drives: 0, failed: None, devices: None, containers: None }), None);
+        let (text, red) = warn_text(&Warn { hot: 2, drives: 0, failed: Some(0), devices: Some(0), containers: Some(0) }).unwrap();
         assert!(text.contains('2') && !red, "{text}");
-        let (text, red) = warn_text(&Warn { hot: 1, drives: 1, failed: Some(3) }).unwrap();
+        let (text, red) = warn_text(&Warn { hot: 1, drives: 1, failed: Some(3), devices: None, containers: None }).unwrap();
         assert_eq!(text.matches(" · ").count(), 2, "{text}");
         assert!(red);
+        // Devices and containers warn in yellow.
+        let (text, red) = warn_text(&Warn { hot: 0, drives: 0, failed: None, devices: Some(2), containers: Some(1) }).unwrap();
+        assert_eq!(text.matches(" · ").count(), 1, "{text}");
+        assert!(!red);
         let b = |charging, plugged| Battery { pct: 86.6, charging, plugged };
         assert_eq!(battery_text(&b(false, false)), "87%");
         assert_ne!(battery_text(&b(true, true)), "87%");

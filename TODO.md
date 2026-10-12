@@ -116,11 +116,11 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] devices の実機の確認 【実機】（TESTING.md 3h）。
 - [x] containers（C）: Docker・Podman のコンテナの一覧（状態・CPU・メモリ・イメージ・直近 1 分のグラフ）。
   → `collect/containers/`（エンジンの Docker 互換 API を Unix ソケット / Windows の名前付きパイプで。`docker` コマンドは使わない）。
-  画面が出ている間だけ 3 秒ごと。fleet はプロトコル 7 の `Want.containers` (v0.48.0)
+  画面が出ている間は 3 秒ごと、出ていなければ 1 分ごと（fleet のカードの数のため）。fleet はプロトコル 7 の `Want.containers` (v0.48.0)
 - [ ] containers の実機の確認 【実機】（TESTING.md 3m）。
 - [ ] containers: ランタイムが無い Linux で cgroup（`/sys/fs/cgroup`）から LXC・systemd-nspawn などを拾う。
 - [ ] containers: 開始・停止・再起動の操作（`svcctl` と同じ確認の形で）。
-- [ ] containers: fleet のカードの警告に、止まっているコンテナ・再起動を繰り返すコンテナの数を足す。（要確認: #21）
+- [x] containers: fleet のカードの警告に、再起動を繰り返すコンテナ・異常終了したコンテナの数を足す (v0.52.0)。
 
 ## 2. 構成と OS
 
@@ -183,8 +183,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `snow`（Pure Rust、`Noise_IK_25519_ChaChaPoly_BLAKE2s`）。`yagura --key` で鍵の組を作って見せ（`<設定>/yagura/key`）、見られる側は `[agent] listen` と
   `[[agent.viewer]]`（見る側の公開鍵）、見る側は `[[host]] key`（相手の公開鍵、既定のポート 7314）。知らない見る側・違う鍵は `Why::Denied`・`BadKey` で言う。
   設定の画面の Fleet に DIRECT CONNECTIONS の欄、sys の Fleet agent の節に直接の口と鍵 (v0.41.0)
-- [ ] fleet: カードの警告の数に、問題のあるデバイス（devices の画面の赤）を足す。devices は画面が出ている間だけ読むので、
-  svc と同じく出ていない間も間を空けて読むかを決めてから。（要確認: #21）
+- [x] fleet: カードの警告の数に、問題のあるデバイス（devices の画面の赤）を足す。devices も出ていない間は 1 分ごとに読む (v0.52.0)。
 
 ## 5. 配布
 

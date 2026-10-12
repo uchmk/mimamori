@@ -96,6 +96,21 @@ pub struct Container {
     pub created: u64,
 }
 
+impl Container {
+    /// Restarting, or exited with a non-zero code; a clean exit is a
+    /// container that did its job, not a warning.
+    pub fn problem(&self) -> bool {
+        match self.state {
+            State::Restarting => true,
+            State::Exited => {
+                let code = self.status.strip_prefix("Exited (").and_then(|r| r.split(')').next());
+                code.is_some_and(|c| c.trim() != "0")
+            }
+            _ => false,
+        }
+    }
+}
+
 /// Why the list is empty or short.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Note {
@@ -399,6 +414,16 @@ fn candidates() -> Vec<(Runtime, Endpoint)> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_container_warns_when_it_restarts_or_exits_badly() {
+        let c = |state, status: &str| Container { state, status: status.into(), ..Default::default() };
+        assert!(c(State::Restarting, "Restarting (1) 5 seconds ago").problem());
+        assert!(c(State::Exited, "Exited (137) 2 hours ago").problem());
+        assert!(!c(State::Exited, "Exited (0) 2 hours ago").problem());
+        assert!(!c(State::Exited, "Exited").problem());
+        assert!(!c(State::Running, "Up 3 hours").problem());
+    }
+
     use super::*;
 
     const LIST: &str = r#"[
