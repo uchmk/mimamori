@@ -1807,30 +1807,30 @@ dependencies = [
 
 [[package]]
 name = "ito-common"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "chrono",
  "serde",
  "serde_json",
  "sys-locale",
  "toml",
- "toml_edit 0.23.10+spec-1.0.0",
+ "toml_edit",
  "windows",
 ]
 
 [[package]]
 name = "ito-gpu"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui-wgpu",
 ]
 
 [[package]]
 name = "ito-i18n"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "ito-common",
  "toml",
@@ -1838,16 +1838,16 @@ dependencies = [
 
 [[package]]
 name = "ito-keys"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-keyscript"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "ito-keys",
@@ -1856,8 +1856,8 @@ dependencies = [
 
 [[package]]
 name = "ito-layout"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "serde",
@@ -1865,24 +1865,24 @@ dependencies = [
 
 [[package]]
 name = "ito-notify"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "windows",
 ]
 
 [[package]]
 name = "ito-palette"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-prefs"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "ito-common",
@@ -1892,8 +1892,8 @@ dependencies = [
 
 [[package]]
 name = "ito-theme"
-version = "0.21.2"
-source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
+version = "0.21.4"
+source = "git+https://github.com/uchmk/ito?rev=5996866e59f37873d6d01f68468606a2712890bf#5996866e59f37873d6d01f68468606a2712890bf"
 dependencies = [
  "egui",
  "toml",
@@ -2936,7 +2936,7 @@ version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
 dependencies = [
- "toml_edit 0.25.17+spec-1.1.0",
+ "toml_edit",
 ]
 
 [[package]]
@@ -3661,19 +3661,10 @@ dependencies = [
  "indexmap",
  "serde_core",
  "serde_spanned",
- "toml_datetime 1.1.2+spec-1.1.0",
+ "toml_datetime",
  "toml_parser",
  "toml_writer",
- "winnow 1.0.4",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.5+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
-dependencies = [
- "serde_core",
+ "winnow",
 ]
 
 [[package]]
@@ -3687,27 +3678,15 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.23.10+spec-1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84c8b9f757e028cee9fa244aea147aab2a9ec09d5325a9b01e0a49730c2b5269"
-dependencies = [
- "indexmap",
- "toml_datetime 0.7.5+spec-1.1.0",
- "toml_parser",
- "toml_writer",
- "winnow 0.7.15",
-]
-
-[[package]]
-name = "toml_edit"
 version = "0.25.17+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3641d5bbb5349a79e1020a242d251efbc546ad8048d133958323ce9c40a9c9c"
 dependencies = [
  "indexmap",
- "toml_datetime 1.1.2+spec-1.1.0",
+ "toml_datetime",
  "toml_parser",
- "winnow 1.0.4",
+ "toml_writer",
+ "winnow",
 ]
 
 [[package]]
@@ -3716,7 +3695,7 @@ version = "1.1.5+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baa693a8032d7e1cada7d0041e96126df243179ff061456783ac7f12bda4744c"
 dependencies = [
- "winnow 1.0.4",
+ "winnow",
 ]
 
 [[package]]
@@ -4680,15 +4659,6 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.7.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
-dependencies = [
- "memchr",
-]
-
-[[package]]
-name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
@@ -4785,7 +4755,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "yagura"
-version = "0.58.0"
+version = "0.58.1"
 dependencies = [
  "base64",
  "chrono",
@@ -4870,7 +4840,7 @@ dependencies = [
  "uds_windows",
  "uuid",
  "windows-sys 0.61.2",
- "winnow 1.0.4",
+ "winnow",
  "zbus_macros",
  "zbus_names",
  "zvariant",
@@ -4922,7 +4892,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8bf88b4a3ff53e883001e0e0115b297a9d53c31b9c1edd2bfdd853e3428624e"
 dependencies = [
  "serde",
- "winnow 1.0.4",
+ "winnow",
  "zvariant",
 ]
 
@@ -4933,7 +4903,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1586c021a01ca0a9216dcd874e546382e156a5cbab5fab6cb5f10087e22682a"
 dependencies = [
  "serde",
- "winnow 1.0.4",
+ "winnow",
  "zbus_names",
  "zvariant",
 ]
@@ -5063,7 +5033,7 @@ dependencies = [
  "endi",
  "enumflags2",
  "serde",
- "winnow 1.0.4",
+ "winnow",
  "zcheapstr",
  "zvariant_derive",
  "zvariant_utils",
@@ -5092,5 +5062,5 @@ dependencies = [
  "quote",
  "serde",
  "syn 3.0.7",
- "winnow 1.0.4",
+ "winnow",
 ]
