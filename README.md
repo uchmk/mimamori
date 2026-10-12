@@ -468,10 +468,22 @@ is cut to fit.
 Each release on the
 [Releases page](https://github.com/uchmk/yagura/releases) has six files:
 Windows (`.zip`), macOS and Linux (`.tar.gz`), each on x86_64 and ARM64,
-holding the executable and the licence files. The notes list every file's
+holding the executable and the licence files (the Windows zip also holds `yagura.com`, see below). The notes list every file's
 SHA-256. Nothing is code-signed: SmartScreen warns about an unknown
 publisher, and macOS's Gatekeeper wants the binary allowed by hand.
 Windows is where it is tested; the macOS builds are only compiled.
+
+### `yagura.com` on Windows
+
+`yagura.exe` is a windowed program, so PowerShell does not wait for it: `$v = & yagura env`
+comes back empty and `yagura --version` prints after the prompt. The Windows zip holds
+`yagura.com` beside it, a small console program. `PATHEXT` lists `.COM` before `.EXE`, so typing
+`yagura` finds it first. For the commands that answer in text (`env`, `--version`, `--help`,
+`--agent`, `--snapshot`, `--log-metrics`, `--key`, `--install-service`, `--uninstall-service`) it
+runs `yagura.exe` with the same arguments and handles, waits, and passes on the exit code;
+anything else opens the window and returns once it is up. **Keep the two in one folder.**
+Building yourself, `cargo build --release` makes `yagura-com.exe`: copy it to `yagura.com`
+beside `yagura.exe`.
 
 ## Building
 

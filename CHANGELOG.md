@@ -4,6 +4,14 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.55.0] - 2026-10-12
+
+### 追加
+- Windows の zip に `yagura.com`（コンソールの前段、`src/bin/yagura-com.rs`）を同梱する（uchmk/yagura#15 の 4。kura の `kura.com` と同じ形）。窓だけの `yagura.exe` は PowerShell が待たず、`$v = & yagura env` が空になり、`--version` の出力がプロンプトのあとに出ていた。`PATHEXT` は `.COM` を `.EXE` より先に探すので `yagura` と打てば前段が答える。`env`・`--version`・`--help`・`--agent`・`--snapshot`・`--log-metrics`・`--key`・`--install-service`・`--uninstall-service` は `yagura.exe` を同じ引数・同じハンドルで走らせて待ち、終了コードを返す。それ以外は窓を開いて、窓が入力を受け付けたら戻る。`release.yml` が `yagura-com.exe` を `yagura.com` として zip に入れ、x64 のビルドで `& yagura.com env` と `--version` を確かめる。
+
+### 変更
+- `Cargo.toml` に `default-run = "yagura"` を足した（バイナリが 2 つになったため）。Windows の zip は 3 つのファイル（`yagura.exe`・`yagura.com`・ライセンス 2 つ）になる。
+
 ## [0.54.0] - 2026-10-12
 
 ### 追加

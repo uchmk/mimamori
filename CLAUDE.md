@@ -30,7 +30,7 @@
 
 - `.github/workflows/release.yml` を Actions タブから `workflow_dispatch` で回し、`tag` に `vX.Y.Z` を渡す（タグが無ければ作られる。
   クラウドのセッションからタグは push できない）。`Cargo.toml` の版と違えば落ちる。成果物は 6 つ（Windows は `.zip`、macOS と Linux は `.tar.gz`、
-  どれも実行ファイルとライセンスの 2 つのファイル）、最後に `release-sums.yml`（中身は `scripts/release-sums.sh`）が SHA-256 の表をノートに足す。
+  Windows は `yagura.exe`・`yagura.com`・ライセンスの 4 つ、ほかは実行ファイルとライセンスの 3 つのファイル）、最後に `release-sums.yml`（中身は `scripts/release-sums.sh`）が SHA-256 の表をノートに足す。
 - ノートは前のタグからの `vX.Y.Z:` のコミットの最初の段落から作る。前のリリースのタグができてから次を投げる。
 
 ## ビルド・検証
@@ -116,6 +116,7 @@
 | `src/remote/` | fleet。`proto.rs`（postcard の枠・プロトコルの番号（9）・`Hello` と `Summary`（電池・警告の数・見る側の数）と差分の `Delta`、見る側が欲しいものの `Want` と間隔の `Pace`、操作の `Act` と答えの `Done`）、`wire.rs`（`Msg` の `&'static str` の読み戻し・procs の行の切り詰め・どの `Msg` をどの `Want` に送るかの純粋な関数）、`noise.rs`（直接つなぐ形。鍵の組と `key` のファイル、`Noise_IK` の握手、暗号の枠の `Reader` / `Writer`、`--key` と設定の画面に出す手引きと貼る行）、`agent.rs`（`--agent`。`127.0.0.1` で待ち受け、`[agent] listen` があればそこでも Noise の握手で `[[agent.viewer]]` の見る側だけを受ける。hub のスレッドが見る側の `Want` の和で収集を切り替え、`Msg` を 1 回だけ encode して合う見る側へ。変わらないものと最新の値は新しい見る側のためにキャッシュ。遅れた見る側は取りこぼす。要約は見る側ごとに差分と間隔（`Pace`）。`--log` でファイルにも書く。操作は `check` が自分の `allow` と自分の一覧で確かめ、1 回ごとのスレッドで実行して答える）、`client.rs`（`[[host]]` ごとのスレッド。つなぎ・ping・`Want` の送り直し・操作の `ToHost::Act` は 1 回だけ（つなぎ直しても送らない）・待ちを延ばしてつなぎ直す、`key` のある `[[host]]` は Noise でつなぐ（既定のポート 7314）。落ちた理由は `Why`（断られたら `Denied`・`BadKey`）。`probe` は sys の画面のために手元のエージェントに 1 回だけ聞く）、`mod.rs`（`Peer`: カードの状態と履歴、`Status`）。鍵の無い形は暗号も認証も持たず `ssh -L` か `tailscale serve` の上で、直接の形は事前に交換した公開鍵の Noise で使う |
 | `src/collect/battery/` | 電池。`linux.rs`（`/sys/class/power_supply` のパース）、`windows.rs`（`GetSystemPowerStatus` の値を読み替える純粋な関数）、`mac.rs`（`AppleSmartBattery` の読み値の計算と IOKit の呼び出し）。sensors と同じ回に読む |
 | `src/service.rs` | `--install-service` / `--uninstall-service`。Linux は systemd の user unit、macOS は LaunchAgent、Windows は HKCU の `Run` キー（ログオン時のタスクは管理者を要るため）。unit・plist・`reg` の引数は純粋な関数 |
+| `src/bin/yagura-com.rs` | `yagura.com`、Windows のコンソールの前段。文字で答えるコマンド（`ANSWERS`）は `yagura.exe` を走らせて待ち、ほかは窓が上がるまで待って戻る。`main.rs` の引数を足したらここの `ANSWERS` と `TAKES_VALUE` も揃える |
 | `src/kill.rs` | プロセスの終了（確認の後、1 回ごとのスレッドで。Windows は `TerminateProcess`、ほかは SIGTERM → SIGKILL） |
 | `src/svcctl.rs` | サービスの開始・停止・再起動（確認の後、1 回ごとのスレッドで。Windows は SCM、Linux は `systemctl`、macOS は `launchctl`。権限不足とエラーの読み替えは純粋な関数） |
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
