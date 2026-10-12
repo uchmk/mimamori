@@ -1807,8 +1807,8 @@ dependencies = [
 
 [[package]]
 name = "ito-common"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "chrono",
  "serde",
@@ -1821,16 +1821,16 @@ dependencies = [
 
 [[package]]
 name = "ito-gpu"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "egui-wgpu",
 ]
 
 [[package]]
 name = "ito-i18n"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "ito-common",
  "toml",
@@ -1838,16 +1838,16 @@ dependencies = [
 
 [[package]]
 name = "ito-keys"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-keyscript"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "egui",
  "ito-keys",
@@ -1856,8 +1856,8 @@ dependencies = [
 
 [[package]]
 name = "ito-layout"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "egui",
  "serde",
@@ -1865,24 +1865,24 @@ dependencies = [
 
 [[package]]
 name = "ito-notify"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "windows",
 ]
 
 [[package]]
 name = "ito-palette"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-prefs"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "egui",
  "ito-common",
@@ -1892,8 +1892,8 @@ dependencies = [
 
 [[package]]
 name = "ito-theme"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "egui",
  "toml",
@@ -1901,8 +1901,8 @@ dependencies = [
 
 [[package]]
 name = "ito-winres"
-version = "0.24.0"
-source = "git+https://github.com/uchmk/ito?rev=a16d68adb1dca6fac2d231d5c9285a73585d99d1#a16d68adb1dca6fac2d231d5c9285a73585d99d1"
+version = "0.26.0"
+source = "git+https://github.com/uchmk/ito?rev=45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f#45c4e79349df8aa0324a6f5fbd8c8f6f45f3365f"
 dependencies = [
  "png",
 ]

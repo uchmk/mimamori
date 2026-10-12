@@ -4,6 +4,12 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.58.4] - 2026-10-12
+
+### 変更
+
+- ito を 45c4e79（v0.26.0）に上げた。yagura が使う範囲の動きは変わらない（`ito_common` に `shellhook` と UI フォント名の並びが増えただけ）。
+
 ## [0.58.3] - 2026-10-12
 
 ### 変更
