@@ -96,6 +96,11 @@ folder: `%LOCALAPPDATA%\uchmk\yagura` on Windows,
 `YAGURA_STATE_HOME`. Before v0.39.0 it was in `uchmk/yagura/`; the first
 start moves it.
 
+The window's position, size and maximized state go to `window.toml` in the same
+folder (the file kura and tsumugi use too, one per app), written once the window
+has stayed put for a moment and again on exit, and put back at the next start.
+A place no screen could show is ignored, and so is any under `--keys`.
+
 `common.toml` is shared: change it and every uchmk app (tsumugi, yagura,
 and kura to come) follows within 2 s, with no restart:
 

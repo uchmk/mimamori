@@ -113,6 +113,64 @@ struct Yagura {
     todo: Vec<Do>,
     /// The one question to GitHub about a newer release, until it answers.
     update: Option<std::sync::mpsc::Receiver<ito_common::update::Update>>,
+    /// Where the window is and was last written (`window.toml`); `None`
+    /// folder (or `--keys`) remembers nothing.
+    place: Place,
+}
+
+/// The window's place, written to `window.toml` once it has stayed put.
+struct Place {
+    dir: Option<PathBuf>,
+    now: Option<ito_common::window::Window>,
+    saved: Option<ito_common::window::Window>,
+    changed: std::time::Instant,
+}
+
+/// A guess at the primary monitor, to refuse a saved place no screen shows.
+const PRIMARY_GUESS: (f32, f32) = (1920.0, 1080.0);
+
+impl Place {
+    /// Note where the window is and write it once it has stayed there for a
+    /// moment (`force` at the end: now). The disk is touched on a thread of
+    /// its own.
+    fn remember(&mut self, ctx: &egui::Context, force: bool) {
+        use ito_common::window::Window;
+        let Some(dir) = self.dir.clone() else { return };
+        let (outer, inner, maximized, minimized) = ctx.input(|i| {
+            let v = i.viewport();
+            (v.outer_rect, v.inner_rect, v.maximized.unwrap_or(false), v.minimized.unwrap_or(false))
+        });
+        if let (Some(o), Some(i)) = (outer, inner)
+            && !minimized
+        {
+            // Maximized, the place is the one before it: leaving the maximum
+            // goes back there.
+            let was = self.now.filter(|_| maximized);
+            let now = match was {
+                Some(w) => Window { maximized, ..w },
+                None => Window { x: o.min.x, y: o.min.y, w: i.width(), h: i.height(), maximized },
+            };
+            if self.now != Some(now) {
+                self.now = Some(now);
+                self.changed = std::time::Instant::now();
+            }
+        }
+        let Some(place) = self.now.filter(|p| self.saved != Some(*p)) else { return };
+        let still = Duration::from_millis(800);
+        let left = still.saturating_sub(self.changed.elapsed());
+        if !force && !left.is_zero() {
+            ctx.request_repaint_after(left);
+            return;
+        }
+        self.saved = Some(place);
+        if force {
+            let _ = ito_common::window::write(&dir, &place);
+        } else {
+            let _ = std::thread::Builder::new().name("yagura-window".into()).spawn(move || {
+                let _ = ito_common::window::write(&dir, &place);
+            });
+        }
+    }
 }
 
 impl Yagura {
@@ -200,6 +258,12 @@ impl Yagura {
 }
 
 impl eframe::App for Yagura {
+    fn on_exit(&mut self) {
+        if let Some(ctx) = self.app.wake.clone() {
+            self.place.remember(&ctx, true);
+        }
+    }
+
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if let Some(script) = &mut self.script
             && let Some(d) = script.input(ctx, raw)
@@ -246,6 +310,7 @@ impl eframe::App for Yagura {
         if let Some(left) = self.app.probe_agent() {
             ctx.request_repaint_after(left);
         }
+        self.place.remember(&ctx, false);
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -436,23 +501,29 @@ fn main() -> eframe::Result {
     for w in &warnings {
         eprintln!("yagura: {w}");
     }
+    // Where the window was when it last closed, unless a script is driving
+    // it (its screenshots want the size they ask for). What no screen could
+    // show is not put back.
+    let remembers = script.is_none();
+    let saved_place = state_dir.as_deref().filter(|_| remembers).and_then(ito_common::window::read);
+    let place_dir = state_dir.clone().filter(|_| remembers);
     let saver = persist::Saver::new(state_dir);
     let interval = s.interval;
     let check_updates = s.check_updates;
     let hosts = s.hosts.clone();
     let done = std::env::var_os("YAGURA_KEYS_DONE").filter(|v| !v.is_empty()).map(PathBuf::from);
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("yagura")
-            .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([480.0, 320.0])
-            // The title bar, Alt+Tab, the taskbar and the Dock; build.rs bakes
-            // the same drawing into yagura.exe for Explorer.
-            .with_icon(std::sync::Arc::new(egui::IconData { rgba: icon::rgba(ICON_PX), width: ICON_PX, height: ICON_PX })),
-        wgpu_options,
-        ..Default::default()
-    };
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("yagura")
+        .with_inner_size([1280.0, 800.0])
+        .with_min_inner_size([480.0, 320.0])
+        // The title bar, Alt+Tab, the taskbar and the Dock; build.rs bakes
+        // the same drawing into yagura.exe for Explorer.
+        .with_icon(std::sync::Arc::new(egui::IconData { rgba: icon::rgba(ICON_PX), width: ICON_PX, height: ICON_PX }));
+    if let Some(w) = saved_place.filter(|w| w.reachable(PRIMARY_GUESS, 100.0)) {
+        viewport = viewport.with_inner_size([w.w, w.h]).with_position([w.x, w.y]).with_maximized(w.maximized);
+    }
+    let options = eframe::NativeOptions { viewport, wgpu_options, ..Default::default() };
     eframe::run_native(
         "yagura",
         options,
@@ -485,7 +556,13 @@ fn main() -> eframe::Result {
                 let ctx = cc.egui_ctx.clone();
                 ito_common::update::check("uchmk/yagura", env!("CARGO_PKG_VERSION"), move || ctx.request_repaint())
             });
-            Ok(Box::new(Yagura { app, script: script.map(|steps| Runner::new(steps, done)), todo: Vec::new(), update }))
+            Ok(Box::new(Yagura {
+                app,
+                script: script.map(|steps| Runner::new(steps, done)),
+                todo: Vec::new(),
+                update,
+                place: Place { dir: place_dir, now: saved_place, saved: saved_place, changed: std::time::Instant::now() },
+            }))
         }),
     )
 }
