@@ -110,7 +110,8 @@ pub fn read(classes: &mut Classes) -> Devices {
             .unwrap_or_else(|| registry(&list, &data, SPDRP_DEVICEDESC));
         let parent = property(&list, &data, &DEVPKEY_Device_Parent);
         out.push(Device {
-            parent: (!parent.is_empty()).then_some(parent),
+            // The parent's ID comes in lower case ("7&397afaa3") where the device's own is upper: match them as `id` has it.
+            parent: (!parent.is_empty()).then(|| parent.to_ascii_uppercase()),
             name: if name.is_empty() { id.clone() } else { name },
             vendor: registry(&list, &data, SPDRP_MFG),
             kind: fold::kind(data.ClassGuid.to_u128()),

@@ -571,6 +571,8 @@ pub fn summary(m: &Model) -> Summary {
         hot: n(m.sensors.hot()),
         drives: n(m.disks.drives.iter().filter(|d| d.warns()).count()),
         failed: m.svc_read.then(|| n(m.services.failed_services())),
+        devices: m.devices.as_ref().map(|d| n(d.list.iter().filter(|d| d.status.is_problem()).count())),
+        containers: m.containers.as_ref().map(|c| n(c.list.iter().filter(|c| c.problem()).count())),
     };
     Summary {
         cpu: m.total,
@@ -723,6 +725,30 @@ mod tests {
         m.services.list[1].state = State::Running;
         m.services.list[3].state = State::Failed;
         assert_eq!(summary(&m).warn.failed, Some(1));
+    }
+
+    #[test]
+    fn the_card_counts_problem_devices_and_containers_once_read() {
+        use crate::collect::{containers, devices};
+        let mut m = model();
+        let w = summary(&m).warn;
+        assert_eq!((w.devices, w.containers), (None, None), "not read yet");
+        let dev = |status| devices::Device { status, ..Default::default() };
+        m.devices = Some(devices::Devices {
+            list: vec![dev(devices::Status::Ok), dev(devices::Status::Problem(10)), dev(devices::Status::Disabled)],
+            note: None,
+        });
+        let ct = |state, status: &str| containers::Container { state, status: status.into(), ..Default::default() };
+        m.containers = Some(containers::Containers {
+            list: vec![
+                ct(containers::State::Running, "Up 1 hour"),
+                ct(containers::State::Exited, "Exited (1) 1 hour ago"),
+                ct(containers::State::Exited, "Exited (0) 1 hour ago"),
+            ],
+            ..Default::default()
+        });
+        let w = summary(&m).warn;
+        assert_eq!((w.devices, w.containers), (Some(1), Some(1)));
     }
 
     fn service(action: Action, name: &str, driver: bool) -> Act {

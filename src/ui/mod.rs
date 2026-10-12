@@ -168,7 +168,10 @@ impl Cx<'_> {
 
     /// A graph in `r` that opens full size when it is double clicked.
     pub fn zoomable(&mut self, r: Rect, id: usize, zoom: Zoom) {
-        if self.ui.interact(r, Id::new(("zoom", self.app.screen, id)), Sense::click()).double_clicked() {
+        // The series names the graph: `id` alone repeats across the
+        // interfaces, drives and GPUs a screen lists.
+        let key = ("zoom", self.app.screen, id, format!("{:?}", zoom.series));
+        if self.ui.interact(r, Id::new(key), Sense::click()).double_clicked() {
             self.out.zoom = Some(zoom);
         }
     }

@@ -821,7 +821,7 @@ impl App {
             return;
         }
         let m = self.away.as_ref().map_or(&self.model, |a| &a.home);
-        let fired = self.alerts.step(rules, Instant::now(), |metric| metric.read(m));
+        let fired = self.alerts.step(rules, Instant::now(), |rule| rule.read(m));
         let host = m.st.as_ref().map(|s| s.host.clone()).unwrap_or_default();
         for f in fired {
             let (title, body) = f.words(&host);

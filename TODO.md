@@ -10,7 +10,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] 履歴の拡張（v0.45.0。実機の確認は TESTING.md 3j 【実機】）: 1 秒刻みで 5 分を基本に、15 分（5 秒平均）と 1 時間（30 秒平均）まで。システム全体の系列だけ（プロセスごとには持たない）。グラフをダブルクリックでフルサイズ、既定は 5 分、`[` `]` で 5 分 → 15 分 → 1 時間。
 - [x] 通知（v0.46.0。実機の確認は TESTING.md 3k 【実機】）: ito に `ito-notify`（通知・音・webhook）を切り出し、yagura は `[notify]` と `[[alert]]`（cpu・mem・swap・gpu・temp・disk・battery）を持つ。
 - [ ] 通知: tsumugi の `sound.rs`・`webhook.rs` を `ito-notify` に載せ替える（tsumugi の `rev` を上げる。トーストの Allow / Deny と点滅・バッジは tsumugi 側に残す）。
-- [ ] 通知: サービスの停止のアラート（`[[alert]]` に service の種類を足す）。
+- [ ] 通知: サービスの停止のアラート（`[[alert]]` に service の種類を足す）。v0.51.0 で実装済み、残りは TESTING 3k.5 の確認 【実機】
 - [x] procs: 優先度・アフィニティ・開いているファイルとハンドル・ソケットの数（v0.47.0。実機の確認は TESTING.md 3l 【実機】）。
 - [ ] procs: 優先度とアフィニティを変える操作、プロセスごとのネットワーク量（送受信の速さ）、fleet の相手のプロセスの詳細。
 - [ ] コンテナ（Docker / Podman、Linux は cgroup）の CPU とメモリ。
@@ -116,11 +116,11 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] devices の実機の確認 【実機】（TESTING.md 3h）。
 - [x] containers（C）: Docker・Podman のコンテナの一覧（状態・CPU・メモリ・イメージ・直近 1 分のグラフ）。
   → `collect/containers/`（エンジンの Docker 互換 API を Unix ソケット / Windows の名前付きパイプで。`docker` コマンドは使わない）。
-  画面が出ている間だけ 3 秒ごと。fleet はプロトコル 7 の `Want.containers` (v0.48.0)
+  画面が出ている間は 3 秒ごと、出ていなければ 1 分ごと（fleet のカードの数のため）。fleet はプロトコル 7 の `Want.containers` (v0.48.0)
 - [ ] containers の実機の確認 【実機】（TESTING.md 3m）。
 - [ ] containers: ランタイムが無い Linux で cgroup（`/sys/fs/cgroup`）から LXC・systemd-nspawn などを拾う。
 - [ ] containers: 開始・停止・再起動の操作（`svcctl` と同じ確認の形で）。
-- [ ] containers: fleet のカードの警告に、止まっているコンテナ・再起動を繰り返すコンテナの数を足す。
+- [x] containers: fleet のカードの警告に、再起動を繰り返すコンテナ・異常終了したコンテナの数を足す (v0.52.0)。
 
 ## 2. 構成と OS
 
@@ -183,8 +183,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   → `snow`（Pure Rust、`Noise_IK_25519_ChaChaPoly_BLAKE2s`）。`yagura --key` で鍵の組を作って見せ（`<設定>/yagura/key`）、見られる側は `[agent] listen` と
   `[[agent.viewer]]`（見る側の公開鍵）、見る側は `[[host]] key`（相手の公開鍵、既定のポート 7314）。知らない見る側・違う鍵は `Why::Denied`・`BadKey` で言う。
   設定の画面の Fleet に DIRECT CONNECTIONS の欄、sys の Fleet agent の節に直接の口と鍵 (v0.41.0)
-- [ ] fleet: カードの警告の数に、問題のあるデバイス（devices の画面の赤）を足す。devices は画面が出ている間だけ読むので、
-  svc と同じく出ていない間も間を空けて読むかを決めてから。
+- [x] fleet: カードの警告の数に、問題のあるデバイス（devices の画面の赤）を足す。devices も出ていない間は 1 分ごとに読む (v0.52.0)。
 
 ## 5. 配布
 

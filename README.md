@@ -32,7 +32,7 @@ inside each tile.
 | `0` | sys      | What does not change while running: the system's maker and model, the OS, kernel, uptime and boot time, the processor (model, maker, socket, cores and threads, top speed, L1 / L2 / L3 cache), the firmware (maker, version, date, UEFI or legacy boot, a virtual machine's), the board, and the memory (installed, slots used, the most the board takes, error checking), who is logged in and the power plan (read every 15 s), the GPUs and NPUs (name, VRAM) and the drives (model, size), each list with the key of its own screen; every memory slot, filled or empty (size, type, speed, maker); the selected slot's bank, form factor, rated and configured speed, rank, voltage and part number. Read once at start, on a thread of its own. Under the processor, the fleet agent: whether one listens on this machine's port (asked every 5 s while the screen shows), where it takes direct connections and its key, its version, process, what it allows, its interval and how many viewers it has, or, when none runs, the port, what `[agent] allow` would allow and how to start one; inside another machine's screens, that machine's agent |
 | `D` | devices  | What Device Manager lists: the classes (USB controllers and hubs, display adapters, network adapters, sound, storage, input, cameras, Bluetooth…) with their counts, red with a `!` while one of their devices has a problem; the class's devices (name, maker, status; a problem device red, a disabled one yellow, one with no driver dim; `t` lays every device out under the one it hangs off, so a hub shows what is plugged into it; filter with `/` by name, maker, driver, id or `VID:PID`); the selected device's class, kind, maker, status (with Windows' problem code and what it means), driver and its version, `VID:PID` or PCI `vendor:device`, USB revision and link speed, location, the devices it hangs off and its id (`y` copies it). Read every 5 s, and only while the screen shows, so a plugged-in stick appears within 5 s. Where each OS reads them from: [Building](#building) |
 | `C` | containers | What Docker or Podman runs, read through the engine's own API (no `docker` command needed): the scopes (all, running, paused, stopped, with their counts); the containers (state, name, CPU %, memory, image; filter with `/` by name, image or id); the selected one's id, image, status, creation time, CPU, memory against its limit, process count and the last minute of CPU and memory (`y` copies its id). Read every 3 s, and only while the screen shows. It looks at `DOCKER_HOST`, `/var/run/docker.sock`, the rootless and Podman sockets, and on Windows the `docker_engine` and `podman-machine-default` pipes; with none it says so, and with a socket this user may not use it says that. Another machine's containers come from its agent, which must be v0.48 or newer (fleet protocol 7) |
-| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the battery on a laptop (`87% charging`, `87% plugged in`), the uptime or when it was last seen, the agent's version and what it allows, and what is wrong there (hot sensors, drives SMART warns about, failed services), yellow, or red when a service failed. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
+| `F` | fleet    | One card per machine: this one first, then every `[[host]]` in `config.toml`. Each card has a dot (green up, yellow slow, red down, grey connecting), the name, the address and round trip, the system, CPU / memory / GPU gauges with their last minute, the temperature, the battery on a laptop (`87% charging`, `87% plugged in`), the uptime or when it was last seen, the agent's version and what it allows, and what is wrong there (hot sensors, drives SMART warns about, failed services, devices with a problem, containers restarting or exited with an error), yellow, or red when a service failed. A down card is dimmed, keeps its last numbers and says why (nothing listens: the tunnel is not up; the agent closed; another version; not a yagura agent). `h` `j` `k` `l` move between cards, `Enter` on a card shows that machine's screens (this machine's card: back to its own). See [Fleet](#fleet) |
 
 Every screen is three columns. Their widths change with the mouse (drag a
 divider) or the keyboard, and are kept per screen in `state.toml`. A column
@@ -246,10 +246,16 @@ metric = "cpu"                # cpu, mem, swap, gpu, temp, disk or battery
 above = 90                    # or: below = 15
 for = 30                      # seconds it has to hold (default 10)
 name = "CPU is busy"          # optional; else "CPU is over 90%"
+
+[[alert]]
+metric = "service"            # fires when a service is stopped or failed
+service = "nginx"             # its name as svc shows it (case does not matter)
 ```
 
 `cpu`, `mem`, `swap`, `gpu` (the busiest) and `disk` (the fullest volume) are
-percentages, `temp` is the hottest sensor in °C, `battery` the charge. A rule
+percentages, `temp` is the hottest sensor in °C, `battery` the charge. A `service` rule takes a
+name instead of a number and fires when that service is stopped or failed (not
+while it is starting or stopping, and not for a name svc does not list). A rule
 fires once when it has held for `for` seconds and again only after it has
 stopped holding; the status bar shows it too. There are no rules until you
 write them. Only this machine's readings are watched, also while another
@@ -289,9 +295,9 @@ addr = "pi.tail1234.ts.net"    # through tailscale serve
 The agent samples like the window does (`interval`) and sends a summary each
 round: CPU, memory, the first GPU's usage, the hottest temperature, the
 battery, how many viewers it has and counts of what is wrong (temperatures
-drawn red, drives failing or with SMART counts drawn yellow, failed services (not drivers); services are read every minute for this even while no svc screen
-shows), with its host name, OS, CPU, uptime, version and port once at the
-start (protocol 5). After the first summary only what changed goes, which on a
+drawn red, drives failing or with SMART counts drawn yellow, failed services (not drivers), devices with a problem and containers restarting or exited with an error; services, devices and containers are read every minute for this even while their screens
+are not shown), with its host name, OS, CPU, uptime, version and port once at the
+start (protocol 9). After the first summary only what changed goes, which on a
 quiet machine is a few bytes; a viewer whose channel fills up gets a whole one
 again. A host with `every = 5.0` in the viewer's `config.toml` asks its agent
 for a summary every 5 s at most (0.5 to 60; never faster than the agent
