@@ -120,7 +120,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [ ] containers の実機の確認 【実機】（TESTING.md 3m）。
 - [ ] containers: ランタイムが無い Linux で cgroup（`/sys/fs/cgroup`）から LXC・systemd-nspawn などを拾う。
 - [ ] containers: 開始・停止・再起動の操作（`svcctl` と同じ確認の形で）。
-- [ ] containers: fleet のカードの警告に、止まっているコンテナ・再起動を繰り返すコンテナの数を足す。
+- [ ] containers: fleet のカードの警告に、止まっているコンテナ・再起動を繰り返すコンテナの数を足す。（要確認: #21）
 
 ## 2. 構成と OS
 
@@ -184,7 +184,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   `[[agent.viewer]]`（見る側の公開鍵）、見る側は `[[host]] key`（相手の公開鍵、既定のポート 7314）。知らない見る側・違う鍵は `Why::Denied`・`BadKey` で言う。
   設定の画面の Fleet に DIRECT CONNECTIONS の欄、sys の Fleet agent の節に直接の口と鍵 (v0.41.0)
 - [ ] fleet: カードの警告の数に、問題のあるデバイス（devices の画面の赤）を足す。devices は画面が出ている間だけ読むので、
-  svc と同じく出ていない間も間を空けて読むかを決めてから。
+  svc と同じく出ていない間も間を空けて読むかを決めてから。（要確認: #21）
 
 ## 5. 配布
 
