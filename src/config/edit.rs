@@ -18,6 +18,8 @@ pub enum Edit {
     Allow(Vec<String>),
     /// `[agent] port`.
     Port(u16),
+    /// `check_updates`.
+    CheckUpdates(bool),
     /// Every `[[host]]`, in place of the ones there.
     Hosts(Vec<Host>),
 }
@@ -30,6 +32,7 @@ impl Edit {
             Self::Backend(b) => set_key(text, None, "backend", &quote(b)),
             Self::Allow(list) => set_key(text, Some("agent"), "allow", &quote_list(list)),
             Self::Port(p) => set_key(text, Some("agent"), "port", &p.to_string()),
+            Self::CheckUpdates(on) => set_key(text, None, "check_updates", &on.to_string()),
             Self::Hosts(hosts) => {
                 let blocks: Vec<Vec<(&str, String)>> = hosts.iter().map(host_block).collect();
                 set_tables(text, "host", &blocks)
@@ -83,6 +86,8 @@ mod tests {
         assert!(out.contains("[agent]\nport = 7313\nallow = [\"kill\"]\n"), "{out}");
         let out = Edit::Port(7400).apply(&out).unwrap();
         assert!(out.contains("port = 7400"), "{out}");
+        let out = Edit::CheckUpdates(false).apply(&out).unwrap();
+        assert!(out.contains("check_updates = false"), "{out}");
         assert!(Edit::Interval(2.0).apply("interval = = 1").is_err());
     }
 

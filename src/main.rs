@@ -8,6 +8,7 @@ mod alert;
 mod app;
 mod collect;
 mod config;
+mod envreport;
 mod export;
 mod fonts;
 mod gpu_backend;
@@ -53,6 +54,7 @@ usage: yagura [--keys SCRIPT]
        yagura --log-metrics FILE [--every SECONDS]
        yagura --install-service | --uninstall-service
        yagura --key
+       yagura env [--out FILE]
 
   --keys SCRIPT  press these keys once the window is up, as kura's --keys
                  (`<Wait:ms>`, `<Shot:name>`, `<State:name>`, `<Click:x,y>`,
@@ -88,6 +90,10 @@ usage: yagura [--keys SCRIPT]
   --key          print this machine's public key (made the first time) and
                  what to add to the other machine's config.toml for a direct
                  connection
+  env            print what a bug report needs: the version, the OS, which
+                 config files were read, the settings, which helper tools
+                 are on the PATH and which variables are set. --out FILE
+                 writes it there as UTF-8 instead
   --version      print the version
   --help         print this
 
@@ -105,6 +111,8 @@ struct Yagura {
     script: Option<Runner>,
     /// What the script asked for in `raw_input_hook`, done in the frame.
     todo: Vec<Do>,
+    /// The one question to GitHub about a newer release, until it answers.
+    update: Option<std::sync::mpsc::Receiver<ito_common::update::Update>>,
 }
 
 impl Yagura {
@@ -208,6 +216,14 @@ impl eframe::App for Yagura {
         }
         self.script(&ctx);
         self.app.pump();
+        if let Some(rx) = &self.update
+            && let Ok(found) = rx.try_recv()
+        {
+            self.update = None;
+            if let ito_common::update::Update::Newer(v) = found {
+                self.app.toast(i18n::trf("toast.update", &[&v, env!("CARGO_PKG_VERSION")]));
+            }
+        }
         // common.toml's theme, or the OS's light or dark under `system`.
         self.app.prefs.apply_theme(&ctx);
         if self.app.mode == Mode::Settings {
@@ -271,6 +287,28 @@ fn main() -> eframe::Result {
             }
             "--help" | "-h" => {
                 println!("{USAGE}");
+                return Ok(());
+            }
+            "env" | "--env" => {
+                let out = match (args.next().as_deref(), args.next()) {
+                    (None, _) => None,
+                    (Some("--out"), Some(p)) => Some(PathBuf::from(p)),
+                    _ => {
+                        eprintln!("yagura: env takes only `--out FILE`");
+                        std::process::exit(2);
+                    }
+                };
+                let text = envreport::text();
+                match out {
+                    None => print!("{text}"),
+                    Some(path) => match std::fs::write(&path, &text) {
+                        Ok(()) => eprintln!("yagura: wrote {}", std::path::absolute(&path).unwrap_or(path).display()),
+                        Err(e) => {
+                            eprintln!("yagura: {}: {e}", path.display());
+                            std::process::exit(1);
+                        }
+                    },
+                }
                 return Ok(());
             }
             "--agent" => agent = true,
@@ -400,6 +438,7 @@ fn main() -> eframe::Result {
     }
     let saver = persist::Saver::new(state_dir);
     let interval = s.interval;
+    let check_updates = s.check_updates;
     let hosts = s.hosts.clone();
     let done = std::env::var_os("YAGURA_KEYS_DONE").filter(|v| !v.is_empty()).map(PathBuf::from);
 
@@ -441,7 +480,12 @@ fn main() -> eframe::Result {
                 let more = if warnings.len() > 1 { format!(" (+{})", warnings.len() - 1) } else { String::new() };
                 app.toast(format!("{first}{more}"));
             }
-            Ok(Box::new(Yagura { app, script: script.map(|steps| Runner::new(steps, done)), todo: Vec::new() }))
+            // One question to GitHub per run; never under `--keys`.
+            let update = (check_updates && script.is_none()).then(|| {
+                let ctx = cc.egui_ctx.clone();
+                ito_common::update::check("uchmk/yagura", env!("CARGO_PKG_VERSION"), move || ctx.request_repaint())
+            });
+            Ok(Box::new(Yagura { app, script: script.map(|steps| Runner::new(steps, done)), todo: Vec::new(), update }))
         }),
     )
 }

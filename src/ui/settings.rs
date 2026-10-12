@@ -40,6 +40,8 @@ fn index() -> Vec<(usize, &'static str)> {
         (GENERAL, w.language),
         (GENERAL, w.scale),
         (GENERAL, tr("settings.interval")),
+        (GENERAL, tr("settings.updates")),
+        (GENERAL, tr("settings.check_updates")),
         (GENERAL, w.clock),
         (GENERAL, w.show_time),
         (GENERAL, w.time_format),
@@ -143,6 +145,12 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 });
                 if let Some(bits) = picked {
                     asked.interval = Some(f32::from_bits(bits));
+                }
+            });
+            section(ui, l, tr("settings.updates"), |ui| {
+                let on = settings.check_updates;
+                if row(ui, l, tr("settings.check_updates"), tr("settings.check_updates_note"), |ui| switch(ui, l, on)) {
+                    asked.edits.push(Edit::CheckUpdates(!on));
                 }
             });
             asked.common.extend(ito_prefs::clock_card(ui, l, w, &common.clock_or(None)));

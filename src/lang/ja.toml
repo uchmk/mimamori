@@ -54,6 +54,7 @@ sampling = "収集中"
 lost = "{0} · 切断"
 
 [toast]
+update = "yagura {0} が出ています（今は {1}）"
 no_divider = "その側に境目はありません"
 sort = "並べ替え: {0}"
 tree_on = "親子の木で表示"
@@ -925,6 +926,9 @@ language_own = "yagura の config.toml の `language = \"{0}\"` がこちらよ�
 interval = "更新の間隔"
 seconds = "{0} 秒"
 interval_note = "`interval`: 収集の間隔。すぐ効きます"
+updates = "更新"
+check_updates = "更新を確かめる"
+check_updates_note = "`check_updates`: 起動時に 1 回、GitHub に新しい yagura が出ているか聞き（curl を使う）、あればトーストで知らせます。起動時に読みます"
 theme_note = "自分のテーマは {0} に置きます"
 no_folder = "OS に設定のフォルダーが無いため、保存できません"
 agent = "エージェント"

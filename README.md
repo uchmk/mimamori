@@ -125,6 +125,7 @@ keeps (where the files are, the settings screen, the clock) are ito's
 
 ```toml
 interval = 1.0      # seconds between samples, 0.5 to 10
+check_updates = true # ask GitHub once at start whether a newer yagura is out
 language = "en"     # overrides common.toml for yagura alone
 backend = "auto"    # graphics: "auto", "gl", "vulkan", "dx12", "metal"
 
@@ -171,7 +172,7 @@ says otherwise.
 
 | Page | Rows |
 | ---- | ---- |
-| General | Language and scale (common.toml), the update interval, the clock card (common.toml) |
+| General | Language and scale (common.toml), the update interval, **Check for updates** (`check_updates`, from the next start), the clock card (common.toml) |
 | Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with yagura's own tiles, process rows and status bar (common.toml) |
 | Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path); and the direct connections (this machine's public key, the `[[agent.viewer]]` that lets it in, the `[agent] listen` line, the `[[host]]` that watches it directly), each with Copy. The ssh and tailscale lines, the sample and a new host's address follow `[agent] port`; Add host and Delete change only the `[[host]]` tables, keeping config.toml's comments and order |
 | Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
@@ -208,6 +209,19 @@ What `run` can say in a keymap:
 | `page next`, `page prev`, `search` | The settings screen's keys (`[settings]`): turn the page, go to the search |
 | `help`, `escape`, `quit` | As the keys above |
 | `confirm`, `backspace` | The filter line's keys (`[input]`); `confirm` and `escape` also answer the question before a process is ended or a service is started, stopped or restarted (`[confirm]`) |
+
+### Updates and bug reports
+
+At start yagura asks GitHub once, through the system `curl`, whether a newer
+release is out, and says so in a toast. It is never asked under `--keys`, and
+`check_updates = false` (or the General page's **Check for updates**) turns it
+off.
+
+`yagura env` prints what a bug report would otherwise ask for, one question
+at a time: the version and OS, which config files were read, the settings
+(and what reading them warned about), which helper tools (`curl`, `smartctl`,
+`systemctl`, …) are on the PATH, and which variables are set. `yagura env --out
+FILE` writes it to a file as UTF-8.
 
 ## Export
 

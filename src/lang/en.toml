@@ -56,6 +56,7 @@ sampling = "sampling"
 lost = "{0} · lost"
 
 [toast]
+update = "yagura {0} is available (this is {1})"
 no_divider = "No divider on that side"
 sort = "Sort: {0}"
 tree_on = "Tree of parents and children"
@@ -861,6 +862,9 @@ language_own = "yagura's config.toml says `language = \"{0}\"`, which wins over 
 interval = "Update interval"
 seconds = "{0} s"
 interval_note = "`interval`: how often to sample; in force at once"
+updates = "UPDATES"
+check_updates = "Check for updates"
+check_updates_note = "`check_updates`: asks GitHub once at start whether a newer yagura is out (through curl) and says so in a toast. Read at start"
 theme_note = "Themes of your own go in {0}"
 no_folder = "The OS gives no config folder: nothing can be saved"
 agent = "AGENT"

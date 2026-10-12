@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! <config dir>/uchmk/common.toml          language = "auto" | "en" | …
-//! <config dir>/uchmk/yagura/config.toml  interval, language, backend,
+//! <config dir>/uchmk/yagura/config.toml  interval, language, backend, check_updates,
 //!                                         [agent], [[host]]
 //! <config dir>/uchmk/yagura/keymap.toml  laid over the built-in keymap
 //! ```
@@ -90,6 +90,8 @@ pub struct Settings {
     pub viewers: Vec<ViewerKey>,
     /// `[[host]]`: the other machines on the fleet screen.
     pub hosts: Vec<Host>,
+    /// `check_updates`: ask GitHub once at start whether a newer yagura is out.
+    pub check_updates: bool,
     /// `[notify]`: how a fired alert reaches a person.
     pub notify: crate::alert::Notify,
     /// `[[alert]]`: the threshold rules.
@@ -112,6 +114,7 @@ impl Default for Settings {
             metrics: None,
             viewers: Vec::new(),
             hosts: Vec::new(),
+            check_updates: true,
             notify: crate::alert::Notify::default(),
             alerts: Vec::new(),
             warnings: Vec::new(),
@@ -299,6 +302,10 @@ pub fn load(base: Option<&Path>) -> Settings {
                         Some(b) => warn.push(format!("config.toml: unknown backend `{b}` (one of {})", BACKENDS.join(", "))),
                         None => {}
                     },
+                    "check_updates" => match v.as_bool() {
+                        Some(b) => s.check_updates = b,
+                        None => warn.push("config.toml: `check_updates` must be true or false".into()),
+                    },
                     "agent" => agent(v, &mut s, &mut warn),
                     "host" => s.hosts = hosts(v, &mut warn),
                     "notify" => s.notify = crate::alert::parse_notify(v, &mut warn),
@@ -377,6 +384,28 @@ mod tests {
         assert_eq!(s.interval, 1.0);
         assert!(s.backend.is_none() && s.keymap.is_none() && s.warnings.is_empty(), "{s:?}");
         assert_eq!(s.dir, Some(d.join("yagura")));
+    }
+
+    #[test]
+    fn the_update_check_is_on_until_turned_off() {
+        let d = test_dir("settings-updates");
+        assert!(load(Some(&d)).check_updates);
+        std::fs::create_dir_all(d.join("yagura")).unwrap();
+        std::fs::write(
+            d.join("yagura/config.toml"),
+            "check_updates = false
+",
+        )
+        .unwrap();
+        assert!(!load(Some(&d)).check_updates);
+        std::fs::write(
+            d.join("yagura/config.toml"),
+            "check_updates = \"no\"
+",
+        )
+        .unwrap();
+        let s = load(Some(&d));
+        assert!(s.check_updates && s.warnings.iter().any(|w| w.contains("check_updates")), "{:?}", s.warnings);
     }
 
     #[test]

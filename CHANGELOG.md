@@ -4,6 +4,12 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.53.0] - 2026-10-12
+
+### 追加
+- 起動時に 1 回、GitHub に新しい yagura が出ているか聞き（システムの `curl` 経由、`ito_common::update`）、出ていればトーストで知らせる（uchmk/yagura#15 の 3）。`--keys` のときは聞かない。`config.toml` の `check_updates = false` か、設定の画面の General の「更新を確かめる」で切れる（起動時に読む。既定は on）。
+- `yagura env`: バグ報告に要る情報を一度に出す（版・OS・実行ファイル、読んだ設定ファイルの有無、設定の値と読み込みの警告、`curl`・`smartctl` などの有無、環境変数）。`--out FILE` は UTF-8 でファイルに書く。kura の `kura env` と同じ形。
+
 ## [0.52.1] - 2026-10-12
 
 ### 修正
