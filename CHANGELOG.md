@@ -4,6 +4,8 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [未リリース]
+
 ## [0.58.1] - 2026-10-12
 
 ### 変更
