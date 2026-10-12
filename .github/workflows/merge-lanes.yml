@@ -16,7 +16,8 @@ name: Merge lanes
 # (copied by scripts/lanes.sh sync); RULES picks this repository's rules.
 #
 # It runs when a check workflow finishes (a lane's pull request turns green),
-# every hour as a fallback, and by hand. It reads pull requests through the
+# when a lane's pull request is opened or updated (one that changes only
+# markdown has no check to finish), every hour as a fallback, and by hand. It reads pull requests through the
 # API and git and runs only main's copy of the script, never the pull
 # request's code. Its pushes start no workflows, so it starts CI on main by workflow_dispatch after a share.
 
@@ -24,6 +25,11 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+  # A pull request that changes only markdown starts no CI (paths-ignore), so no
+  # check workflow finishes for it; its own update starts this instead.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
@@ -47,6 +53,8 @@ concurrency:
 
 jobs:
   merge:
+    # Only a lane's own pull requests (Dependabot's and a fork's get a read-only token)
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'test/')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

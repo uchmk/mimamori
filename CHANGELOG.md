@@ -4,6 +4,12 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.58.6] - 2026-10-12
+
+### 修正
+
+- `merge-lanes.yml` が、レーンの PR（`test/*`）の作成・更新でも動くようにした。Markdown だけを変える PR は CI が走らず（`paths-ignore`）、CI の完了も起きないので、毎時の cron（取りこぼすことがある）を待つしかなかった（yagura#29 は 45 分開いたままだった）。Dependabot や fork の PR では動かさない。
+
 ## [0.58.4] - 2026-10-12
 
 ### 変更
