@@ -1807,8 +1807,8 @@ dependencies = [
 
 [[package]]
 name = "ito-common"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "chrono",
  "serde",
@@ -1821,16 +1821,16 @@ dependencies = [
 
 [[package]]
 name = "ito-gpu"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "egui-wgpu",
 ]
 
 [[package]]
 name = "ito-i18n"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "ito-common",
  "toml",
@@ -1838,16 +1838,16 @@ dependencies = [
 
 [[package]]
 name = "ito-keys"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-keyscript"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "egui",
  "ito-keys",
@@ -1856,8 +1856,8 @@ dependencies = [
 
 [[package]]
 name = "ito-layout"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "egui",
  "serde",
@@ -1865,24 +1865,24 @@ dependencies = [
 
 [[package]]
 name = "ito-notify"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "windows",
 ]
 
 [[package]]
 name = "ito-palette"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-prefs"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "egui",
  "ito-common",
@@ -1892,8 +1892,8 @@ dependencies = [
 
 [[package]]
 name = "ito-theme"
-version = "0.21.0"
-source = "git+https://github.com/uchmk/ito?rev=9d88cd348839f07c07046ab94af60294e1dc32b1#9d88cd348839f07c07046ab94af60294e1dc32b1"
+version = "0.21.2"
+source = "git+https://github.com/uchmk/ito?rev=5ef8ae16702a5d2098358ec045d45272169a3b4f#5ef8ae16702a5d2098358ec045d45272169a3b4f"
 dependencies = [
  "egui",
  "toml",
@@ -4785,7 +4785,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "yagura"
-version = "0.57.0"
+version = "0.58.0"
 dependencies = [
  "base64",
  "chrono",

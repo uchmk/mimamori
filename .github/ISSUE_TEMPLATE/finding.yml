@@ -16,6 +16,8 @@ body:
     attributes:
       label: From / 出どころ
       options:
+        - lane:win (x64 machine / x64 の実機)
+        - lane:arm (ARM64 machine / ARM64 の実機)
         - lane:qa (a real-machine check / 実機の確認)
         - lane:cloud (a cloud session / クラウドのセッション)
     validations:

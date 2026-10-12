@@ -39,4 +39,10 @@ tests=$(echo "$last" | grep -m1 'test result')
 run cargo +stable clippy -q --all-targets -- -D warnings
 run cargo +stable clippy -q --all-targets --target x86_64-pc-windows-msvc -- -D warnings
 run cargo +stable clippy -q --all-targets --target aarch64-apple-darwin -- -D warnings
+# The Windows test lane's scripts (scripts/check-ps1.ps1; CI runs it too).
+if command -v pwsh >/dev/null; then
+    run pwsh -NoProfile -File scripts/check-ps1.ps1
+else
+    echo "(no pwsh: scripts/check-ps1.ps1 left to CI)"
+fi
 echo "ALL OK: $tests"

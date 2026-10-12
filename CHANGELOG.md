@@ -4,6 +4,20 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.58.0] - 2026-10-12
+
+### 追加
+
+- Windows 実機のテストのレーン。tsumugi・kura と同じ仕組みで、毎時 :01 に `scripts/lane-boot.ps1` が main の `auto-wintest.ps1` を回し、
+  TESTING.md の行（開いている `retest` の issue を先、そのあと節の順に最大 15 行）を Claude に確かめさせる。
+  道具は `scripts/wintest-kit.ps1`、塊の選び方は `scripts/wintest-queue.ps1`、役割は `.claude/windows-role.md`。ARM64 の機械は `-Lane arm`。
+- `Merge lanes` が `test/win-*`・`test/arm-*` の PR を規則（触ってよいファイル・印の変わり方・証拠の行）で確かめてマージする（ito v0.21.2）。
+- 課題の雛形 `retest` と、`finding` の `lane:win` / `lane:arm`。CI に `powershell`（`scripts/check-ps1.ps1`）を足した。
+
+### 修正
+
+- TESTING.md の行 ID の重なり（`1.10` と `3k.5`）を直した（`5.23`、`3k.7`）。
+
 ## [0.57.0] - 2026-10-12
 
 ### 追加

@@ -53,6 +53,13 @@ jobs:
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/arm64.yml
 
+  powershell:
+    # The Windows test lane's scripts parse, and its chunk picker picks right.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: pwsh -NoProfile -File scripts/check-ps1.ps1
+
   # Start it on a virtual display, visit every screen and check each drew
   # (scripts/smoke-linux.sh). A runner has no GPU, so Mesa's llvmpipe draws
   # the OpenGL: slow, and correct, which is all this asks.

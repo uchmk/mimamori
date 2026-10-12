@@ -62,6 +62,22 @@
 - 持ち主の `回答:` で始まるコメントは常に優先する（`answered` が付く）。反映したら TODO の印を外し、版を書いて閉じる。
 - ラベルは同じワークフローが毎回そろえる（すぐ作るなら `scripts/labels.sh`）。
 
+## Windows 実機のセッション（レーン）
+
+tsumugi・kura と同じ仕組み（v0.58.0 から）。役割は [.claude/windows-role.md](.claude/windows-role.md)。
+
+- タスク スケジューラの `yagura-auto-wintest` が毎時 :01 に `scripts/lane-boot.ps1`（ito の共通）を回す（tsumugi は :21、kura は :41）。
+  main の `scripts/` を状態フォルダ（`%LOCALAPPDATA%\yagura-wintest`）に取り出して `auto-wintest.ps1` を実行する。作業フォルダは `C:\dev\yagura-wintest`
+  （ARM64 は `C:\dev\yagura-armtest`、`-Lane arm`、タスク `yagura-auto-wintest-arm`）。
+- `auto-wintest.ps1` がビルドとテストを済ませ、1 回分の塊（開いている `retest` の issue の行（x64 だけ、古い順）→ TESTING.md の節の順、最大 15 行。
+  `scripts/wintest-queue.ps1`）を選んで Claude を起動する。道具は `scripts/wintest-kit.ps1`。塊が無い・自分の PR が開いている・ビルドが落ちたときは起動しない。
+- 行の ID は TESTING.md の `3d.8` の形。`retest` の issue（題 `Re-test: vX.Y.Z`、本文は ID のチェックリスト）は、動きを変えた行を再テストに回すもの。
+  動きを変えた行は印を `[ ]` に戻す。所見は `finding` の issue（`lane:win` / `lane:arm`）。
+- 実機の PR（`test/win-*`・`test/arm-*`）は `Merge lanes`（`.github/workflows/merge-lanes.yml`、`scripts/merge-lanes.py`）が規則を確かめてマージする。
+- UAC・サインアウト・ARM64 の機械が要る行は `needs-pc` のまま（人の作業）。レーンがやれる行は `retest` / `finding` の issue に回す。
+- `scripts/check-ps1.ps1`（CI の `powershell` と `verify.sh`）がスクリプトの構文と塊の選び方を確かめる。tsumugi だけの確認は `scripts/check-ps1-app.ps1`
+  （yagura のもの）。
+
 ## 持ち主の PC への依頼（needs-pc）
 
 クラウドのセッションは、持ち主の Windows の PC でしかできないことを、ラベル `needs-pc` の Issue で PC のセッションに頼む

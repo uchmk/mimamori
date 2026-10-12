@@ -98,6 +98,11 @@ TSUMUGI_WINDOWS_MARKS = {
     "TESTING-KEYS.md": {(" ", "x"), (" ", "~")},
 }
 
+# yagura has one checklist, TESTING.md, whose rows are `- [ ] 3e.12 text`
+YAGURA_WINDOWS_MARKS = {
+    "TESTING.md": {(" ", "x"), (" ", "~")},
+}
+
 RULES = {
     "uchmk/kura": {
         "lanes": {
@@ -148,17 +153,21 @@ RULES = {
         "labels": True,
         "votes": True,
     },
-    # no lanes (its real-machine checks are TESTING.md, by hand): the labels
-    # the issue flow uses and the question issues' votes only
     "uchmk/yagura": {
-        "lanes": {},
-        "reports": (0, 0),
-        "evidence_in_report": False,
+        "lanes": {"test/win-": YAGURA_WINDOWS_MARKS, "test/arm-": YAGURA_WINDOWS_MARKS},
+        "reports": (0, 99),
+        "evidence_in_report": True,
+        # the pull request of a lane touches only markdown, which ci.yml ignores
         "required_checks": [],
         "hold_heading": None,
-        "share": None,
-        "labels": ["bug", "finding", "question", "lane:cloud", "lane:qa",
-                   "vote", "vote-decided", "needs-owner", "answered"],
+        "share": {
+            "role": None,
+            "todo_heading": None,
+            "todo_mark": "",
+            "issues": True,
+            "dispatch": [],
+        },
+        "labels": True,
         "votes": True,
     },
 }
@@ -235,6 +244,8 @@ def row_id(path, rest):
     """The row's id (`**25.4e**`), or for TESTING-KEYS.md the key (`<Esc>`)."""
     if path == "TESTING-KEYS.md":
         m = re.match(r"`([^`]+)`", rest)
+    elif path == "TESTING.md":  # yagura's rows: `3e.12 text`
+        m = re.match(r"(\d+[a-z]?\.\d+)(?![\w.])", rest)
     else:
         m = re.match(r"\*\*([^*]+)\*\*", rest)
     if not m:
@@ -898,7 +909,7 @@ def share_once(rules, share, base, since):
         for path, mark, rid, rest in ticks:
             (done if f"- [{mark}] {rest}" in read(path).split("\n") else dropped).append((path, mark, rid))
         lines.append(changelog_line(n, MACHINES[lane], done, dropped))
-        retested.update(rid for path, _, rid in done if path == "TESTING-CHECKS.md")
+        retested.update(rid for path, _, rid in done if path in ("TESTING-CHECKS.md", "TESTING.md"))
         mark = share["todo_mark"]
         seen, items = set(), []
         for where, text in reports + \
@@ -1203,6 +1214,8 @@ def self_test():
                      TSUMUGI_WINDOWS_MARKS["TESTING-KEYS.md"]) == [("~", "`F1` — Help")]
 
     assert row_id("TESTING-CHECKS.md", "**25.4e** text") == "25.4e"
+    assert row_id("TESTING.md", "3e.12 The middle column") == "3e.12"
+    assert row_id("TESTING.md", "1.1 Windows x64: opens") == "1.1"
     assert row_id("TESTING-KEYS.md", "`<C-q>` — Quit the process · `quit`") == "<C-q>"
     assert row_id("TESTING-KEYS.md", "`Ctrl+Shift+T` · `Cmd+T` — New session") == "Ctrl+Shift+T"
 
@@ -1375,7 +1388,7 @@ def self_test():
         assert share is None or share["issues"] or share["todo_heading"], repo
         assert set(rules["lanes"]) <= set(MACHINES), repo
     assert wanted_labels(RULES["uchmk/yagura"]["labels"])["question"] == LABELS["question"]
-    assert "retest" not in wanted_labels(RULES["uchmk/yagura"]["labels"])
+    assert "retest" in wanted_labels(RULES["uchmk/yagura"]["labels"])
     assert "### Proposals\n\n- Reword 2.62. (qa-reports/a.md)\n- Kit helpers. (PR 本文)\n" in body, body
     assert "### Queue" not in body and "### Votes\n\n- Q57: 1 -- old (PR 本文)\n" in body, body
     print("merge-lanes self-test: OK")

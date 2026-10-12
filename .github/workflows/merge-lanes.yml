@@ -1,31 +1,45 @@
 name: Merge lanes
 
-# yagura has no real-machine lanes, so this only does the bookkeeping kura's
-# and tsumugi's Merge lanes do besides merging (v0.42.0): it keeps the issue
-# labels in step and counts the votes on question issues (`vote[cloud]:` and
-# `vote[win]:` comments, the owner's `回答:`), labelling them vote-decided,
-# needs-owner or answered. The script is ito's scripts/lanes/merge-lanes.py
+# Merges the real-machine lanes' pull requests (test/win-* and test/arm-*)
+# once they keep to the rules in scripts/merge-lanes.py and their checks are
+# green, with a merge commit pinned to the head. The merge routine
+# (.claude/merge-routine.md) used to merge them; the cloud session's auto mode
+# refused such merges in filer (2026-10-10, uchmk/filer#309 and #310). It also
+# merges a lane pull request that conflicts only in the checklists (main's
+# rows with the pull request's marks made again), and does the merger's share
+# (version, CHANGELOG) and pushes it to main (v0.76.6). Since v0.94.0 what a
+# report leaves over becomes one finding issue, its votes are copied to the
+# question issues as comments, and the pull request is labelled lane-review
+# for the merge routine; every hour it also keeps the labels in step, counts
+# the votes on question issues, and labels a lane's status issue lane-stalled
+# when the lane stops firing. The script is ito's scripts/lanes/merge-lanes.py
 # (copied by scripts/lanes.sh sync); RULES picks this repository's rules.
 #
-# It runs on a comment on a question issue, once a day as a fallback, and by
-# hand. Its own comments start no workflows, so it does not wake itself.
+# It runs when a check workflow finishes (a lane's pull request turns green),
+# every hour as a fallback, and by hand. It reads pull requests through the
+# API and git and runs only main's copy of the script, never the pull
+# request's code. Its pushes start no workflows, so it starts CI on main by workflow_dispatch after a share.
 
 on:
-  issue_comment:
-    types: [created, edited]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   schedule:
-    - cron: '17 21 * * *'
+    - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Say what would change, change nothing
+        description: Say what would be merged, merge nothing
         type: boolean
         default: false
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
+  actions: write
   issues: write
-  pull-requests: read
+  checks: read
+  statuses: read
 
 concurrency:
   group: merge-lanes
@@ -33,16 +47,17 @@ concurrency:
 
 jobs:
   merge:
-    if: github.event_name != 'issue_comment' || (!github.event.issue.pull_request && contains(github.event.issue.labels.*.name, 'question'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
+          # the merge-base for a conflict, and the token for pushing to main
+          fetch-depth: 0
       - name: Self-test
         run: python3 scripts/merge-lanes.py --self-test
-      - name: Labels and votes
+      - name: Merge what may be merged
         env:
           GITHUB_TOKEN: ${{ github.token }}
           MERGE_LANES_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
