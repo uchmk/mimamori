@@ -624,6 +624,7 @@ $chunkText
 - 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
 - 環境変数は分離済みです（YAGURA_STATE_HOME・YAGURA_CONFIG_HOME・WINTEST_KIT=$kit・WINTEST_EXE）。持ち主の設定と状態には触れません。終わる前に ``Stop-Mine`` を呼びます。
 - コミットするのは TESTING.md と報告だけです（``git add TESTING.md <報告>``。``git add -A`` は使わない）。``--keys`` の ``<State:…>``・``<Shot:…>`` の出力先は $kit の下にし、チェックアウトには作りません。
+- TESTING.md で変えてよいのは行頭の印（``[ ]`` → ``[x]``・``[~]``）だけです。行の文に結果や日付を書き足さないでください（Merge lanes が「a row's text changed」で止めます）。確かめた内容は報告に書きます。
 - 作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています。
 - 所見（不具合・提案）は ``gh issue create --repo $repo -l finding,lane:$Lane --title "<1 行>" --body-file <ファイル>`` で issue にし（欄は .github/ISSUE_TEMPLATE/finding.yml、不具合なら ``bug`` も付ける）、PR 本文に ``Findings: #N, #M`` と書きます。gh で issue が作れなかったときだけ、報告の ``### Proposals`` に書きます。
 

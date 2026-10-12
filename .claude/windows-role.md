@@ -112,6 +112,7 @@ question**, so:
 - **`Stop-Mine` before you finish**: every window the kit started. Never the
   owner's.
 - **Keep outputs out of the checkout.** `--keys` writes `<State:…>` and `<Shot:…>` files into the directory you give it: give it a folder under `$env:WINTEST_KIT`, never the worktree. Commit only `TESTING.md` and the report (`git add TESTING.md qa-reports/<report>`, never `git add -A`); any other file in the pull request makes Merge lanes refuse it.
+- **A row changes only its mark.** Change `[ ]` to `[x]`/`[~]` and nothing else on the line: do not append a result or a date to the row's text (Merge lanes refuses `a row's text changed, not only its mark`). The evidence goes in the report.
 - **Finish the run yourself**: commit, `git push -u origin <branch>`,
   `gh pr create --base main`. Never merge, never push to `main`, never `--force`.
   Do not merge main into the branch: when main changed TESTING.md while you
