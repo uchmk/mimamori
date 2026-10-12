@@ -11,10 +11,8 @@ mod config;
 mod envreport;
 mod export;
 mod fonts;
-mod gpu_backend;
 mod i18n;
 mod icon;
-mod keyscript;
 mod kill;
 mod metrics;
 mod model;
@@ -40,7 +38,7 @@ use app::{App, Mode};
 use config::cmd::Act;
 use config::keys::{Key, from_egui};
 use config::{keymap::Keymap, settings, theme};
-use keyscript::{Do, Runner};
+use ito_keyscript::{Do, Runner};
 
 /// The window's icon, in pixels square.
 const ICON_PX: u32 = 128;
@@ -296,6 +294,9 @@ impl eframe::App for Yagura {
             let out = ui::frame(ui, &self.app);
             self.app.apply_out(out, &ctx);
         }
+        if self.app.mode == Mode::Palette {
+            self.app.show_palette(&ctx);
+        }
         if let Some(text) = self.app.copy.take() {
             ctx.copy_text(text);
         }
@@ -407,7 +408,7 @@ fn main() -> eframe::Result {
                     eprintln!("yagura: --keys needs a script");
                     std::process::exit(2);
                 };
-                match keyscript::parse(&s) {
+                match ito_keyscript::parse(&s) {
                     Ok(steps) => script = Some(steps),
                     Err(e) => {
                         eprintln!("yagura --keys: {e}");
@@ -496,8 +497,16 @@ fn main() -> eframe::Result {
     let (km, km_warn) = Keymap::load(s.keymap.as_deref());
     let (state_dir, state_note) = persist::dir(s.dir.as_deref());
     let (layouts, stacks, layout_warn) = persist::load(state_dir.as_deref());
-    let (wgpu_options, gpu_warn) = gpu_backend::options(s.backend.as_deref());
-    let warnings: Vec<String> = s.warnings.iter().chain(&km_warn).chain(&layout_warn).cloned().chain(gpu_warn).chain(state_note).collect();
+    let (wgpu_options, gpu_warn) = ito_gpu::options(s.backend.as_deref());
+    let warnings: Vec<String> = s
+        .warnings
+        .iter()
+        .chain(&km_warn)
+        .chain(&layout_warn)
+        .cloned()
+        .chain(gpu_warn.map(|w| format!("config.toml: {w}")))
+        .chain(state_note)
+        .collect();
     for w in &warnings {
         eprintln!("yagura: {w}");
     }

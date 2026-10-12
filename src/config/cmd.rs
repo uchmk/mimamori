@@ -55,6 +55,8 @@ pub enum Act {
     /// One step faster (-1) or slower (+1) sampling.
     Interval(i32),
     Help,
+    /// The command palette (`Ctrl+Shift+P`).
+    Palette,
     /// The settings screen, open or closed.
     Settings,
     /// Copy what is selected: on fleet, the sample `[[host]]` or the
@@ -151,6 +153,7 @@ pub fn parse(s: &str) -> Result<Act, String> {
         "pause" => none(Act::Pause),
         "fleet" => none(Act::Fleet),
         "help" => none(Act::Help),
+        "palette" => none(Act::Palette),
         "settings" => none(Act::Settings),
         "copy" => none(Act::Copy),
         "search" => none(Act::Search),

@@ -45,6 +45,7 @@ zoom = "拡大"
 fleet = "フリート"
 stale = "古い値"
 settings = "設定"
+palette = "パレット"
 
 [status]
 summary = "CPU {0}% · メモリ {1}%"
@@ -747,6 +748,10 @@ zones_only = "Windows は ACPI の熱ゾーンしか出しません。ファン�
 no_zones = "この PC には ACPI の熱ゾーンがなく、Windows はほかの温度を出しません。温度とファンは HWiNFO（共有メモリを有効に）か LibreHardwareMonitor を動かすと読めます"
 thermal_only = "温度を持つ hwmon のチップがありません。代わりに熱ゾーンを出します"
 
+[palette]
+hint = "コマンドを探す…"
+none = "合うコマンドがありません"
+
 [help]
 title = "キー"
 close_hint = "? か F1 か Esc で閉じる"
@@ -858,6 +863,7 @@ remote_runs_plain = "{0} のエージェントが実行します。"
 "Sensors" = "センサー"
 "Services" = "サービス"
 "Settings" = "設定"
+"Command palette" = "コマンドパレット"
 "Zoom in" = "拡大する"
 "Look further back" = "さらに過去を見る"
 "Look closer" = "近くを見る"

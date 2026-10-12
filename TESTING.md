@@ -17,6 +17,7 @@ back to `[ ]`.
 - [ ] 1.8 Windows: the title bar, the taskbar button (also pinned) and Alt+Tab show the same icon.
 - [ ] 1.9 Windows: the file's Properties → Details shows "yagura" as the description and product name and the version from `Cargo.toml`; Task Manager lists the process as "yagura". — Windows 11 x64 desktop, not administrator, v0.51.3: the exe's version resource says FileDescription and ProductName `yagura`, OriginalFilename `yagura.exe`, File/ProductVersion the `Cargo.toml` one; Task Manager not looked at.
 - [ ] 1.10 Linux (X11) and macOS: the window's icon (the dock or task switcher on Linux, the Dock on macOS) is the same drawing.
+- [ ] 1.11 `Ctrl+Shift+P` opens the command palette over the screen (badge PALETTE); typing narrows the list, Up/Down and Ctrl+P/N move, Enter runs the line (a screen opens, `P` pauses, ...), Esc or a click outside closes it, a click does not reach the screen behind; the keys on the right of each line are the ones the keymap has; in Japanese the titles are Japanese.
 
 ## 2. Core layout (cpu screen, `2`)
 

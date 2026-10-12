@@ -69,6 +69,7 @@ keymap = [
     { on = "?", run = "help", desc = "Help" },
     { on = "<F1>", run = "help", desc = "Help" },
     { on = "<C-,>", run = "settings", desc = "Settings" },
+    { on = "<C-S-p>", run = "palette", desc = "Command palette" },
     # The scale every uchmk app shares (common.toml). `<C-;>` is for JIS
     # keyboards, where + is Shift+;.
     { on = "<C-=>", run = "scale in", desc = "Zoom in" },

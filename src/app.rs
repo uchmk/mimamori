@@ -11,6 +11,7 @@ use crate::collect::{Ctl, Msg, Proc, containers, devices, disk, gpu, hw, net, se
 use crate::config::cmd::{Act, Goto, Step};
 use crate::config::keymap::{Keymap, Match, resolve};
 use crate::config::keys::{Code, Key};
+use crate::config::theme;
 use crate::i18n::{tr, trf};
 use crate::kill::{self, Outcome, Target};
 use crate::model::{Model, Range};
@@ -243,6 +244,8 @@ pub enum Mode {
     Normal,
     Filter,
     Help,
+    /// The command palette over the screen.
+    Palette,
     /// The question before a process is ended.
     Confirm,
     /// The settings screen (`Ctrl+,`), across the whole window.
@@ -404,6 +407,7 @@ pub struct App {
     pub paused: bool,
     pub toast: Option<(String, Instant)>,
     pub help_scroll: usize,
+    pub palette: ito_palette::View,
     /// What the confirm question is about.
     pub confirm: Option<Ask>,
     /// The graph open full size, in [`Mode::Zoom`].
@@ -525,6 +529,7 @@ impl App {
             paused: false,
             toast: None,
             help_scroll: 0,
+            palette: ito_palette::View::new(),
             confirm: None,
             zoom: None,
             zoom_range: Range::default(),
@@ -666,6 +671,60 @@ impl App {
             let s = self.prefs.common.scale_or_one();
             if ctx.zoom_factor() != s {
                 ctx.set_zoom_factor(s);
+            }
+        }
+    }
+
+    /// What the palette offers: the main layer's bindings that are commands
+    /// rather than movement, one line each, with the keys that do the same.
+    fn palette_entries(&self) -> Vec<ito_palette::Entry<Act>> {
+        let mut out: Vec<ito_palette::Entry<Act>> = Vec::new();
+        for b in &self.km.main {
+            let [act] = b.run[..] else { continue };
+            if matches!(
+                act,
+                Act::Arrow(_)
+                    | Act::Focus(_)
+                    | Act::Resize(_)
+                    | Act::Enter
+                    | Act::Escape
+                    | Act::Palette
+                    | Act::Backspace
+                    | Act::Confirm
+                    | Act::Page(_)
+            ) {
+                continue;
+            }
+            let keys = crate::config::keys::render_seq(&b.on);
+            match out.iter_mut().find(|e| e.pick == act) {
+                Some(e) => {
+                    e.key.push_str(" / ");
+                    e.key.push_str(&keys);
+                }
+                None => out.push(ito_palette::Entry::new(crate::i18n::tr_desc(&b.desc), keys, act)),
+            }
+        }
+        out
+    }
+
+    /// Draw the palette and do what it answers; called every frame it is open.
+    pub fn show_palette(&mut self, ctx: &egui::Context) {
+        let entries = self.palette_entries();
+        let style = ito_palette::Style {
+            panel: theme::bg_alt(),
+            border: theme::line(),
+            text: theme::fg(),
+            dim: theme::dim(),
+            selected_bg: theme::sel(),
+            selected_text: theme::strong(),
+        };
+        let words = ito_palette::Words { hint: tr("palette.hint"), none: tr("palette.none") };
+        match ito_palette::show(ctx, &mut self.palette, &entries, &style, &words) {
+            None => {}
+            Some(ito_palette::Answer::Close) => self.mode = Mode::Normal,
+            Some(ito_palette::Answer::Pick(act)) => {
+                self.mode = Mode::Normal;
+                self.run(act);
             }
         }
     }
@@ -1647,6 +1706,8 @@ impl App {
                     }
                 }
             }
+            // The palette's own box takes the keys from egui (`main.rs`).
+            Mode::Palette => {}
             Mode::Confirm => {
                 if let Match::Exact(b) = resolve(&self.km.confirm, &[k]) {
                     for a in b.run.clone() {
@@ -2027,6 +2088,11 @@ impl App {
                 self.help_scroll = 0;
             }
             Act::Settings => self.open_settings(),
+            Act::Palette => {
+                self.palette = ito_palette::View::new();
+                self.pending.clear();
+                self.mode = Mode::Palette;
+            }
             Act::Scale(to) => self.scale(to),
             Act::Copy if self.screen == Screen::Devices => match self.selected_dev().map(|d| d.id.clone()) {
                 Some(id) => self.copy(id),

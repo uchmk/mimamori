@@ -4,6 +4,14 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.56.0] - 2026-10-12
+
+### 追加
+- コマンドパレット（`Ctrl+Shift+P`、macOS は `Cmd+Shift+P`。uchmk/yagura#15 の 1）。文字を打つと `[main]` のキーマップのコマンドが絞り込まれ（打った文字が順に含まれていれば当たる）、↑↓・Ctrl+P/N で動かし、Enter で実行、Esc か外側のクリックで閉じる。各行の右にそのコマンドのキーが出る。一覧は利用者の `keymap.toml` から作るので、キーを変えれば行も変わる（移動・閉じる・確認のキーは入れない）。部品は ito の `ito-palette`。キーマップに `palette` のコマンドを足した（既定は `<C-S-p>`）。
+
+### 変更
+- `--keys` の台本の実行と GPU のバックエンドの選択を ito の `ito-keyscript`・`ito-gpu` に移した（ito 0.20.0。`src/keyscript.rs` と `src/gpu_backend.rs` は無くなった）。動きは変わらない。
+
 ## [0.55.0] - 2026-10-12
 
 ### 追加

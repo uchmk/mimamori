@@ -327,7 +327,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
             }
             // After the rows, so a divider takes the pointer where both are;
             // the columns' last, over the panels' where they meet.
-            if !matches!(app.mode, Mode::Help | Mode::Confirm | Mode::Zoom) {
+            if !matches!(app.mode, Mode::Help | Mode::Confirm | Mode::Zoom | Mode::Palette) {
                 let look = Look { gap: GAP, grab: 10.0, line: theme::cyan() };
                 for (p, node, r) in std::mem::take(&mut out.stacks) {
                     if let Some(m) = dividers(ui, Id::new(("stack", app.screen, p.index())), &node, from_egui(r), look) {
@@ -340,6 +340,12 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
     }
 
     draw_status(ui, &pen, app, status);
+    if app.mode == Mode::Palette {
+        out.click = None;
+        out.tab = None;
+        out.fleet_click = None;
+        out.fleet_tab = false;
+    }
     if app.mode == Mode::Help {
         help::draw(&pen, app, full, &mut out);
         out.click = None;
@@ -522,6 +528,7 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         Mode::Normal => (tr("mode.normal"), theme::blue()),
         Mode::Filter => (tr("mode.filter"), theme::yellow()),
         Mode::Help => (tr("mode.help"), theme::magenta()),
+        Mode::Palette => (tr("mode.palette"), theme::magenta()),
         Mode::Confirm => (tr("mode.confirm"), theme::red()),
         Mode::Settings => (tr("mode.settings"), theme::cyan()),
         Mode::Zoom => (tr("mode.zoom"), theme::green()),

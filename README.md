@@ -67,6 +67,7 @@ column dividers. The heights are kept per screen in
 | `+` / `=`, `-` | Sample less often, more often (0.5–10 s) |
 | `y` | Copy: on devices the selected device's id (Windows' instance id, `USB\VID_…\…`), on containers the selected container's id, on fleet's hint the sample `[[host]]` (three lines of TOML, pasted as they are), on another machine's card its address |
 | `Ctrl+,` (macOS `Cmd+,`) | The settings screen, and back. See [Settings screen](#settings-screen) |
+| `Ctrl+Shift+P` (macOS `Cmd+Shift+P`) | The command palette: type letters of a command, Up/Down or Ctrl+P/N to move, Enter to run, Esc to close. It lists the commands of the `[main]` keymap with their keys |
 | `?`, `F1` | Help: every key of the keymap |
 | `Ctrl+=` / `Ctrl++` / `Ctrl+;`, `Ctrl+-`, `Ctrl+0` (macOS `Cmd`) | Zoom in, out, back to 100%. The scale is every uchmk app's (common.toml's `scale`), so the others follow; `Ctrl+;` is for JIS keyboards |
 | Double click a graph | Open it full size over the last 5 minutes (overview, cpu, mem, gpu, net, disk and sensors). `]` / `Right` / `l` look further back (15 minutes as 5 s means, 1 hour as 30 s means), `[` / `Left` / `h` closer, `Esc`, `q` or `Enter` close. The range is kept for the next one. The longer history is kept for these system-wide series only (not per process) |

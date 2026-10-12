@@ -47,6 +47,7 @@ zoom = "ZOOM"
 fleet = "FLEET"
 stale = "STALE"
 settings = "SETTINGS"
+palette = "PALETTE"
 
 [status]
 summary = "CPU {0}% · MEM {1}%"
@@ -748,6 +749,10 @@ empty = "No sensor to read: a virtual machine, a container, or no driver for the
 zones_only = "Windows shows only the ACPI thermal zones: for fans and the cores, run HWiNFO (with Shared Memory Support on) or LibreHardwareMonitor"
 no_zones = "This PC has no ACPI thermal zones, and Windows shows nothing else on its own: for temperatures and fans, run HWiNFO (with Shared Memory Support on) or LibreHardwareMonitor"
 thermal_only = "No hwmon chip has a temperature: the thermal zones instead"
+
+[palette]
+hint = "Type to find a command…"
+none = "No command matches"
 
 [help]
 title = "Keys"
