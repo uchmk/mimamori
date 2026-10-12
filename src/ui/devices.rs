@@ -95,7 +95,7 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
     }
     let cw = cx.pen.cw;
     let w = body.width() - 12.0;
-    // The status, then the vendor, go while the name would be under 16 characters.
+    // The vendor, then the status, go while the name would be under 16 characters.
     let status_w = cw * 10.0;
     let show_status = w - status_w - cw >= cw * 16.0;
     let vendor_w = (w * 0.3).clamp(cw * 8.0, cw * 24.0);
