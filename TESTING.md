@@ -205,7 +205,7 @@ back to `[ ]`.
 ## 3i. Export
 
 - [x] 3i.1 `yagura --snapshot > now.json` ends in a few seconds with valid JSON (`jq . now.json`) holding the CPU per core, memory, processes, GPUs, services, interfaces, drives and volumes, sensors and the hardware; on a desktop `battery` is `null`. Run it from a terminal on Windows (the release build has no console of its own, and borrows the one it was started from). — Windows 11 x64 desktop, v0.51.0: 2 s, valid JSON with all sections, `battery` null (the numbers were not compared with the screens).
-- [ ] 3i.2 `yagura --log-metrics usage.csv --every 2` writes the header and a row every 2 seconds; the numbers match the screens (CPU, memory, the network and disk rates, the busiest GPU, the hottest temperature, the battery on a laptop). Ctrl+C stops it; running it again appends rows without a second header. `--every 0` is refused. Windows 11 desktop, v0.51.0: the header once and a row every 2 s after about 6 s of warm-up, appending adds no second header, `--every 0` is refused; the numbers against the screens remain.
+- [~] 3i.2 `yagura --log-metrics usage.csv --every 2` writes the header and a row every 2 seconds; the numbers match the screens (CPU, memory, the network and disk rates, the busiest GPU, the hottest temperature, the battery on a laptop). Ctrl+C stops it; running it again appends rows without a second header. `--every 0` is refused. Windows 11 desktop, v0.51.0: the header once and a row every 2 s after about 6 s of warm-up, appending adds no second header, `--every 0` is refused; the numbers against the screens remain.
 
 ## 3j. Zoomed graphs
 
