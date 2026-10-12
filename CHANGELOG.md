@@ -4,6 +4,12 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.58.3] - 2026-10-12
+
+### 変更
+
+- `yagura env` の文面の組み方（キーをそろえ、長いキーと複数行の値を逃がす `section` など）を、ito v0.24.0 の `ito_common::report` に移した。出力は変わらない。
+
 ## [0.58.2] - 2026-10-12
 
 ### 変更

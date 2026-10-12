@@ -6,9 +6,8 @@
 //! because this is text to paste into a report that already exists.
 
 use crate::config::settings::{self, Settings};
+use ito_common::report::{Rows, finish, row, section, variables as env_rows};
 use std::path::{Path, PathBuf};
-
-type Rows = Vec<(String, String)>;
 
 /// The whole report.
 pub fn text() -> String {
@@ -19,36 +18,8 @@ pub fn text() -> String {
     section(&mut out, "Settings", &settings_rows(&s));
     section(&mut out, "Tools", &tools());
     section(&mut out, "Variables", &variables());
-    // One newline after the last row, not the blank line every section ends with.
-    out.truncate(out.trim_end_matches('\n').len());
-    out.push('\n');
+    finish(&mut out);
     out
-}
-
-fn row(k: &str, v: impl Into<String>) -> (String, String) {
-    (k.to_string(), v.into())
-}
-
-fn section(out: &mut String, title: &str, rows: &[(String, String)]) {
-    out.push_str(title);
-    out.push('\n');
-    // A key longer than this goes on a line of its own with the value under
-    // it, so one long row does not push the others past a console's width.
-    const MAX_KEY: usize = 24;
-    let width = rows.iter().map(|(k, _)| k.chars().count()).filter(|&n| n <= MAX_KEY).max().unwrap_or(0);
-    for (k, v) in rows {
-        let mut lines = v.split('\n');
-        let first = lines.next().unwrap_or_default();
-        if k.chars().count() > MAX_KEY {
-            out.push_str(&format!("    {k}\n    {:width$}   {first}\n", ""));
-        } else {
-            out.push_str(&format!("    {k:width$} : {first}\n"));
-        }
-        for rest in lines {
-            out.push_str(&format!("    {:width$}   {rest}\n", ""));
-        }
-    }
-    out.push('\n');
 }
 
 fn version() -> Rows {
@@ -140,23 +111,12 @@ fn find(name: &str) -> Option<PathBuf> {
 }
 
 fn variables() -> Rows {
-    ["UCHMK_CONFIG_DIR", "YAGURA_CONFIG_HOME", "YAGURA_STATE_HOME", "WGPU_BACKEND", "LANG", "LC_ALL"]
-        .iter()
-        .map(|k| row(k, std::env::var(k).unwrap_or_else(|_| "(unset)".into())))
-        .collect()
+    env_rows(&["UCHMK_CONFIG_DIR", "YAGURA_CONFIG_HOME", "YAGURA_STATE_HOME", "WGPU_BACKEND", "LANG", "LC_ALL"], "(unset)")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_long_key_gets_a_line_of_its_own() {
-        let mut out = String::new();
-        let long = "k".repeat(30);
-        section(&mut out, "T", &[row("a", "1"), row(&long, "2\n3")]);
-        assert_eq!(out, format!("T\n    a : 1\n    {long}\n        2\n        3\n\n"));
-    }
 
     #[test]
     fn the_report_names_every_section_and_ends_in_one_newline() {
