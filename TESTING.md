@@ -26,7 +26,7 @@ back to `[ ]`.
 - [ ] 2.3 Windows ARM64 (Snapdragon): note what groups and kinds are shown and whether they match the chip.
 - [ ] 2.4 macOS, Apple silicon: one group per cluster, `E-cores` / `P-cores` (with `· L2 #n` when a kind has more than one cluster, as on an M1 Pro / Max or M3 Pro), each tile one thread bar, the group header shows `L2` and its size (4 MiB / 12 or 16 MiB), and the summary's core count matches About This Mac; `Topology from` says `iokit`.
 - [ ] 2.7 macOS, Intel Mac with Hyper-Threading: one group `CPU` with half as many tiles as logical CPUs, two thread bars each, the header shows the L3's size; `Topology from` says `sysctl`.
-- [ ] 2.5 A tile's bars follow load: run a single-threaded busy loop pinned to one CPU and see that one bar (and that core's tile) turn yellow / red while the others stay blue.
+- [x] 2.5 A tile's bars follow load: run a single-threaded busy loop pinned to one CPU and see that one bar (and that core's tile) turn yellow / red while the others stay blue.
 - [ ] 2.6 `h` `j` `k` `l` in the middle column move the highlighted tile; the right column follows with the core's group, kind, thread ids and clock.
 - [x] 2.8 The core tiles on the CPU screen fill their panel: on a wide window they sit in as few rows as fit, grown and centred, never more than twice as wide as tall; widen and narrow the middle column or drag the panel below them and they re-flow into more or fewer columns, keeping the groups on rows of their own; made too small, they turn into the compact tiles of the overview instead of being cut. Clicking a tile still selects it.
 
