@@ -4,6 +4,12 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.57.0] - 2026-10-12
+
+### 追加
+
+- `--keys` の台本に kura と同じ語が使える（ito v0.21.0 の `ito-keyscript`）: `<Paste:text>`・`<Key:C-Tab>`・`<RClick:x,y>`・`<Hover:x,y>`・`<Wheel:-3@x,y>`・`<Click:C-x,y>`（修飾キーを押したまま）・`<Now>`（待たないだけ）。`<Space>` はキーとテキストの両方で届く。既存の台本の書き方は変わらない。
+
 ## [0.56.0] - 2026-10-12
 
 ### 追加

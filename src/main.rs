@@ -242,6 +242,8 @@ impl Yagura {
             match d {
                 Do::State(name) => self.write_state(script.dir.join(format!("{name}.txt")), ""),
                 Do::Quit => self.app.quit = true,
+                // yagura defines no readings of its own.
+                Do::Read { .. } => {}
                 Do::Done => {
                     if let Some(done) = script.done.clone() {
                         self.write_state(done, "keys: done\n");
