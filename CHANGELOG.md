@@ -4,6 +4,12 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.58.2] - 2026-10-12
+
+### 変更
+
+- exe のアイコンと版の情報の `.res` を書く部分（`src/winres.rs` と `build.rs` の生成）を、ito v0.22.0 の `ito-winres` に移した。`build.rs` は `ito_winres::emit` を呼ぶだけになり、`png` のビルド依存も外れた。exe に付くアイコンと版の情報は変わらない。
+
 ## [未リリース]
 
 ## [0.58.2] - 2026-10-12

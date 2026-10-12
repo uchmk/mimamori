@@ -27,8 +27,6 @@ mod svcctl;
 mod tree;
 mod ui;
 mod util;
-#[cfg(test)]
-mod winres;
 mod zoom;
 
 use std::path::PathBuf;

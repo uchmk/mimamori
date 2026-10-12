@@ -503,7 +503,7 @@ target-dir = "R:/uchmk/yagura"
 Pure Rust apart from the OS's own libraries; the six targets (Windows, macOS
 and Linux on x86_64 and ARM64) need no C toolchain beyond the platform's
 linker. `build.rs` gives `yagura.exe` its icon and version information on
-the MSVC targets, writing the resource file in Rust (`src/winres.rs`), so no
+the MSVC targets, writing the resource file in Rust (ito's `ito-winres`), so no
 `rc.exe` is needed, from Windows or not. The icon is drawn in code
 (`src/icon.rs`); the window uses the same drawing on every OS. The core layout comes from sysfs on Linux and
 `GetLogicalProcessorInformationEx` on Windows. On Apple silicon it comes

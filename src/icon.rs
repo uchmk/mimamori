@@ -137,4 +137,31 @@ mod tests {
             assert!(img.chunks(4).any(|p| p[3] == 255), "{px}");
         }
     }
+
+    /// What `build.rs` linked into this very test program, read back the way
+    /// Explorer reads it.
+    #[cfg(windows)]
+    #[test]
+    fn the_executable_carries_the_icon_and_the_version() {
+        use windows::Win32::Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW};
+        use windows::Win32::System::LibraryLoader::FindResourceW;
+        use windows::core::{HSTRING, PCWSTR, w};
+
+        let exe = HSTRING::from(std::env::current_exe().unwrap().as_os_str());
+        let size = unsafe { GetFileVersionInfoSizeW(&exe, None) };
+        assert!(size > 0, "no version information");
+        let mut data = vec![0u8; size as usize];
+        unsafe { GetFileVersionInfoW(&exe, None, size, data.as_mut_ptr().cast()) }.unwrap();
+        let mut p = std::ptr::null_mut();
+        let mut len = 0u32;
+        let ok = unsafe { VerQueryValueW(data.as_ptr().cast(), w!("\\"), &mut p, &mut len) };
+        assert!(ok.as_bool() && len >= 52);
+        let fixed = unsafe { std::slice::from_raw_parts(p as *const u8, len as usize) };
+        let major: u32 = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();
+        let minor: u32 = env!("CARGO_PKG_VERSION_MINOR").parse().unwrap();
+        assert_eq!(u32::from_le_bytes([fixed[8], fixed[9], fixed[10], fixed[11]]), major << 16 | minor);
+
+        let group = unsafe { FindResourceW(None, PCWSTR(std::ptr::without_provenance(1)), PCWSTR(std::ptr::without_provenance(14))) };
+        assert!(!group.is_invalid(), "no icon group");
+    }
 }
