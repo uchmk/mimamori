@@ -7,7 +7,7 @@ back to `[ ]`.
 
 ## 1. Start and idle
 
-- [ ] 1.1 Windows x64: `yagura.exe` opens on the overview within a second or two; the tabs, the three columns and the status bar are drawn; no console window appears.
+- [x] 1.1 Windows x64: `yagura.exe` opens on the overview within a second or two; the tabs, the three columns and the status bar are drawn; no console window appears.
 - [ ] 1.2 Windows ARM64: the same.
 - [ ] 1.3 macOS (Apple Silicon): the same; the window can be moved and resized normally.
 - [ ] 1.4 Linux (X11 and Wayland): the same.
@@ -246,7 +246,7 @@ Setup for all of them: put the `[[alert]]` of 3k.1 in config.toml (the settings 
 - [ ] 4.1 Mouse: hovering a divider shows the resize cursor; dragging it moves it smoothly and the panels re-lay out while dragging.
 - [ ] 4.2 Keyboard: `Alt+Shift+Left/Right` (macOS `Cmd+Left/Right`, `Ctrl+Left/Right` or both) moves the focused column's divider; `Alt+Shift+Up` says "No divider on that side".
 - [ ] 4.3 `Ctrl+Shift+e` (macOS `Cmd+Shift+e`) puts the columns back to equal widths.
-- [ ] 4.4 Quit and start again: each screen keeps the widths it was left with. `state.toml` is in the state folder (`%LOCALAPPDATA%\uchmk\yagura` on Windows, `~/Library/Application Support/uchmk/yagura/state` on macOS, `~/.local/state/uchmk/yagura` on Linux); one left in `<config dir>/uchmk/yagura/` by v0.38.0 is moved there on the first start, widths and heights and all.
+- [x] 4.4 Quit and start again: each screen keeps the widths it was left with. `state.toml` is in the state folder (`%LOCALAPPDATA%\uchmk\yagura` on Windows, `~/Library/Application Support/uchmk/yagura/state` on macOS, `~/.local/state/uchmk/yagura` on Linux); one left in `<config dir>/uchmk/yagura/` by v0.38.0 is moved there on the first start, widths and heights and all.
 - [ ] 4.5 macOS: every `Ctrl+…` key of the other platforms works with `Cmd` and with `Ctrl` alike (`Cmd+,` and `Ctrl+,` both open the settings, `Cmd+q` and `Ctrl+q` both quit).
 - [x] 4.6 Panels split their column evenly: the overview's graphs on a machine with CPU, memory, swap, two GPUs and a drive are two columns of three of the same size; cpu's cores, total and threads are thirds; gpu·npu's usage, engines and memory are thirds; disk's read, write and busy graphs are stacked, each the column's width and equally tall, over the volumes.
 - [ ] 4.7 Mouse: hovering the gap between two stacked panels shows the up-down cursor and a line; dragging it moves the panels while dragging; double-clicking it puts it halfway along the room it splits.
@@ -254,9 +254,9 @@ Setup for all of them: put the `[[alert]]` of 3k.1 in config.toml (the settings 
 
 ## 5. Settings
 
-- [ ] 5.1 `common.toml` with `language = "en"` and a `yagura/config.toml` with `interval = 2`: the status bar says `every 2 s`.
+- [x] 5.1 `common.toml` with `language = "en"` and a `yagura/config.toml` with `interval = 2`: the status bar says `every 2 s`.
 - [ ] 5.2 A `keymap.toml` with `prepend_keymap` adding a key: the key works and appears in `?` help.
-- [ ] 5.3 A broken `config.toml` (bad TOML): yagura still starts with defaults and says what was wrong.
+- [x] 5.3 A broken `config.toml` (bad TOML): yagura still starts with defaults and says what was wrong.
 - [x] 5.5 Windows: `language = "ja"` in `common.toml`: tabs, panels, toasts and `?` help are in Japanese and drawn in Meiryo (or Yu Gothic / MS Gothic, the list every uchmk app uses), with no boxes; long labels are cut with `…` and do not run into the next column. (Windows 11 x64 on v0.40.1, uchmk/yagura#11.)
 - [ ] 5.6 macOS: the same with Hiragino; and with `language = "auto"` on a Mac set to Japanese, the screens are in Japanese.
 - [ ] 5.7 Linux desktop (X11 and Wayland): the same with Noto Sans CJK (or IPA Gothic); `LANG=ja_JP.UTF-8` with `language = "auto"` gives Japanese.
