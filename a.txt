@@ -1,0 +1,21 @@
+screen: overview
+machine: this
+mode: Normal
+focus: left
+sel: [0, 0, 0]
+filter: 
+sort: Cpu
+tree: false
+scope: all
+interval: 1
+paused: false
+samples: 4
+procs: 401
+gpus: 2 (luid:0x00000000_0x00012255 luid:0x00000000_0x00014e89)
+nics: 6 (Proxmox Direct イーサネット Tailscale イーサネット 5 Wi-Fi Bluetooth ネットワーク接続)
+disks: 1 (0); volumes: 1 (C:\)
+sensors: 3 (temps 2, fans 1; chips 2)
+hw: ASRock X870E Nova WiFi (SMBIOS 3.4 (GetSystemFirmwareTable)); slots 4 of 4
+topology: 16C/32T · 2 グループ (win32)
+widths: left=192 mid=500 right=308
+toast: CPU が 0% を超えました: CPU は DESKTOP-7UBRVG9 で 4%
