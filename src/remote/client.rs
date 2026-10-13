@@ -714,10 +714,11 @@ mod tests {
         assert!(matches!(next(&rx), Event::Down(Why::Closed | Why::NotAgent)));
     }
 
-    /// One request to `addr`, the whole answer.
+    /// One request to `addr`, the whole answer; empty if nothing listens yet
+    /// (Linux and macOS refuse at once, so the agent may not have bound).
     fn http(addr: &str, req: &str) -> String {
         use std::io::{Read, Write};
-        let mut s = std::net::TcpStream::connect(addr).unwrap();
+        let Ok(mut s) = std::net::TcpStream::connect(addr) else { return String::new() };
         s.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
         s.write_all(req.as_bytes()).unwrap();
         let mut out = String::new();
