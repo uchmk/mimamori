@@ -83,19 +83,22 @@ pub fn draw(pen: &Pen, app: &App, full: Rect) {
     let hint = trf("zoom.hint", &[&keys_for(app, Act::Page(1)), &keys_for(app, Act::Page(-1)), &keys_for(app, Act::Escape)]);
     rows.text(pos2(body.left() + 4.0, body.bottom() - ROW / 2.0), &rows.fit(&hint, body.width() - 8.0), theme::dim());
 
-    let gutter = pen.cw * 9.0;
+    // The scale's labels set the gutter's width: "10.5 MiB/s" is wider than
+    // "7.5 MiB/s", and a label wider than the gutter is cut at the panel's edge.
+    let most = data.iter().copied().fold(0.0, f32::max);
+    let max = z.max.unwrap_or_else(|| (most * 1.1).max(FLOOR));
+    let labels: Vec<String> = (0..=4).map(|q| show(z.unit, max * q as f32 / 4.0)).collect();
+    let widest = labels.iter().map(|l| crate::util::width(l)).max().unwrap_or(0);
+    let gutter = pen.cw * widest as f32 + 10.0;
     let g = Rect::from_min_max(pos2(body.left() + gutter, body.top() + ROW), pos2(body.right() - 4.0, body.bottom() - ROW * 2.0));
     if g.width() < 40.0 || g.height() < 20.0 {
         return;
     }
-    let most = data.iter().copied().fold(0.0, f32::max);
-    let max = z.max.unwrap_or_else(|| (most * 1.1).max(FLOOR));
     graph::line_over(pen, g, data.iter().copied(), z.range.slots(), max, z.color);
     // The scale at the quarters, the time at the ends and the middle.
-    for q in 0..=4 {
-        let v = max * q as f32 / 4.0;
+    for (q, label) in labels.iter().enumerate() {
         let y = g.bottom() - g.height() * q as f32 / 4.0;
-        rows.text_r(pos2(g.left() - 6.0, y.clamp(g.top() + 6.0, g.bottom() - 6.0)), &show(z.unit, v), theme::dim());
+        rows.text_r(pos2(g.left() - 6.0, y.clamp(g.top() + 6.0, g.bottom() - 6.0)), label, theme::dim());
     }
     let y = g.bottom() + ROW / 2.0;
     rows.text(pos2(g.left(), y), &trf("zoom.ago", &[&span(reach)]), theme::dim());
