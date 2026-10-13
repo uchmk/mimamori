@@ -10,7 +10,7 @@ use ito_prefs::{Words, button, field, row, section, select, sep, status, switch}
 
 use crate::app::{App, INTERVALS, fmt_interval};
 use crate::config::edit::Edit;
-use crate::config::settings::{ALLOW, BACKENDS, DIR, Host};
+use crate::config::settings::{ALLOW, BACKENDS, Host, own_dir};
 use crate::config::theme::{self, ramp};
 use crate::i18n::{current_language, tr, trf};
 use crate::remote::{self, proto};
@@ -290,7 +290,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
             });
             section(ui, l, tr("settings.files"), |ui| match base {
                 Some(b) => {
-                    let folder = b.join(DIR).display().to_string();
+                    let folder = own_dir(b).display().to_string();
                     row(ui, l, tr("settings.folder"), &folder, |ui| {
                         if button(ui, l, tr("settings.open")) {
                             asked.open_folder = true;
