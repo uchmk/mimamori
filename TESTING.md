@@ -216,13 +216,13 @@ back to `[ ]`.
 
 Setup for all of them: put the `[[alert]]` of 3k.1 in config.toml (the settings are read again at once), and leave yagura on a screen other than the one you are testing. Do them in order: 3k.1 needs nothing else, 3k.2 and 3k.3 add one `[notify]` key each.
 
-- [ ] 3k.1 With `[[alert]] metric = "cpu", above = 0, for = 0` in config.toml, a notification from the system appears within a second or two (a toast on Windows, Notification Center on macOS, notify-send on Linux) titled "CPU is over 0%", and the status bar toast says it too. It does not repeat while CPU stays above 0. Change the rule to `above = 100` and back to `above = 0`: it fires again.
+- [x] 3k.1 With `[[alert]] metric = "cpu", above = 0, for = 0` in config.toml, a notification from the system appears within a second or two (a toast on Windows, Notification Center on macOS, notify-send on Linux) titled "CPU is over 0%", and the status bar toast says it too. It does not repeat while CPU stays above 0. Change the rule to `above = 100` and back to `above = 0`: it fires again.
 - [ ] 3k.2 `[notify] sound = true` plays the sound named by `sound_name` (try chime, low, alert, default); with focus mode on in Windows and `focus_mode = true` there is none.
 - [ ] 3k.3 `[notify] webhook = "https://ntfy.sh/<a topic of yours>"` delivers the alert to the ntfy app on a phone, with the warning tag and high priority (v0.50.1); `webhook_format = "slack"` and `"json"` reach a Slack incoming webhook and a server that logs the JSON, which has `"state": "alert"`.
-- [ ] 3k.4 With the network off, the same alert is sent again by itself about 30 seconds after (once only); with it back on by then, the phone gets it.
+- [x] 3k.4 With the network off, the same alert is sent again by itself about 30 seconds after (once only); with it back on by then, the phone gets it.
 - [ ] 3k.5 With `[[alert]] metric = "service", service = "<a service you can stop>", for = 0` in config.toml (a stoppable one: `Spooler` on Windows, `cups` on Linux), stopping it from the svc screen (`x`) or from outside brings a notification titled "<name> is not running" within about 5 s (60 s if svc is not the screen shown). Starting it again and stopping it once more notifies again. 【実機】
-- [ ] 3k.7 While another machine's screens show (fleet, Enter on a host), a rule on this machine still fires.
-- [ ] 3k.6 A bad rule (`metric = "fans"`, or both `above` and `below`) shows in the settings screen's warnings and the other rules still work.
+- [x] 3k.7 While another machine's screens show (fleet, Enter on a host), a rule on this machine still fires.
+- [x] 3k.6 A bad rule (`metric = "fans"`, or both `above` and `below`) shows in the settings screen's warnings and the other rules still work.
 
 ## 3l. Process details
 
