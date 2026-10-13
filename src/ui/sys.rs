@@ -326,8 +326,10 @@ const COLS: [(Col, usize, bool); 5] =
     [(Col::Slot, 0, false), (Col::Size, 9, true), (Col::Kind, 7, false), (Col::Speed, 10, true), (Col::Maker, 0, false)];
 
 /// The columns that fit in `w` pixels: the maker, then the type, go while
-/// the slot's name would be under 10 characters.
-fn columns(w: f32, cw: f32) -> Vec<(Col, f32, f32, bool)> {
+/// the slot's name would be under 10 characters. The slot takes what its
+/// longest name (`need` characters) wants of the room it shares with the
+/// maker, never less than half and never leaving the maker under 8.
+fn columns(w: f32, cw: f32, need: usize) -> Vec<(Col, f32, f32, bool)> {
     let mut cols = COLS.to_vec();
     let flex = |c: &[(Col, usize, bool)]| {
         let fixed = c.iter().map(|&(_, n, _)| n + 1).sum::<usize>() as f32 * cw;
@@ -339,10 +341,17 @@ fn columns(w: f32, cw: f32) -> Vec<(Col, f32, f32, bool)> {
         }
     }
     let flex_w = flex(&cols).max(cw * 6.0);
+    let shared = cols.iter().filter(|&&(_, n, _)| n == 0).count() == 2;
+    let slot_w = if shared { (need as f32 * cw + cw).clamp(flex_w, (flex_w * 2.0 - cw * 8.0).max(flex_w)) } else { flex_w };
     let mut x = 0.0;
     cols.into_iter()
         .map(|(c, n, right)| {
-            let px = if n == 0 { flex_w } else { n as f32 * cw };
+            let px = match (n, c) {
+                (0, Col::Slot) => slot_w,
+                (0, _) if shared => flex_w * 2.0 - slot_w,
+                (0, _) => flex_w,
+                _ => n as f32 * cw,
+            };
             let out = (c, x, px, right);
             x += px + cw;
             out
@@ -418,7 +427,8 @@ fn draw_mid(cx: &mut Cx, r: Rect) {
         }
         return;
     }
-    let cols = columns(body.width() - 12.0, cx.pen.cw);
+    let need = hw.slots.iter().map(|s| crate::util::width(&name(s, &hw.slots, hw.unified))).max().unwrap_or(0);
+    let cols = columns(body.width() - 12.0, cx.pen.cw, need);
     let x0 = body.left() + 6.0;
     let h = row_at(body, body.top());
     for &(c, x, w, right) in &cols {
@@ -517,13 +527,18 @@ mod tests {
 
     #[test]
     fn narrow_lists_drop_the_maker_then_the_type() {
-        let names = |w: f32| columns(w, 1.0).into_iter().map(|(c, ..)| c).collect::<Vec<_>>();
+        let names = |w: f32| columns(w, 1.0, 0).into_iter().map(|(c, ..)| c).collect::<Vec<_>>();
         assert_eq!(names(80.0).len(), 5);
         assert_eq!(names(50.0), [Col::Slot, Col::Size, Col::Kind, Col::Speed]);
         assert_eq!(names(35.0), [Col::Slot, Col::Size, Col::Speed]);
         // The slot and the maker share what is left.
-        let cols = columns(80.0, 1.0);
+        let cols = columns(80.0, 1.0, 0);
         assert_eq!(cols[0].2, cols[4].2);
+        // A long name takes more of it, and the maker keeps 8.
+        let cols = columns(80.0, 1.0, 22);
+        assert!(cols[0].2 >= 22.0 && cols[4].2 >= 8.0, "{cols:?}");
+        let cols = columns(80.0, 1.0, 60);
+        assert!(cols[4].2 >= 8.0, "{cols:?}");
     }
 
     #[test]
