@@ -184,8 +184,19 @@ fn draw_right(cx: &mut Cx, r: Rect) {
         rows.push((tr("dev.speed"), link));
     }
     let parents = chain(app.devices(), d);
-    rows.extend([(tr("dev.location"), or_dash(&d.location)), (tr("dev.parent"), or_dash(&parents)), (tr("dev.id"), d.id.clone())]);
-    let mut y = kv_rows(&cx.pen, body, body.top(), &rows) + super::GAP;
+    rows.push((tr("dev.location"), or_dash(&d.location)));
+    // A long chain would be cut at its end, the hub and controller nearest the device; it wraps under its label instead.
+    let wraps = !parents.is_empty() && cx.pen.width(&parents) > body.width() * 0.5;
+    if !wraps {
+        rows.push((tr("dev.parent"), or_dash(&parents)));
+    }
+    rows.push((tr("dev.id"), d.id.clone()));
+    let mut y = kv_rows(&cx.pen, body, body.top(), &rows);
+    if wraps {
+        cx.pen.section(super::row_at(body, y), tr("dev.parent"));
+        y = para(&cx.pen, body, y + ROW, &parents, theme::fg());
+    }
+    y += super::GAP;
     if let Status::Problem(_) = d.status {
         y = para(&cx.pen, body, y, tr("dev.problem_hint"), theme::yellow());
     }
