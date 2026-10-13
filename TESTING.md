@@ -11,7 +11,7 @@ back to `[ ]`.
 - [ ] 1.2 Windows ARM64: the same.
 - [ ] 1.3 macOS (Apple Silicon): the same; the window can be moved and resized normally.
 - [ ] 1.4 Linux (X11 and Wayland): the same.
-- [ ] 1.5 Idle CPU on a real GPU: with sampling every 1 s, yagura stays under about 1% of one core in Task Manager / Activity Monitor / top; with `P` (paused) it drops to about 0%.
+- [ ] 1.5 Idle CPU on a real GPU: with sampling every 1 s, yagura stays under about 5% of one core in Task Manager / Activity Monitor / top on a many-process machine (measured on Windows x64, 16C/32T, ~370 processes: 3.3% at 1 s; the process list is read every second sample, ~40 ms each, so about 2 of the 3.3 points; under 1% holds on a machine with a few dozen processes); with `P` (paused) it drops to about 0%.
 - [ ] 1.6 Minimised for a minute and restored: the graphs carry on from where they were, with no burst of CPU on restore.
 - [ ] 1.7 Windows: Explorer draws `yagura.exe` with the icon (four tiles on a dark rounded square, filled cyan, blue, yellow, cyan) at every view size, sharp and not a blurred small one. — Windows 11 x64 desktop, not administrator, v0.51.3: the 32x32 icon extracted from the exe is four tiles on a dark rounded square; Explorer sizes not looked at.
 - [ ] 1.8 Windows: the title bar, the taskbar button (also pinned) and Alt+Tab show the same icon.
