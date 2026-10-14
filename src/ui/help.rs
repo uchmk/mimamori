@@ -20,7 +20,7 @@ enum Line {
 /// keys in the order the keymap lists them.
 fn group(layer: &[Binding]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String, Vec<crate::config::cmd::Act>)> = Vec::new();
-    for b in layer {
+    for b in crate::config::keymap::live(layer) {
         let keys = render_seq(&b.on);
         match out.iter_mut().find(|(_, d, run)| *d == b.desc && *run == b.run) {
             Some((k, _, _)) => {

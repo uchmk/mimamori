@@ -72,6 +72,10 @@ pub enum Act {
     Escape,
     Confirm,
     Backspace,
+    /// Nothing: what a key taken from a built-in operation is bound to (the
+    /// settings screen's Keys page writes `run = "noop"`), so it no longer
+    /// runs the built-in one.
+    Noop,
 }
 
 pub fn parse(s: &str) -> Result<Act, String> {
@@ -161,6 +165,7 @@ pub fn parse(s: &str) -> Result<Act, String> {
         "escape" | "close" => none(Act::Escape),
         "confirm" => none(Act::Confirm),
         "backspace" => none(Act::Backspace),
+        "noop" => none(Act::Noop),
         _ => Err(format!("unknown command `{name}`")),
     }
 }
@@ -188,6 +193,8 @@ mod tests {
         assert!(parse("machine nas").is_err());
         assert_eq!(parse("settings"), Ok(Act::Settings));
         assert_eq!(parse("copy"), Ok(Act::Copy));
+        assert_eq!(parse("noop"), Ok(Act::Noop));
+        assert!(parse("noop 1").is_err());
         assert_eq!(parse("page next"), Ok(Act::Page(1)));
         assert_eq!(parse("page -1"), Ok(Act::Page(-1)));
         assert!(parse("page").is_err());

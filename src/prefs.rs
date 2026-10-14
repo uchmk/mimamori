@@ -24,6 +24,9 @@ pub enum Reload {
     Common(Result<(Common, Vec<String>), String>),
     Themes(Vec<Theme>, Vec<String>),
     Settings(Box<Settings>),
+    /// The Keys page wrote keymap.toml (or found it already said so):
+    /// config.toml and keymap.toml read again, and what to say.
+    Keys(Box<Settings>, String),
     /// This machine's public key and name, or why it could not be read.
     Key(Result<(String, String), String>),
     Failed(String),
@@ -41,9 +44,13 @@ pub struct Prefs {
     pub theme_warn: Vec<String>,
     /// The theme common.toml names but which is not there.
     pub theme_err: Option<String>,
+    /// What reading keymap.toml said, last time it was read.
+    pub keymap_warn: Vec<String>,
     /// The screen's page, search and focus.
     pub state: State,
     pub drafts: Drafts,
+    /// The Keys page's search and the key being taken.
+    pub keys_edit: ito_prefs::KeysEdit,
     /// This machine's public key (base64) and name for the fleet page;
     /// `None` until read.
     pub key: Option<Result<(String, String), String>>,
@@ -67,8 +74,10 @@ impl Prefs {
             common_warn: Vec::new(),
             theme_warn: Vec::new(),
             theme_err: None,
+            keymap_warn: Vec::new(),
             state: State::default(),
             drafts: Drafts::new(),
+            keys_edit: ito_prefs::KeysEdit::default(),
             key: None,
             key_asked: false,
             tx,
@@ -103,7 +112,8 @@ impl Prefs {
         self.os_light = ito_common::OsLight::watch(WATCH, move || os_ctx.request_repaint());
         let Some(base) = self.base.clone() else { return };
         let (common, themes, config) = (common_path(&base), themes_dir(&base), edit::config_path(&base));
-        let mut paths = vec![common.clone(), config.clone(), themes.clone()];
+        let keymap = keymap_path(&base);
+        let mut paths = vec![common.clone(), config.clone(), keymap.clone(), themes.clone()];
         // A theme file edited in place; one added or taken away changes the
         // folder's time.
         if let Ok(entries) = std::fs::read_dir(&themes) {
@@ -115,7 +125,7 @@ impl Prefs {
             if changed.contains(&common) {
                 sent &= tx.send(Reload::Common(Common::read(&base))).is_ok();
             }
-            if changed.contains(&config) {
+            if changed.contains(&config) || changed.contains(&keymap) {
                 sent &= tx.send(Reload::Settings(Box::new(settings::load(Some(&base))))).is_ok();
             }
             if changed.iter().any(|p| p.starts_with(&themes)) {
@@ -165,6 +175,26 @@ impl Prefs {
         std::thread::spawn(move || {
             let r = match edit::save(&base, &e) {
                 Ok(()) => Reload::Settings(Box::new(settings::load(Some(&base)))),
+                Err(e) => Reload::Failed(e),
+            };
+            Self::send_back(&tx, &wake, r);
+        });
+    }
+
+    /// Make the Keys page's `edits` in keymap.toml on a thread (only what
+    /// differs from the built-in keys is written), then read the files again.
+    pub fn keymap_edit(&self, edits: Vec<ito_keymap::Edit>) {
+        if edits.is_empty() {
+            return;
+        }
+        let (tx, wake) = (self.tx.clone(), self.wake.clone());
+        let Some(base) = self.base.clone() else {
+            Self::send_back(&tx, &wake, Reload::Failed(crate::i18n::tr("settings.no_folder").into()));
+            return;
+        };
+        std::thread::spawn(move || {
+            let r = match write_keymap(&keymap_path(&base), &edits) {
+                Ok(said) => Reload::Keys(Box::new(settings::load(Some(&base))), said),
                 Err(e) => Reload::Failed(e),
             };
             Self::send_back(&tx, &wake, r);
@@ -243,8 +273,47 @@ impl Prefs {
     /// Every warning from reading the files, for the Advanced page.
     pub fn warnings(&self) -> Vec<String> {
         let s = &self.settings.warnings;
-        s.iter().chain(&self.common_warn).chain(&self.theme_warn).chain(&self.theme_err).cloned().collect()
+        s.iter().chain(&self.keymap_warn).chain(&self.common_warn).chain(&self.theme_warn).chain(&self.theme_err).cloned().collect()
     }
+}
+
+/// keymap.toml's full path: beside config.toml, in yagura's own folder.
+pub fn keymap_path(base: &Path) -> PathBuf {
+    settings::own_dir(base).join("keymap.toml")
+}
+
+/// Make `edits` in the keymap.toml at `path` (none yet is an empty one),
+/// written only when that changes it; what to say about it. Call it off the
+/// UI thread.
+pub fn write_keymap(path: &Path, edits: &[ito_keymap::Edit]) -> Result<String, String> {
+    static ONE_AT_A_TIME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _one = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+    let at = |e: String| format!("{}: {e}", path.display());
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(at(e.to_string())),
+    };
+    let new = ito_keymap::edit(&text, &crate::config::keymap::SPEC, edits, "noop").map_err(at)?;
+    let what = edits
+        .iter()
+        .map(|e| match e {
+            ito_keymap::Edit::Add { on, run, .. } => crate::i18n::trf("toast.key_added", &[&crate::config::keys::display_seq(on), run]),
+            ito_keymap::Edit::Remove { on, run, .. } => {
+                crate::i18n::trf("toast.key_removed", &[&crate::config::keys::display_seq(on), run])
+            }
+            ito_keymap::Edit::Reset { run, .. } => crate::i18n::trf("toast.key_reset", &[run]),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    if new == text {
+        return Ok(crate::i18n::trf("toast.keymap_same", &[&what]));
+    }
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| at(e.to_string()))?;
+    }
+    write_atomic(path, new)?;
+    Ok(crate::i18n::trf("toast.keymap_saved", &[&what]))
 }
 
 #[cfg(windows)]
@@ -266,4 +335,55 @@ fn open_path(path: &Path) -> Result<(), String> {
     // explorer answers 1 even when it opened the file, so only a failure to
     // start it is said; waited for, so it leaves nothing behind.
     opener().arg(path).status().map(drop).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ito_keymap::Edit;
+
+    fn on(s: &str) -> Vec<crate::config::keys::Key> {
+        s.split(' ').map(|k| crate::config::keys::Key::parse(k).expect("a key")).collect()
+    }
+
+    fn read(path: &Path) -> String {
+        std::fs::read_to_string(path).expect("keymap.toml written")
+    }
+
+    #[test]
+    fn a_new_key_writes_only_that_entry() {
+        let path = keymap_path(&crate::util::test_dir("keymap-add"));
+        let add = Edit::Add { layer: "main".into(), on: on("<C-S-Enter>"), run: "quit".into(), desc: "Quit".into() };
+        write_keymap(&path, &[add]).expect("written");
+        let text = read(&path);
+        assert!(text.contains("prepend_keymap"), "{text}");
+        assert!(text.contains("<C-S-Enter>") && text.contains(r#"run = "quit""#), "{text}");
+        // Nothing of the defaults is copied in.
+        assert!(!text.contains("screen overview") && !text.contains(r#""q""#), "{text}");
+        let (km, warn) = crate::config::keymap::Keymap::load(Some(&text));
+        assert!(warn.is_empty(), "{warn:?}");
+        let main = km.layers().into_iter().find(|(l, _)| l == "main").expect("main").1;
+        assert!(crate::config::keymap::live(&main).any(|b| b.on == on("<C-S-Enter>")));
+    }
+
+    #[test]
+    fn taking_a_default_off_writes_noop_and_a_reset_leaves_nothing() {
+        let path = keymap_path(&crate::util::test_dir("keymap-remove"));
+        let remove = Edit::Remove { layer: "main".into(), on: on("q"), run: "quit".into() };
+        write_keymap(&path, &[remove]).expect("written");
+        let text = read(&path);
+        assert!(text.contains(r#"on = "q""#) && text.contains(r#"run = "noop""#), "{text}");
+        let add = Edit::Add { layer: "main".into(), on: on("<C-S-Enter>"), run: "quit".into(), desc: "Quit".into() };
+        write_keymap(&path, &[add]).expect("written");
+        write_keymap(&path, &[Edit::Reset { layer: "main".into(), run: "quit".into() }]).expect("written");
+        let text = read(&path);
+        assert!(!text.contains("noop") && !text.contains("<C-S-Enter>"), "{text}");
+    }
+
+    #[test]
+    fn edits_that_change_nothing_make_no_file() {
+        let path = keymap_path(&crate::util::test_dir("keymap-same"));
+        write_keymap(&path, &[Edit::Reset { layer: "main".into(), run: "quit".into() }]).expect("nothing to do");
+        assert!(!path.exists());
+    }
 }

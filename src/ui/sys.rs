@@ -150,8 +150,10 @@ fn drive_kind(d: &Drive) -> &'static str {
 /// The main keys that open `to`, the way help joins them; none when unbound.
 fn screen_keys(app: &App, to: Screen) -> Option<String> {
     let act = Act::Screen(Goto::To(to));
-    let keys: Vec<String> =
-        app.keymap().main.iter().filter(|b| b.run.as_slice() == std::slice::from_ref(&act)).map(|b| render_seq(&b.on)).collect();
+    let keys: Vec<String> = crate::config::keymap::live(&app.keymap().main)
+        .filter(|b| b.run.as_slice() == std::slice::from_ref(&act))
+        .map(|b| render_seq(&b.on))
+        .collect();
     (!keys.is_empty()).then(|| keys.join(" / "))
 }
 

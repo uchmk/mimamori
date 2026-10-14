@@ -679,7 +679,7 @@ impl App {
     /// rather than movement, one line each, with the keys that do the same.
     fn palette_entries(&self) -> Vec<ito_palette::Entry<Act>> {
         let mut out: Vec<ito_palette::Entry<Act>> = Vec::new();
-        for b in &self.km.main {
+        for b in crate::config::keymap::live(&self.km.main) {
             let [act] = b.run[..] else { continue };
             if matches!(
                 act,
@@ -692,6 +692,7 @@ impl App {
                     | Act::Backspace
                     | Act::Confirm
                     | Act::Page(_)
+                    | Act::Noop
             ) {
                 continue;
             }
@@ -770,8 +771,19 @@ impl App {
                 self.prefs.themes = themes;
                 self.prefs.theme_warn = w;
             }
+            Reload::Keys(s, said) => {
+                self.reload(Reload::Settings(s));
+                self.toast(said);
+            }
             Reload::Settings(s) => {
                 let old = std::mem::replace(&mut self.prefs.settings, *s);
+                if self.prefs.settings.keymap != old.keymap {
+                    // keymap.toml changed (the Keys page, or by hand): the
+                    // keys, the help and the hints follow at once.
+                    let (km, warn) = Keymap::load(self.prefs.settings.keymap.as_deref());
+                    self.km = km;
+                    self.prefs.keymap_warn = warn;
+                }
                 let interval = self.prefs.settings.interval;
                 if interval != old.interval {
                     self.set_interval(interval);

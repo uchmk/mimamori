@@ -382,7 +382,8 @@ fn wrap(s: &str, cells: usize, most: usize) -> Vec<&str> {
 /// The lines of the hint: what is said, its colour, and what a click on it
 /// copies.
 fn hint_lines(app: &App) -> Vec<(String, Color32, Option<String>)> {
-    let key = app.keymap().main.iter().find(|b| b.run == [Act::Settings]).map(|b| render_seq(&b.on)).unwrap_or_default();
+    let key =
+        crate::config::keymap::live(&app.keymap().main).find(|b| b.run == [Act::Settings]).map(|b| render_seq(&b.on)).unwrap_or_default();
     let cmd = |s: String| (format!("  {s}"), theme::cyan(), Some(s));
     let mut lines = vec![
         (tr("fleet.no_hosts").into(), theme::yellow(), None),

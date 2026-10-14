@@ -37,7 +37,7 @@ fn span(secs: f32) -> String {
 
 /// The keys of the zoom layer that run `act`, joined by `/`.
 fn keys_for(app: &App, act: Act) -> String {
-    let keys: Vec<String> = app.keymap().zoom.iter().filter(|b| b.run == [act]).map(|b| render_seq(&b.on)).collect();
+    let keys: Vec<String> = crate::config::keymap::live(&app.keymap().zoom).filter(|b| b.run == [act]).map(|b| render_seq(&b.on)).collect();
     keys.join(" ")
 }
 

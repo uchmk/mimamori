@@ -28,7 +28,7 @@ pub struct Keymap {
     pub settings: Vec<Binding>,
 }
 
-const SPEC: ito_keymap::Spec = ito_keymap::Spec {
+pub(crate) const SPEC: ito_keymap::Spec = ito_keymap::Spec {
     layers: &[
         ito_keymap::Layer::new("main"),
         ito_keymap::Layer::new("input"),
@@ -67,6 +67,34 @@ impl Keymap {
         };
         (out, km.warnings)
     }
+
+    /// Every layer's bindings, by name in [`SPEC`]'s order: what the
+    /// settings screen's Keys page lists.
+    pub fn layers(&self) -> Vec<(String, Vec<Binding>)> {
+        let all = [&self.main, &self.input, &self.help, &self.confirm, &self.zoom, &self.settings];
+        SPEC.layers.iter().zip(all).map(|(l, b)| (l.name.to_owned(), b.clone())).collect()
+    }
+
+    /// The built-in defaults alone, layer by layer, read once.
+    pub fn built_in_layers() -> &'static [(String, Vec<Binding>)] {
+        static BUILT_IN_LAYERS: std::sync::OnceLock<Vec<(String, Vec<Binding>)>> = std::sync::OnceLock::new();
+        BUILT_IN_LAYERS.get_or_init(|| Self::load(None).0.layers())
+    }
+}
+
+/// The bindings of a layer that a key can reach: not `noop` (a key taken
+/// from a built-in operation) and not shadowed by an earlier binding with the
+/// same keys or a shorter one they start with. What the help and the hints
+/// name, so a key taken away is not offered.
+pub fn live(layer: &[Binding]) -> impl Iterator<Item = &Binding> {
+    layer.iter().filter(move |b| {
+        b.run != [Act::Noop]
+            && (1..=b.on.len()).all(|i| match resolve(layer, &b.on[..i]) {
+                Match::Exact(x) => i == b.on.len() && std::ptr::eq(x, *b),
+                Match::Pending(_) => i < b.on.len(),
+                Match::None => false,
+            })
+    })
 }
 
 #[cfg(test)]
@@ -114,6 +142,32 @@ mod tests {
         assert!(warn[0].contains("did you mean `[[help.prepend_keymap]]`"), "{warn:?}");
         assert!(matches!(resolve(&km.main, &keys("j")), Match::Exact(b) if b.run == [Act::Quit]));
         assert_eq!(km.help.len(), 1);
+    }
+
+    #[test]
+    fn a_key_taken_away_or_shadowed_is_not_live() {
+        let user = r#"
+            [main]
+            prepend_keymap = [{ on = "q", run = "noop" }, { on = "<F2>", run = "quit" }, { on = "2", run = "help" }]
+        "#;
+        let (km, warn) = Keymap::load(Some(user));
+        assert!(warn.is_empty(), "{warn:?}");
+        let quit: Vec<&Vec<Key>> = live(&km.main).filter(|b| b.run == [Act::Quit]).map(|b| &b.on).collect();
+        assert!(quit.contains(&&keys("<F2>")) && !quit.contains(&&keys("q")), "q runs nothing now; F2 quits: {quit:?}");
+        assert!(!live(&km.main).any(|b| b.run == [Act::Screen(Goto::To(Screen::Cpu))] && b.on == keys("2")), "2 opens the help");
+        assert!(live(&km.main).any(|b| b.on == keys("g g")), "a sequence is live");
+        assert!(!live(&km.main).any(|b| b.run == [Act::Noop]));
+    }
+
+    #[test]
+    fn layers_follow_the_spec_and_the_defaults_stay_built_in() {
+        let (km, _) = Keymap::load(Some(
+            r#"[main]
+prepend_keymap = [{ on = "<F2>", run = "quit" }]"#,
+        ));
+        let names: Vec<String> = km.layers().into_iter().map(|(n, _)| n).collect();
+        assert_eq!(names, ["main", "input", "help", "confirm", "zoom", "settings"]);
+        assert_eq!(km.layers()[0].1.len(), Keymap::built_in_layers()[0].1.len() + 1);
     }
 
     #[test]

@@ -18,8 +18,19 @@ use crate::remote::{self, proto};
 const GENERAL: usize = 0;
 const THEME: usize = 1;
 const FLEET: usize = 2;
-const NOTIFY: usize = 3;
-const ADVANCED: usize = 4;
+const KEYS: usize = 3;
+const NOTIFY: usize = 4;
+const ADVANCED: usize = 5;
+
+/// The keymap's layers, and each one's name on the Keys page.
+const LAYERS: [(&str, &str); 6] = [
+    ("main", "settings.layer_main"),
+    ("input", "settings.layer_input"),
+    ("help", "settings.layer_help"),
+    ("confirm", "settings.layer_confirm"),
+    ("zoom", "settings.layer_zoom"),
+    ("settings", "settings.layer_settings"),
+];
 
 /// What the page asked for.
 #[derive(Default)]
@@ -76,6 +87,8 @@ fn index() -> Vec<(usize, &'static str)> {
     ] {
         v.push((FLEET, tr(k)));
     }
+    v.extend(ito_prefs::keys_index(ito_prefs::KeyWords::of(current_language())).into_iter().map(|t| (KEYS, t)));
+    v.extend(LAYERS.iter().map(|(_, k)| (KEYS, tr(k))));
     v.extend(ito_prefs::notify_index(w).into_iter().map(|t| (NOTIFY, t)));
     for k in ["settings.backend", "settings.folder", "settings.common", "settings.warnings"] {
         v.push((ADVANCED, tr(k)));
@@ -86,7 +99,7 @@ fn index() -> Vec<(usize, &'static str)> {
 }
 
 /// Each page's keys in config.toml and common.toml.
-const CONFIG_NAMES: [(usize, &str); 23] = [
+const CONFIG_NAMES: [(usize, &str); 25] = [
     (GENERAL, "language"),
     (GENERAL, "scale"),
     (GENERAL, "interval"),
@@ -103,6 +116,8 @@ const CONFIG_NAMES: [(usize, &str); 23] = [
     (FLEET, "addr"),
     (FLEET, "key"),
     (FLEET, "every"),
+    (KEYS, "keymap.toml"),
+    (KEYS, "prepend_keymap"),
     (NOTIFY, "[notify]"),
     (NOTIFY, "system"),
     (NOTIFY, "sound_name"),
@@ -119,6 +134,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
         (tr("settings.general"), tr("settings.general_lead")),
         (tr("settings.theme"), tr("settings.theme_lead")),
         (tr("settings.fleet"), tr("settings.fleet_lead")),
+        (tr("settings.keys"), tr("settings.keys_lead")),
         (w.notify, tr("settings.notify_lead")),
         (tr("settings.advanced"), tr("settings.advanced_lead")),
     ];
@@ -127,9 +143,13 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     let mut asked = Asked::default();
     let interval = app.interval;
     let warnings = app.prefs.warnings();
+    let layers = app.keymap().layers();
+    let kw = ito_prefs::KeyWords::of(lang);
+    let mut key_edits = Vec::new();
     let prefs = &mut app.prefs;
     let (settings, common, themes, base) = (&prefs.settings, &prefs.common, &prefs.themes, prefs.base.as_deref());
     let drafts = &mut prefs.drafts;
+    let keys_edit = &mut prefs.keys_edit;
     let key = &prefs.key;
     let config = base.map(crate::config::edit::config_path);
     let out = ito_prefs::show(ui, ito_theme::colors(), &mut prefs.state, &nav, keys, |ui, page, l| match page {
@@ -290,6 +310,22 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 }
             });
         }
+        KEYS => {
+            let layer_name = |n: &str| LAYERS.iter().find(|(id, _)| *id == n).map_or_else(|| n.to_owned(), |(_, k)| tr(k).to_owned());
+            let tr = |d: &str| crate::i18n::tr_desc(d).to_owned();
+            let table = ito_prefs::KeyTable {
+                now: &layers,
+                built_in: crate::config::keymap::Keymap::built_in_layers(),
+                noop: "noop",
+                own: "keymap.toml",
+                layer_name: &layer_name,
+                tr: &tr,
+                extra: &|_, _| Vec::new(),
+                unbound: &[],
+                sup: false,
+            };
+            key_edits.extend(ito_prefs::keys_page(ui, l, kw, &table, keys_edit).unwrap_or_default());
+        }
         NOTIFY => {
             let was = &settings.notify;
             let mut n = was.page();
@@ -347,6 +383,13 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
         _ => {}
     });
 
+    // Keys taken on the Keys page stop with it: left to another page by a
+    // click, they would keep Esc and Ctrl+Tab from the screen.
+    if app.prefs.state.page != KEYS {
+        app.prefs.keys_edit.capture = None;
+        app.prefs.keys_edit.listening = false;
+    }
+    app.prefs.keymap_edit(key_edits);
     if out.close {
         app.close_settings();
     }
@@ -474,7 +517,9 @@ mod tests {
             ("listen", FLEET),
             ("viewer", FLEET),
             ("host", FLEET),
-            ("key", FLEET),
+            ("addr", FLEET),
+            ("keymap", KEYS),
+            ("prepend", KEYS),
             ("every", FLEET),
             ("focus_mode", NOTIFY),
             ("webhook", NOTIFY),
@@ -482,5 +527,75 @@ mod tests {
         ] {
             assert_eq!(pages(q), [page], "{q}");
         }
+        // "key" is both a [[host]] field and part of keymap.toml.
+        assert_eq!(pages("key"), [FLEET, KEYS]);
+    }
+
+    /// The Keys page takes the keys pressed while a key is being set (Esc
+    /// and Enter included, which would close the window), and writes only the
+    /// key set to yagura's keymap.toml once Enter sets it.
+    #[test]
+    fn the_keys_page_takes_a_key_and_writes_it_on_enter() {
+        use crate::screen::Screen;
+        let dir = crate::util::test_dir("settings-keys");
+        let (km, _) = crate::config::keymap::Keymap::load(None);
+        let (_tx, rx) = crossbeam_channel::unbounded();
+        let (ctl_tx, _ctl_rx) = crossbeam_channel::unbounded();
+        let layouts = Screen::ALL.iter().map(|&s| (s, s.default_layout())).collect();
+        let mut a = App::new(km, rx, ctl_tx, layouts, crate::persist::Saver::new(None), 1.0);
+        a.prefs.base = Some(dir.clone());
+        a.prefs.state.page = KEYS;
+        let ctx = egui::Context::default();
+        let mut time = 0.0;
+        let mut frame = |a: &mut App, events: Vec<egui::Event>| {
+            time += 0.1;
+            let input = egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), vec2(1200.0, 800.0))),
+                time: Some(time),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| show(ui, a, ito_prefs::Keys::default()));
+            });
+            out.textures_delta.clear();
+        };
+        let key = |key, modifiers, pressed| egui::Event::Key { key, physical_key: None, pressed, repeat: false, modifiers };
+        let mut press = |a: &mut App, k, m| {
+            frame(a, vec![key(k, m, true)]);
+            frame(a, vec![key(k, m, false)]);
+        };
+        let start = |a: &mut App| {
+            a.prefs.keys_edit.capture =
+                Some(ito_prefs::Capture { layer: "main".into(), run: "quit".into(), keys: Vec::new(), replace: None });
+        };
+        let file = crate::prefs::keymap_path(&dir);
+        // Esc gives up the key.
+        start(&mut a);
+        press(&mut a, egui::Key::Escape, egui::Modifiers::NONE);
+        assert!(a.prefs.keys_edit.capture.is_none(), "Esc gave the key up");
+        // Ctrl+Shift+Enter is a key; nothing is written before Enter.
+        start(&mut a);
+        let cs = egui::Modifiers { ctrl: true, shift: true, command: true, ..Default::default() };
+        press(&mut a, egui::Key::Enter, cs);
+        assert!(!file.exists(), "a key pressed is not written yet");
+        assert_eq!(a.prefs.keys_edit.capture.as_ref().map(|c| c.keys.len()), Some(1), "{:?}", a.prefs.keys_edit.capture);
+        press(&mut a, egui::Key::Enter, egui::Modifiers::NONE);
+        let mut text = String::new();
+        for _ in 0..500 {
+            text = std::fs::read_to_string(&file).unwrap_or_default();
+            if text.contains("quit") {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(text.contains("<C-S-Enter>") && text.contains(r#"run = "quit""#) && text.contains("prepend_keymap"), "{text}");
+        assert!(!text.contains("noop") && !text.contains("overview"), "only the key set is written: {text}");
+        // Taking keys, then gone to another page: the keys stop being taken.
+        start(&mut a);
+        a.prefs.keys_edit.listening = true;
+        a.prefs.state.page = NOTIFY;
+        frame(&mut a, Vec::new());
+        assert!(!a.prefs.keys_edit.busy(), "another page takes no keys for the Keys page");
     }
 }

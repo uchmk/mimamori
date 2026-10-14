@@ -397,7 +397,8 @@ fn draw_header(ui: &Ui, pen: &Pen, app: &App, r: Rect, out: &mut Out) {
     }
     // The fleet after the screens, by its letter.
     let label = tr("tab.fleet");
-    let key = app.keymap().main.iter().find(|b| b.run == [Act::Fleet]).map(|b| render_seq(&b.on)).unwrap_or_default();
+    let key =
+        crate::config::keymap::live(&app.keymap().main).find(|b| b.run == [Act::Fleet]).map(|b| render_seq(&b.on)).unwrap_or_default();
     let w = pen.width(label) + pen.width(&key) + pen.cw + 14.0;
     let tab = Rect::from_center_size(pos2(x + 6.0 + w / 2.0, y), vec2(w, 20.0));
     if tab.right() <= r.right() - 8.0 {

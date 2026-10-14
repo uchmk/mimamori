@@ -181,6 +181,10 @@ impl Yagura {
     /// taken out of egui's input, the rest left to the controls.
     fn settings_keys(&mut self, ctx: &egui::Context) -> ito_prefs::Keys {
         let mut keys = ito_prefs::Keys::default();
+        // The Keys page is taking keys: every one is its, Esc included.
+        if self.app.prefs.keys_edit.busy() {
+            return keys;
+        }
         // A control had the keys: Esc is its (egui lets go of the control).
         let busy = self.app.prefs.state.held || ctx.memory(|m| m.focused().is_some());
         let events = ctx.input(|i| i.events.clone());
@@ -544,6 +548,7 @@ fn main() -> eframe::Result {
             app.stacks = stacks;
             app.wake = Some(cc.egui_ctx.clone());
             app.prefs = prefs::Prefs::load(settings::base_dir(), s);
+            app.prefs.keymap_warn = km_warn;
             app.prefs.watch(&cc.egui_ctx);
             app.prefs.apply_theme(&cc.egui_ctx);
             // The scale is common.toml's, stepped by the keymap's scale keys,

@@ -14,8 +14,10 @@ use crate::svcctl::{self, Action};
 
 /// The keys of the confirm layer that run `act`, joined the way help joins them.
 fn keys_for(app: &App, act: &Act) -> String {
-    let keys: Vec<String> =
-        app.keymap().confirm.iter().filter(|b| b.run.as_slice() == std::slice::from_ref(act)).map(|b| render_seq(&b.on)).collect();
+    let keys: Vec<String> = crate::config::keymap::live(&app.keymap().confirm)
+        .filter(|b| b.run.as_slice() == std::slice::from_ref(act))
+        .map(|b| render_seq(&b.on))
+        .collect();
     keys.join(" / ")
 }
 
