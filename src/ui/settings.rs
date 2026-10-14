@@ -589,6 +589,7 @@ mod tests {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
+        assert!(text.contains("quit"), "keymap.toml was not written within 5 s");
         assert!(text.contains("<C-S-Enter>") && text.contains(r#"run = "quit""#) && text.contains("prepend_keymap"), "{text}");
         assert!(!text.contains("noop") && !text.contains("overview"), "only the key set is written: {text}");
         // Taking keys, then gone to another page: the keys stop being taken.
@@ -597,5 +598,11 @@ mod tests {
         a.prefs.state.page = NOTIFY;
         frame(&mut a, Vec::new());
         assert!(!a.prefs.keys_edit.busy(), "another page takes no keys for the Keys page");
+        // Taking keys, then the settings closed and opened again: no key is taken.
+        a.prefs.state.page = KEYS;
+        start(&mut a);
+        a.close_settings();
+        a.open_settings();
+        assert!(!a.prefs.keys_edit.busy(), "the settings opened again take no keys for the Keys page");
     }
 }

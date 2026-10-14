@@ -733,10 +733,19 @@ impl App {
     pub fn open_settings(&mut self) {
         self.mode = Mode::Settings;
         self.pending.clear();
+        self.give_up_key();
     }
 
     pub fn close_settings(&mut self) {
         self.mode = Mode::Normal;
+        self.give_up_key();
+    }
+
+    /// Stop taking a key for the Keys page, or the settings come back still
+    /// taking keys (Esc included).
+    fn give_up_key(&mut self) {
+        self.prefs.keys_edit.capture = None;
+        self.prefs.keys_edit.listening = false;
     }
 
     /// What a key does on the settings screen, from its layer of the keymap.
