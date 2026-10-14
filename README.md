@@ -161,13 +161,17 @@ every = 5.0         # a summary every 5 s at most, for a thin link (left out: th
 ```
 
 `keymap.toml` uses yazi's format, section by section (`[main]`, `[input]`,
-`[help]`, `[confirm]`, `[settings]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
-add before and after it. `on_mac` gives a binding its own keys on macOS, and
+`[help]`, `[confirm]`, `[zoom]`, `[settings]`): `keymap` replaces a section, `prepend_keymap` and `append_keymap`
+add before and after it. A key sequence is written `"gg"` or `"g g"`, `for`
+(`windows`, `macos`, `linux`, `unix`) keeps a binding to one kind of machine,
+`on_mac` gives a binding its own keys on macOS, and
 `C` is Ctrl on Windows and Linux and Cmd on macOS (where Ctrl works too):
 `<C-,>` is Ctrl+, (Cmd+, on a Mac). The built-in
-keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml). The key
-notation is the crate `ito-keys` in [ito](https://github.com/uchmk/ito), so it reads the
-same in uchmk's other apps.
+keymap is [src/defaults/keymap.toml](src/defaults/keymap.toml). The file is read
+by the crates `ito-keymap` and `ito-keys` in [ito](https://github.com/uchmk/ito), as kura reads
+its own, so it reads the same in uchmk's other apps: an unknown section,
+field, key or command, a key bound twice, and a key that hides the chords it
+starts are named in the warnings, and the rest of the file still counts.
 
 ```toml
 [main]

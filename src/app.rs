@@ -1752,7 +1752,7 @@ impl App {
                             self.run(a);
                         }
                     }
-                    Match::Prefix => {}
+                    Match::Pending(_) => {}
                     Match::None => {
                         let again = self.pending.len() > 1;
                         self.pending.clear();
