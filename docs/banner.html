@@ -1,0 +1,59 @@
+<!doctype html>
+<!--
+  yagura's social preview -- the banner GitHub shows when the repository is
+  linked anywhere. Rendered to docs/social-preview.png and uploaded by hand at
+  Settings > General > Social preview; GitHub has no API for that setting.
+  The same shape as the other uchmk apps' banners (tsumugi, kura, minato, ito):
+  the kanji, the name and the kana on the left, a real screenshot on the right.
+
+  Kept as source rather than as a PNG alone so the wording can change without
+  anyone having to rebuild it in a drawing program. To re-render, from the
+  repository root, with any Chromium:
+
+      chromium --headless --disable-gpu --hide-scrollbars \
+        --force-device-scale-factor=2 --window-size=1280,640 \
+        --screenshot=docs/social-preview.png docs/banner.html
+
+  then scale the 2560x1280 result down to 1280x640 (GitHub's size), for
+  example `magick docs/social-preview.png -resize 1280x640 docs/social-preview.png`.
+
+  What to keep true when changing it:
+
+  - **The window is a real screenshot** (docs/images/banner-shot.png), taken
+    from a release build at 1700x1100 with the default theme: the cpu screen,
+    with a few threads kept busy so the core tiles and the thread heatmap show
+    more than one colour. Narrower than that and the tiles wrap and push the
+    second L3 group out of the panel. Retake it when the window changes enough
+    that the banner no longer looks like the program.
+  - **The tagline is the README's own claim.** Do not stretch it into something
+    the program does not do yet.
+  - **No private data in the shot**: no user names in paths or process
+    lists. The host name in the tab bar is shown as it is, so take it on a
+    machine whose name is fine to publish.
+-->
+<html><head><meta charset="utf-8">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1280px;height:640px;overflow:hidden}
+  body{background:#017a41;position:relative;font-family:"Noto Sans JP",sans-serif;color:#f5f1e8}
+  .kanji{position:absolute;left:62px;top:28px;font-family:"Noto Serif JP",serif;font-weight:500;font-size:250px;line-height:1}
+  .name{position:absolute;left:70px;top:318px;font-weight:700;font-size:76px;letter-spacing:4px;line-height:1}
+  .kana{position:absolute;left:74px;top:420px;font-size:22px;letter-spacing:22px;opacity:.75}
+  .tag{position:absolute;left:73px;top:466px;font-size:22px;line-height:33px}
+  .url{position:absolute;left:73px;top:592px;font-size:18px;letter-spacing:1px;opacity:.7}
+  svg.wave{position:absolute;left:0;top:540px}
+  .shot{position:absolute;left:576px;top:80px;width:652px;border-radius:10px;
+        box-shadow:0 24px 60px rgba(0,0,0,.45),0 0 0 1px rgba(0,0,0,.35)}
+</style></head>
+<body>
+  <div class="kanji">櫓</div>
+  <div class="name">yagura</div>
+  <div class="kana">やぐら</div>
+  <div class="tag">A keyboard-driven system monitor:<br>every core, every machine, at a glance</div>
+  <svg class="wave" width="1280" height="60" viewBox="0 0 1280 60">
+    <path d="M0,32 C220,26 330,38 470,33 C640,26 820,14 1000,20 C1120,24 1200,34 1280,26" fill="none" stroke="#8fd1ad" stroke-opacity=".7" stroke-width="2"/>
+    <circle cx="470" cy="33" r="8" fill="#e4f3ea"/>
+  </svg>
+  <div class="url">github.com/uchmk/yagura</div>
+  <img class="shot" src="images/banner-shot.png" alt="">
+</body></html>

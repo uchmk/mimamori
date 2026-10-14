@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.58.27] - 2026-10-14
+
+### 追加
+
+- README に「What it looks like」の節を足した。cpu の画面（コアのタイルが L3 の組ごとに色分けされたところ）と overview の画面の実際のキャプチャー、数字のキーで画面を回る GIF（押したキーを字幕で出す）を載せる。画像は `docs/images/`、撮り方は `docs/images/README.md`。
+- 紹介画像（GitHub の Social preview）を `docs/social-preview.png` に、元の HTML を `docs/banner.html` に置いた。ほかの uchmk のアプリと同じ形で、左に櫓・名前・一言、右に cpu の画面の実画面。GitHub に API が無いので、Settings > General > Social preview から手で上げる。
+
 ## [0.58.6] - 2026-10-12
 
 ### 修正

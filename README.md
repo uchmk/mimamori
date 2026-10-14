@@ -16,6 +16,14 @@ inside each tile.
 > **v0.35** lets you enter another machine's screens from its card, and switch machines with `[` / `]`.
 > What is still missing on each OS is in [TODO.md](TODO.md).
 
+## What it looks like
+
+![The cpu screen: the core tiles of a 16-core Ryzen in its two L3 groups, each tile coloured by how busy its core is, the total over the last minute and a heatmap of all 32 threads](docs/images/cpu.png)
+
+![Going through the screens with the number keys: cpu, a row down with j, memory, GPUs and NPUs, drives and volumes, sensors, and back to the overview](docs/images/yagura.gif)
+
+![The overview: CPU, memory, swap, GPU and drive gauges, each with its graph, and the top processes by CPU and by memory](docs/images/overview.png)
+
 ## Screens
 
 | Key | Screen   | What it shows |
