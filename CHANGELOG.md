@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.59.1] - 2026-10-14
+
+### 変更
+
+- アラートのシステムの通知に yagura のアイコン（4 つのコアのタイル）を出すようにした。Windows では通知の左と差出人の名前の横に出る
+  （ito v0.31.0 の `toast::show_with_icon`。TESTING 5.25）。
+
 ## [0.59.0] - 2026-10-14
 
 ### 追加

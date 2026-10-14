@@ -347,7 +347,7 @@ impl Tracker {
 /// `[notify]` asks.
 pub fn tell(n: &Notify, title: &str, body: &str) {
     if n.system {
-        ito_notify::toast::show(ito_notify::toast::App { id: "uchmk.yagura", name: "yagura" }, title, body);
+        ito_notify::toast::show_with_icon(ito_notify::toast::App { id: "uchmk.yagura", name: "yagura" }, crate::icon::rgba, title, body);
     }
     if n.sound && !(n.focus_mode && ito_notify::sound::quiet_time()) {
         ito_notify::sound::play(&n.sound_name);
