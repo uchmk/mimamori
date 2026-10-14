@@ -18,7 +18,8 @@ use crate::remote::{self, proto};
 const GENERAL: usize = 0;
 const THEME: usize = 1;
 const FLEET: usize = 2;
-const ADVANCED: usize = 3;
+const NOTIFY: usize = 3;
+const ADVANCED: usize = 4;
 
 /// What the page asked for.
 #[derive(Default)]
@@ -30,6 +31,8 @@ struct Asked {
     open_folder: bool,
     /// The fleet page was shown: read this machine's key.
     key: bool,
+    /// The notifications page's "send a test" was pressed.
+    test: bool,
     toast: Option<String>,
 }
 
@@ -73,6 +76,7 @@ fn index() -> Vec<(usize, &'static str)> {
     ] {
         v.push((FLEET, tr(k)));
     }
+    v.extend(ito_prefs::notify_index(w).into_iter().map(|t| (NOTIFY, t)));
     for k in ["settings.backend", "settings.folder", "settings.common", "settings.warnings"] {
         v.push((ADVANCED, tr(k)));
     }
@@ -82,7 +86,7 @@ fn index() -> Vec<(usize, &'static str)> {
 }
 
 /// Each page's keys in config.toml and common.toml.
-const CONFIG_NAMES: [(usize, &str); 17] = [
+const CONFIG_NAMES: [(usize, &str); 23] = [
     (GENERAL, "language"),
     (GENERAL, "scale"),
     (GENERAL, "interval"),
@@ -99,6 +103,12 @@ const CONFIG_NAMES: [(usize, &str); 17] = [
     (FLEET, "addr"),
     (FLEET, "key"),
     (FLEET, "every"),
+    (NOTIFY, "[notify]"),
+    (NOTIFY, "system"),
+    (NOTIFY, "sound_name"),
+    (NOTIFY, "focus_mode"),
+    (NOTIFY, "webhook"),
+    (NOTIFY, "webhook_format"),
     (ADVANCED, "backend"),
 ];
 
@@ -109,6 +119,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
         (tr("settings.general"), tr("settings.general_lead")),
         (tr("settings.theme"), tr("settings.theme_lead")),
         (tr("settings.fleet"), tr("settings.fleet_lead")),
+        (w.notify, tr("settings.notify_lead")),
         (tr("settings.advanced"), tr("settings.advanced_lead")),
     ];
     let index = index();
@@ -279,6 +290,16 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 }
             });
         }
+        NOTIFY => {
+            let was = &settings.notify;
+            let mut n = was.page();
+            let ends = [ito_prefs::End { name: tr("settings.notify_alert"), color: l.c.err, sound: tr("settings.notify_alert_sound") }];
+            asked.test = ito_prefs::notify_page(ui, l, w, &ends, &mut n, &crate::alert::Notify::default().page(), drafts);
+            let keys = was.edits(&n);
+            if !keys.is_empty() {
+                asked.edits.push(Edit::Notify(keys));
+            }
+        }
         ADVANCED => {
             section(ui, l, tr("settings.graphics"), |ui| {
                 let now = settings.backend.as_deref().unwrap_or("auto");
@@ -346,6 +367,9 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
         // At once, and kept in config.toml for the next start.
         app.set_interval(s);
         app.prefs.config_edit(Edit::Interval(s));
+    }
+    if asked.test {
+        crate::alert::tell(&app.prefs.settings.notify, tr("settings.notify_test_title"), tr("settings.notify_test_body"));
     }
     if let Some(t) = asked.toast {
         app.toast(t);
@@ -452,6 +476,8 @@ mod tests {
             ("host", FLEET),
             ("key", FLEET),
             ("every", FLEET),
+            ("focus_mode", NOTIFY),
+            ("webhook", NOTIFY),
             ("backend", ADVANCED),
         ] {
             assert_eq!(pages(q), [page], "{q}");

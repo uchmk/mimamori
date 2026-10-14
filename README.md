@@ -189,6 +189,7 @@ says otherwise.
 | General | Language and scale (common.toml), the update interval, **Check for updates** (`check_updates`, from the next start), the clock card (common.toml) |
 | Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with yagura's own tiles, process rows and status bar (common.toml) |
 | Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path); and the direct connections (this machine's public key, the `[[agent.viewer]]` that lets it in, the `[agent] listen` line, the `[[host]]` that watches it directly), each with Copy. The ssh and tailscale lines, the sample and a new host's address follow `[agent] port`; Add host and Delete change only the `[[host]]` tables, keeping config.toml's comments and order |
+| Notifications | How a fired alert reaches you (`[notify]`): the system's notification and the sound (switches), the alert's sound with a play button, quiet in focus mode, the webhook's address and format; **Send a test** and **Reset to defaults** (the address and format stay). The same page as in every uchmk app (ito's `notify_page`) |
 | Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
 
 Only the `[settings]` section's keys are taken (`Esc` and `Ctrl+,` close, a
@@ -258,7 +259,7 @@ the process count. A number the machine does not give is an empty cell.
 
 `[[alert]]` rules in config.toml watch this machine, and `[notify]` says how a
 fired one reaches you. `[notify]` has the same words as tsumugi's (the code
-is ito's `ito-notify`):
+is ito's `ito-notify`), and the settings' Notifications page writes it:
 
 ```toml
 [notify]

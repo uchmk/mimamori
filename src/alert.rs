@@ -202,11 +202,15 @@ pub fn parse_notify(v: &toml::Value, warn: &mut Vec<String>) -> Notify {
                 Some(s) => warn.push(format!("config.toml: [notify] `sound_name` `{s}` is not {}", ito_notify::SOUNDS.join(", "))),
                 None => {}
             },
-            "webhook" => match str_of(warn) {
-                Some(s) if s.is_empty() || ito_notify::is_http(&s) => n.webhook = s,
-                Some(s) => warn.push(format!("config.toml: [notify] `webhook` `{s}` is not an http(s) address")),
-                None => {}
-            },
+            "webhook" => {
+                if let Some(s) = str_of(warn) {
+                    // Kept, so the settings show it, but not sent to.
+                    if !s.is_empty() && !ito_notify::is_http(&s) {
+                        warn.push(format!("config.toml: [notify] `webhook` `{s}` is not an http(s) address"));
+                    }
+                    n.webhook = s;
+                }
+            }
             "webhook_format" => match str_of(warn) {
                 Some(s) if ito_notify::FORMATS.contains(&s.as_str()) => n.webhook_format = s,
                 Some(s) => warn.push(format!("config.toml: [notify] `webhook_format` `{s}` is not {}", ito_notify::FORMATS.join(", "))),
@@ -348,7 +352,7 @@ pub fn tell(n: &Notify, title: &str, body: &str) {
     if n.sound && !(n.focus_mode && ito_notify::sound::quiet_time()) {
         ito_notify::sound::play(&n.sound_name);
     }
-    if !n.webhook.is_empty() {
+    if ito_notify::is_http(&n.webhook) {
         ito_notify::webhook::send(
             n.webhook.clone(),
             n.webhook_format.clone(),
@@ -360,9 +364,70 @@ pub fn tell(n: &Notify, title: &str, body: &str) {
     }
 }
 
+impl Notify {
+    /// As the settings' Notifications page shows it: one event, the alert,
+    /// and the webhook told of every one.
+    pub fn page(&self) -> ito_prefs::Notify {
+        ito_prefs::Notify {
+            system: vec![self.system],
+            sound: vec![self.sound],
+            webhook: Vec::new(),
+            sounds: vec![self.sound_name.clone()],
+            focus: self.focus_mode,
+            webhook_url: self.webhook.clone(),
+            webhook_format: self.webhook_format.clone(),
+        }
+    }
+
+    /// The `[notify]` keys to write so that this reads as the page's `p`.
+    pub fn edits(&self, p: &ito_prefs::Notify) -> Vec<(&'static str, String)> {
+        use ito_common::quote;
+        let first = |v: &[bool], was: bool| v.first().copied().unwrap_or(was);
+        let mut out = Vec::new();
+        for (key, was, now) in [
+            ("system", self.system, first(&p.system, self.system)),
+            ("sound", self.sound, first(&p.sound, self.sound)),
+            ("focus_mode", self.focus_mode, p.focus),
+        ] {
+            if was != now {
+                out.push((key, now.to_string()));
+            }
+        }
+        let name = p.sounds.first().unwrap_or(&self.sound_name);
+        for (key, was, now) in [
+            ("sound_name", &self.sound_name, name),
+            ("webhook", &self.webhook, &p.webhook_url),
+            ("webhook_format", &self.webhook_format, &p.webhook_format),
+        ] {
+            if was != now {
+                out.push((key, quote(now)));
+            }
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_page_writes_only_what_changed() {
+        let was = Notify::default();
+        let mut p = was.page();
+        assert!(was.edits(&p).is_empty());
+        p.sound[0] = true;
+        p.sounds[0] = "chime".into();
+        p.webhook_url = "http://127.0.0.1:8765/hook".into();
+        assert_eq!(
+            was.edits(&p),
+            [
+                ("sound", "true".to_owned()),
+                ("sound_name", "\"chime\"".to_owned()),
+                ("webhook", "\"http://127.0.0.1:8765/hook\"".to_owned())
+            ]
+        );
+    }
 
     fn rules(text: &str) -> (Vec<Rule>, Vec<String>) {
         let t: toml::Table = text.parse().unwrap();
@@ -394,7 +459,8 @@ mod tests {
         let t: toml::Table =
             "[notify]\nwebhook = \"file:///x\"\nsound_name = \"boom\"\nwebhook_format = \"xml\"\nsystem = 3\nmore = 1\n".parse().unwrap();
         let mut w = Vec::new();
-        assert_eq!(parse_notify(&t["notify"], &mut w), Notify::default());
+        // The address that is not http stays, for the settings to show in red.
+        assert_eq!(parse_notify(&t["notify"], &mut w), Notify { webhook: "file:///x".into(), ..Notify::default() });
         assert_eq!(w.len(), 5, "{w:?}");
     }
 

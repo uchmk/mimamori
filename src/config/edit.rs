@@ -22,6 +22,8 @@ pub enum Edit {
     CheckUpdates(bool),
     /// Every `[[host]]`, in place of the ones there.
     Hosts(Vec<Host>),
+    /// `[notify]`'s keys and their values as written, in one go.
+    Notify(Vec<(&'static str, String)>),
 }
 
 impl Edit {
@@ -36,6 +38,13 @@ impl Edit {
             Self::Hosts(hosts) => {
                 let blocks: Vec<Vec<(&str, String)>> = hosts.iter().map(host_block).collect();
                 set_tables(text, "host", &blocks)
+            }
+            Self::Notify(keys) => {
+                let mut out = text.to_owned();
+                for (key, value) in keys {
+                    out = set_key(&out, Some("notify"), key, value)?;
+                }
+                Ok(out)
             }
         }
     }
