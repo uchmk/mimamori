@@ -23,7 +23,7 @@ name: Merge lanes
 
 on:
   workflow_run:
-    workflows: [CI]
+    workflows: [CI, Audit]
     types: [completed]
   # A pull request that changes only markdown starts no CI (paths-ignore), so no
   # check workflow finishes for it; its own update starts this instead.

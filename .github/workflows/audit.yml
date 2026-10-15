@@ -1,0 +1,49 @@
+name: Audit
+
+# Known vulnerabilities in the dependency tree, from the RustSec advisory
+# database, as kura, tsumugi and ito run it. The ones that matter most here
+# read what another machine sends: the fleet's direct connections run snow's
+# Noise handshake, and every connection decodes postcard frames.
+#
+# The weekly run is the reason this is a workflow and not a step. An advisory
+# is published against a dependency, not against a commit: the tree is
+# unchanged and newly vulnerable, so a check that only runs on push finds out
+# whenever the next push happens to be. Dependabot alerts cover the same
+# ground from the other side; this one fails a check, which is harder to
+# leave unread.
+#
+# Kept out of `ci.yml` so a new advisory does not read as a failing test.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays. Not on the hour, nor at kura's 6:37, tsumugi's 6:43 or ito's
+    # 6:49 (michi's 6:19, minato's 6:25): most schedules are written on the hour, so that is
+    # where GitHub's own queue is deepest.
+    - cron: '31 6 * * 1'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: audit
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      # Vulnerabilities fail; warnings do not. An unmaintained crate deep in
+      # the tree is a warning, it is usually not this project's to fix, and a
+      # red check that cannot be cleared is one people learn to ignore -- which
+      # costs the real findings their signal.
+      - name: Audit
+        run: cargo audit
