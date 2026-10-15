@@ -46,6 +46,8 @@ pub enum Act {
     Kill,
     /// One step more urgent (`true`) or less urgent priority for the selected process.
     Priority(bool),
+    /// Choose the CPUs the selected process may run on.
+    Affinity,
     /// Ask, then start, stop or restart the selected service.
     Service(Action),
     /// Every machine of `[[host]]` at once, or back to the screen.
@@ -161,6 +163,7 @@ pub fn parse(s: &str) -> Result<Act, String> {
             "lower" | "down" => false,
             _ => return Err(bad()),
         })),
+        "affinity" => none(Act::Affinity),
         "pause" => none(Act::Pause),
         "fleet" => none(Act::Fleet),
         "help" => none(Act::Help),
@@ -195,6 +198,8 @@ mod tests {
         assert_eq!(parse("priority raise"), Ok(Act::Priority(true)));
         assert_eq!(parse("priority lower"), Ok(Act::Priority(false)));
         assert!(parse("priority").is_err());
+        assert_eq!(parse("affinity"), Ok(Act::Affinity));
+        assert!(parse("affinity 1").is_err());
         assert_eq!(parse("tree"), Ok(Act::Tree));
         assert_eq!(parse("fleet"), Ok(Act::Fleet));
         assert!(parse("fleet nas").is_err());

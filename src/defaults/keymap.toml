@@ -61,6 +61,7 @@ keymap = [
     { on = "x", run = "kill", desc = "End the process; on svc, stop the service" },
     { on = "}", run = "priority raise", desc = "Make the process one step more urgent (nice -5 / next priority class)" },
     { on = "{", run = "priority lower", desc = "Make the process one step less urgent (nice +5 / previous priority class)" },
+    { on = "A", run = "affinity", desc = "Choose the CPUs the process may run on" },
     { on = "S", run = "service start", desc = "Start the selected service" },
     { on = "R", run = "service restart", desc = "Restart the selected service" },
     { on = "P", run = "pause", desc = "Pause / resume sampling" },
@@ -84,11 +85,12 @@ keymap = [
     { on = "<Esc>", run = "escape", desc = "Clear the filter (and on net the interface)" },
 ]
 
-# The filter's line: other printable keys are typed into it.
+# The filter's line and the CPUs being chosen (`A` in procs): other
+# printable keys are typed into them.
 [input]
 keymap = [
-    { on = "<Enter>", run = "confirm", desc = "Keep the filter" },
-    { on = "<Esc>", run = "escape", desc = "Drop the filter" },
+    { on = "<Enter>", run = "confirm", desc = "Keep the filter, or set the CPUs" },
+    { on = "<Esc>", run = "escape", desc = "Drop the filter, or leave the CPUs" },
     { on = "<Backspace>", run = "backspace", desc = "Delete a character" },
 ]
 

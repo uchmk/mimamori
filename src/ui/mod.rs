@@ -3,6 +3,7 @@
 //! positions and divider drags back through [`Out`]; the app applies them
 //! once the frame is drawn, so drawing only ever reads the state.
 
+mod affinity;
 mod confirm;
 mod containers;
 mod cpu;
@@ -327,7 +328,7 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
             }
             // After the rows, so a divider takes the pointer where both are;
             // the columns' last, over the panels' where they meet.
-            if !matches!(app.mode, Mode::Help | Mode::Confirm | Mode::Zoom | Mode::Palette) {
+            if !matches!(app.mode, Mode::Help | Mode::Confirm | Mode::Zoom | Mode::Palette | Mode::Affinity) {
                 let look = Look { gap: GAP, grab: 10.0, line: theme::cyan() };
                 for (p, node, r) in std::mem::take(&mut out.stacks) {
                     if let Some(m) = dividers(ui, Id::new(("stack", app.screen, p.index())), &node, from_egui(r), look) {
@@ -357,6 +358,15 @@ pub fn frame(ui: &Ui, app: &App) -> Out {
         confirm::draw(&pen, app, full);
         out.click = None;
         out.tab = None;
+        out.fleet_click = None;
+        out.fleet_tab = false;
+    }
+    if app.mode == Mode::Affinity {
+        affinity::draw(ui, &pen, app, full, &mut out);
+        out.click = None;
+        out.tab = None;
+        out.zoom = None;
+        out.copy = None;
         out.fleet_click = None;
         out.fleet_tab = false;
     }
@@ -533,6 +543,7 @@ fn draw_status(ui: &Ui, pen: &Pen, app: &App, r: Rect) {
         Mode::Confirm => (tr("mode.confirm"), theme::red()),
         Mode::Settings => (tr("mode.settings"), theme::cyan()),
         Mode::Zoom => (tr("mode.zoom"), theme::green()),
+        Mode::Affinity => (tr("mode.affinity"), theme::cyan()),
     };
     let bw = pen.width(badge) + 16.0;
     let b = Rect::from_center_size(pos2(r.left() + 6.0 + bw / 2.0, y), vec2(bw, 18.0));

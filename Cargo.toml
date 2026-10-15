@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.63.2"
+version = "0.64.0"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -68,7 +68,8 @@ objc2-core-foundation = { version = "0.3", default-features = false, features = 
 objc2-io-kit = { version = "0.3", default-features = false, features = ["std", "libc"] }
 libc = "0.2"
 
-# setpriority for the priority keys, on every thread of the process.
+# setpriority and sched_setaffinity for the priority and affinity keys, on
+# every thread of the process.
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 

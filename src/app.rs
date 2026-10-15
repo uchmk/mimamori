@@ -225,6 +225,30 @@ pub fn renice_toast(t: &Target, o: crate::renice::Outcome) -> String {
     }
 }
 
+/// The toast once a process's CPUs were chosen, or not.
+pub fn aff_toast(t: &Target, o: crate::affinity::Outcome) -> String {
+    use crate::affinity::Outcome;
+    let (name, pid) = (t.name.as_str(), t.pid.to_string());
+    match o {
+        Outcome::Set(cpus) => trf("toast.aff_set", &[name, &pid, &cpus]),
+        Outcome::Gone => trf("toast.gone", &[name, &pid]),
+        Outcome::Failed(e) => trf("toast.aff_failed", &[name, &pid, &e]),
+    }
+}
+
+/// The CPUs being chosen for a process (`A` in procs).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AffEdit {
+    pub t: Target,
+    /// As typed: `0-3,8`.
+    pub text: String,
+    /// The CPUs there are to choose from, once read; until then the line
+    /// takes nothing but Esc.
+    pub ids: Option<Vec<usize>>,
+    /// The CPUs it may run on now, once read and if the OS would say.
+    pub now: Option<String>,
+}
+
 /// The toast once a process has been ended, or not.
 pub fn kill_toast(t: &Target, o: Outcome) -> String {
     let (name, pid) = (t.name.as_str(), t.pid.to_string());
@@ -265,6 +289,8 @@ pub enum Mode {
     Settings,
     /// A graph opened full size.
     Zoom,
+    /// The CPUs a process may run on, being chosen.
+    Affinity,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -348,6 +374,8 @@ pub struct Out {
     pub fleet_click: Option<(usize, bool)>,
     /// A line of the fleet's hint clicked: what it copies.
     pub copy: Option<String>,
+    /// A CPU box clicked in the affinity editor.
+    pub cpu_click: Option<usize>,
 }
 
 pub struct App {
@@ -425,6 +453,8 @@ pub struct App {
     pub confirm: Option<Ask>,
     /// The graph open full size, in [`Mode::Zoom`].
     pub zoom: Option<Zoom>,
+    /// The CPUs being chosen, in [`Mode::Affinity`].
+    pub affinity: Option<AffEdit>,
     /// The range the last zoom looked back over; the next starts there.
     zoom_range: Range,
     /// What the `[[alert]]` rules have seen of this machine.
@@ -438,6 +468,10 @@ pub struct App {
     kill_tx: Sender<(Target, Outcome)>,
     renice_tx: Sender<(Target, crate::renice::Outcome)>,
     renice_rx: Receiver<(Target, crate::renice::Outcome)>,
+    aff_tx: Sender<(Target, crate::affinity::Outcome)>,
+    aff_rx: Receiver<(Target, crate::affinity::Outcome)>,
+    look_tx: Sender<(u32, crate::affinity::Look)>,
+    look_rx: Receiver<(u32, crate::affinity::Look)>,
     kill_rx: Receiver<(Target, Outcome)>,
     svc_tx: Sender<(svcctl::Target, svcctl::Outcome)>,
     svc_rx: Receiver<(svcctl::Target, svcctl::Outcome)>,
@@ -499,6 +533,8 @@ impl App {
     pub fn new(km: Keymap, rx: Receiver<Msg>, ctl: Sender<Ctl>, layouts: HashMap<Screen, Node<Pane>>, saver: Saver, interval: f32) -> Self {
         let (kill_tx, kill_rx) = crossbeam_channel::unbounded();
         let (renice_tx, renice_rx) = crossbeam_channel::unbounded();
+        let (aff_tx, aff_rx) = crossbeam_channel::unbounded();
+        let (look_tx, look_rx) = crossbeam_channel::unbounded();
         let (svc_tx, svc_rx) = crossbeam_channel::unbounded();
         let (proc_info_tx, proc_info_rx) = crossbeam_channel::unbounded();
         Self {
@@ -548,6 +584,7 @@ impl App {
             palette: ito_palette::View::new(),
             confirm: None,
             zoom: None,
+            affinity: None,
             zoom_range: Range::default(),
             alerts: crate::alert::Tracker::default(),
             proc_info: None,
@@ -557,6 +594,10 @@ impl App {
             kill_tx,
             renice_tx,
             renice_rx,
+            aff_tx,
+            aff_rx,
+            look_tx,
+            look_rx,
             kill_rx,
             svc_tx,
             svc_rx,
@@ -866,6 +907,13 @@ impl App {
             // Read what the detail shows again, now.
             self.proc_info = None;
         }
+        while let Ok((t, o)) = self.aff_rx.try_recv() {
+            self.toast(aff_toast(&t, o));
+            self.proc_info = None;
+        }
+        while let Ok((pid, look)) = self.look_rx.try_recv() {
+            self.aff_looked(pid, look);
+        }
         while let Ok((t, o)) = self.svc_rx.try_recv() {
             self.toast(svc_toast(&t, o, Family::here()));
             // Read the list again now rather than at the next interval;
@@ -907,6 +955,25 @@ impl App {
         if due {
             self.proc_info_busy = crate::procinfo::spawn(pid, self.proc_info_tx.clone(), self.wake.clone());
         }
+    }
+
+    /// The CPUs the process being given new ones may run on now, once read.
+    pub fn affinity_now(&self) -> Option<&str> {
+        self.affinity.as_ref()?.now.as_deref()
+    }
+
+    /// What the editor starts from, read: the CPUs there are, and the ones
+    /// it has now on the line. One it has that is not there to choose (a CPU
+    /// switched off) is left off the line, so Enter does not refuse it.
+    pub(crate) fn aff_looked(&mut self, pid: u32, look: crate::affinity::Look) {
+        let Some(e) = &mut self.affinity else { return };
+        if e.t.pid != pid || e.ids.is_some() {
+            return;
+        }
+        let have = look.now.as_deref().map(|n| crate::affinity::lenient(n, &look.ids)).unwrap_or_default();
+        e.text = crate::procinfo::ranges(&have);
+        e.now = look.now;
+        e.ids = Some(look.ids);
     }
 
     /// What is known of the selected process beyond the list.
@@ -1606,6 +1673,9 @@ impl App {
         if let Some(text) = out.copy.take() {
             self.copy(text);
         }
+        if let Some(i) = out.cpu_click {
+            self.toggle_cpu(i);
+        }
         if let Some(c) = out.fleet_cols {
             self.fleet_cols = c.max(1);
         }
@@ -1773,6 +1843,23 @@ impl App {
                     self.close_settings();
                 }
             }
+            // The CPUs' line takes the input layer's keys, and digits, commas,
+            // dashes and spaces as typed.
+            Mode::Affinity => match resolve(&self.km.input, &[k]) {
+                Match::Exact(b) => {
+                    for a in b.run.clone() {
+                        self.run_affinity(a);
+                    }
+                }
+                _ => {
+                    if let (Code::Char(c @ ('0'..='9' | ',' | '-' | ' ')), false) = (k.code, k.ctrl || k.alt || k.sup)
+                        && let Some(e) = &mut self.affinity
+                        && e.ids.is_some()
+                    {
+                        e.text.push(c);
+                    }
+                }
+            },
             Mode::Filter => match resolve(&self.km.input, &[k]) {
                 Match::Exact(b) => {
                     for a in b.run.clone() {
@@ -1915,6 +2002,81 @@ impl App {
         crate::renice::spawn(t, raise, self.renice_tx.clone(), self.wake.clone());
     }
 
+    /// Open the editor for the CPUs the process under the cursor may run on,
+    /// starting from the ones it has now, read on a thread of their own with
+    /// the CPUs there are; this machine's processes only.
+    fn open_affinity(&mut self) {
+        if self.screen != Screen::Procs {
+            return;
+        }
+        if !crate::affinity::SUPPORTED {
+            self.toast(tr("toast.aff_unsupported"));
+            return;
+        }
+        if let Some(m) = self.away_peer() {
+            let s = trf("toast.aff_remote", &[&m.name]);
+            self.toast(s);
+            return;
+        }
+        let Some(p) = self.focused_proc() else {
+            self.toast(tr("toast.kill_none"));
+            return;
+        };
+        let t = Target { pid: p.pid, name: p.name.clone(), start: p.start };
+        if let Err(e) = crate::affinity::look_spawn(t.pid, self.look_tx.clone(), self.wake.clone()) {
+            self.toast(aff_toast(&t, crate::affinity::Outcome::Failed(e.to_string())));
+            return;
+        }
+        self.affinity = Some(AffEdit { t, text: String::new(), ids: None, now: None });
+        self.pending.clear();
+        self.mode = Mode::Affinity;
+    }
+
+    fn close_affinity(&mut self) {
+        self.affinity = None;
+        self.mode = Mode::Normal;
+    }
+
+    fn run_affinity(&mut self, a: Act) {
+        let read = self.affinity.as_ref().is_some_and(|e| e.ids.is_some());
+        match a {
+            Act::Escape | Act::Quit => self.close_affinity(),
+            _ if !read => {}
+            Act::Backspace => {
+                if let Some(e) = &mut self.affinity {
+                    e.text.pop();
+                }
+            }
+            Act::Confirm | Act::Enter => {
+                let Some(e) = &self.affinity else { return };
+                let Some(ids) = &e.ids else { return };
+                // A line that does not read stays open, its fault shown under it.
+                if let Ok(cpus) = crate::affinity::parse(&e.text, ids) {
+                    crate::affinity::spawn(e.t.clone(), cpus, self.aff_tx.clone(), self.wake.clone());
+                    self.close_affinity();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A CPU box clicked: in or out of the set, and the line written again.
+    fn toggle_cpu(&mut self, i: usize) {
+        let Some(e) = &mut self.affinity else { return };
+        let Some(ids) = &e.ids else { return };
+        if ids.binary_search(&i).is_err() {
+            return;
+        }
+        let mut set = crate::affinity::lenient(&e.text, ids);
+        match set.binary_search(&i) {
+            Ok(at) => {
+                set.remove(at);
+            }
+            Err(at) => set.insert(at, i),
+        }
+        e.text = crate::procinfo::ranges(&set);
+    }
+
     /// Ask before starting, stopping or restarting the service under the
     /// cursor; one already where it would go only gets a toast.
     fn ask_svc(&mut self, action: Action) {
@@ -1979,7 +2141,7 @@ impl App {
                 };
                 self.toast(t);
             }
-            Act::Sort | Act::Tree | Act::Scope(_) | Act::Resize(_) | Act::Equalize | Act::Backspace | Act::Priority(_) => {}
+            Act::Sort | Act::Tree | Act::Scope(_) | Act::Resize(_) | Act::Equalize | Act::Backspace | Act::Priority(_) | Act::Affinity => {}
             // The fleet's tab is the last one, so next is the first screen and
             // previous the last built one.
             Act::Screen(g @ (Goto::Next | Goto::Prev)) => {
@@ -2096,6 +2258,7 @@ impl App {
             Act::Kill if self.screen == Screen::Svc => self.ask_svc(Action::Stop),
             Act::Kill => self.ask_kill(),
             Act::Priority(raise) => self.step_priority(raise),
+            Act::Affinity => self.open_affinity(),
             Act::Service(action) if self.screen == Screen::Svc => self.ask_svc(action),
             Act::Service(_) => self.toast(tr("toast.svc_elsewhere")),
             Act::Sort => {
@@ -2895,6 +3058,11 @@ mod tests {
         // Its agent is the one not to end; this machine's PID there is just a number.
         keys(&mut a, "l j x");
         assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.kill_agent", &["nas"]))));
+        // CPUs are chosen on this machine only.
+        keys(&mut a, "A");
+        if crate::affinity::SUPPORTED {
+            assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.aff_remote", &["nas"]))));
+        }
         keys(&mut a, "k x");
         assert!(matches!(&a.confirm, Some(Ask::Kill(t)) if t.pid == 7), "{:?}", a.confirm);
         assert_eq!(a.family(), Family::Other);
@@ -2980,6 +3148,107 @@ mod tests {
         keys(&mut a, "j x");
         assert_eq!(a.mode, Mode::Normal);
         assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(tr("toast.kill_self")));
+    }
+
+    #[test]
+    fn a_opens_the_cpus_of_the_process_and_takes_only_cpus() {
+        let (mut a, tx, _ctl) = app();
+        let toast = |a: &App| a.toast.as_ref().map(|t| t.0.clone());
+        if !crate::affinity::SUPPORTED {
+            keys(&mut a, "5 l A");
+            assert_eq!((a.mode, toast(&a)), (Mode::Normal, Some(tr("toast.aff_unsupported").to_string())));
+            return;
+        }
+        // Not on another screen, and not without a process.
+        keys(&mut a, "A");
+        assert_eq!((a.mode, toast(&a)), (Mode::Normal, None));
+        keys(&mut a, "5 A");
+        assert_eq!((a.mode, toast(&a)), (Mode::Normal, Some(tr("toast.kill_none").to_string())));
+        tx.send(Msg::Procs { procs: vec![proc(7, "big", 80.0, 9)], total_threads: None }).unwrap();
+        a.pump();
+        // Its CPUs are read on their own thread (and `keys` does not pump,
+        // so they are given below); until then nothing is typed or set.
+        keys(&mut a, "l A");
+        assert_eq!(a.mode, Mode::Affinity);
+        let e = a.affinity.clone().unwrap();
+        assert_eq!((e.t.pid, e.text.as_str(), e.ids, a.affinity_now()), (7, "", None, None));
+        keys(&mut a, "1 <Backspace> <Enter>");
+        a.toggle_cpu(1);
+        assert_eq!((a.mode, a.affinity.as_ref().map(|e| e.text.as_str())), (Mode::Affinity, Some("")));
+        // Another process's reading is not this one's. CPU 9 it may run on
+        // is switched off, so the line starts without it.
+        use crate::affinity::Look;
+        a.aff_looked(8, Look { now: Some("2".into()), ids: vec![0, 1, 2] });
+        a.aff_looked(7, Look { now: Some("0-3,9".into()), ids: vec![0, 1, 2, 3] });
+        assert_eq!((a.affinity.as_ref().map(|e| e.text.as_str()), a.affinity_now()), (Some("0-3"), Some("0-3,9")));
+        // A second reading does not undo what is typed.
+        keys(&mut a, "<Backspace>");
+        a.aff_looked(7, Look { now: Some("1".into()), ids: vec![0, 1, 2, 3] });
+        assert_eq!(a.affinity.as_ref().map(|e| e.text.as_str()), Some("0-"));
+        keys(&mut a, "3");
+        // Digits, commas, dashes and spaces are typed; letters, Ctrl and the
+        // main layer's keys are not.
+        keys(&mut a, "<Backspace> <Backspace> <Backspace> 1 , <Space> 3 x j <C-2> q");
+        assert_eq!((a.screen, a.affinity.as_ref().map(|e| e.text.as_str())), (Screen::Procs, Some("1, 3")));
+        // A click puts a CPU in or takes it out, and the line is written again.
+        a.toggle_cpu(2);
+        assert_eq!(a.affinity.as_ref().map(|e| e.text.as_str()), Some("1-3"));
+        a.toggle_cpu(1);
+        a.toggle_cpu(9);
+        assert_eq!(a.affinity.as_ref().map(|e| e.text.as_str()), Some("2-3"));
+        // A line that does not read stays open to be put right.
+        keys(&mut a, ", 9 <Enter>");
+        assert_eq!((a.mode, a.affinity.as_ref().map(|e| e.text.as_str())), (Mode::Affinity, Some("2-3,9")));
+        keys(&mut a, "<Esc>");
+        assert_eq!((a.mode, a.affinity.is_none()), (Mode::Normal, true));
+        // CPUs with gaps (Linux, some switched off) are the boxes there are;
+        // with nothing read of what it has now, the line starts empty.
+        keys(&mut a, "A");
+        a.aff_looked(7, Look { now: None, ids: vec![0, 1, 8, 9] });
+        assert_eq!((a.affinity.as_ref().map(|e| e.text.as_str()), a.affinity_now()), (Some(""), None));
+        keys(&mut a, "<Enter>");
+        a.toggle_cpu(5);
+        a.toggle_cpu(8);
+        assert_eq!((a.mode, a.affinity.as_ref().map(|e| e.text.as_str())), (Mode::Affinity, Some("8")));
+        keys(&mut a, "<Esc>");
+        assert_eq!(a.mode, Mode::Normal);
+    }
+
+    #[test]
+    fn a_pins_a_child_and_the_toast_says_where() {
+        if !crate::affinity::SUPPORTED {
+            return;
+        }
+        #[cfg(windows)]
+        let mut child =
+            std::process::Command::new("ping").args(["-n", "30", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap();
+        #[cfg(not(windows))]
+        let mut child = std::process::Command::new("sleep").arg("30").spawn().unwrap();
+        let (mut a, tx, _ctl) = app();
+        tx.send(Msg::Procs { procs: vec![proc(child.id(), "child", 1.0, 1)], total_threads: None }).unwrap();
+        a.pump();
+        keys(&mut a, "5 l A");
+        // What it has now is read on its own thread, as the change is; the
+        // line is put on the first CPU it may run on.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while a.affinity.as_ref().is_some_and(|e| e.ids.is_none()) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+            a.pump();
+        }
+        let e = a.affinity.as_mut().unwrap();
+        let first = e.ids.as_ref().and_then(|ids| crate::affinity::lenient(&e.text, ids).first().copied()).expect("its CPUs");
+        e.text = first.to_string();
+        keys(&mut a, "<Enter>");
+        assert_eq!((a.mode, a.affinity.is_none()), (Mode::Normal, true));
+        // The outcome comes back as a toast.
+        while a.toast.is_none() && Instant::now() < deadline + Duration::from_secs(10) {
+            std::thread::sleep(Duration::from_millis(20));
+            a.pump();
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        let want = trf("toast.aff_set", &["child", &child.id().to_string(), &first.to_string()]);
+        assert_eq!(a.toast.as_ref().map(|t| t.0.as_str()), Some(want.as_str()));
     }
 
     #[test]

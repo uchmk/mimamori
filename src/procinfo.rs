@@ -71,6 +71,11 @@ pub fn read_priority(pid: u32) -> Option<Prio> {
     read(pid).priority
 }
 
+/// The CPUs alone, as ranges, for telling what was set.
+pub fn read_affinity(pid: u32) -> Option<String> {
+    read(pid).affinity
+}
+
 impl Prio {
     /// What it is called on screen: the word of a class, or the nice number.
     pub fn label(self) -> String {
@@ -92,8 +97,7 @@ fn conns(pid: u32) -> Option<u32> {
 }
 
 /// CPU numbers as ranges: `[0, 1, 2, 3, 8]` is `0-3,8`.
-#[cfg_attr(not(any(windows, test)), allow(dead_code))]
-fn ranges(cpus: &[usize]) -> String {
+pub fn ranges(cpus: &[usize]) -> String {
     let mut out: Vec<String> = Vec::new();
     let mut i = 0;
     while i < cpus.len() {
@@ -118,7 +122,7 @@ fn stat_nice(stat: &str) -> Option<i32> {
 
 /// `Cpus_allowed_list` from `/proc/<pid>/status`.
 #[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
-fn status_affinity(status: &str) -> Option<String> {
+pub(crate) fn status_affinity(status: &str) -> Option<String> {
     let v = status.lines().find_map(|l| l.strip_prefix("Cpus_allowed_list:"))?.trim();
     (!v.is_empty()).then(|| v.replace(", ", ","))
 }
