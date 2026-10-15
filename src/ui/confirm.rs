@@ -1,10 +1,12 @@
-//! The question before a process is ended or a service is started, stopped
-//! or restarted: what it is, what will be done, and the keys that answer.
+//! The question before a process is ended or a service or container is
+//! started, stopped or restarted: what it is, what will be done, and the keys
+//! that answer.
 
 use egui::{Color32, Rect, Stroke, StrokeKind, pos2, vec2};
 
 use super::{Pen, kv_rows, panel};
 use crate::app::{App, Ask, Family};
+use crate::collect::containers;
 use crate::config::cmd::Act;
 use crate::config::keys::render_seq;
 use crate::config::theme::{self, ROW};
@@ -71,6 +73,25 @@ pub fn draw(pen: &Pen, app: &App, full: Rect) {
             }
             if family == Family::Mac && t.action == Action::Stop {
                 how.push(tr("confirm.svc_keepalive").to_string());
+            }
+            (title, rows, how)
+        }
+        Ask::Ct(t) => {
+            let c = app.containers().iter().find(|c| c.id == t.id);
+            let rows = vec![
+                (tr("confirm.name"), t.name.clone()),
+                (tr("ct.id"), t.id.clone()),
+                (tr("ct.image"), c.map(|c| c.image.clone()).filter(|i| !i.is_empty()).unwrap_or_else(dash)),
+                (tr("ct.status"), c.map(|c| c.status.clone()).filter(|s| !s.is_empty()).unwrap_or_else(dash)),
+            ];
+            let title = match t.action {
+                Action::Start => tr("confirm.ct_start"),
+                Action::Stop => tr("confirm.ct_stop"),
+                Action::Restart => tr("confirm.ct_restart"),
+            };
+            let mut how = vec![trf("confirm.svc_runs", &[&containers::act::how(t)])];
+            if t.action != Action::Start {
+                how.push(tr("confirm.ct_wait").to_string());
             }
             (title, rows, how)
         }

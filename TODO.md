@@ -122,7 +122,9 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
   画面が出ている間は 3 秒ごと、出ていなければ 1 分ごと（fleet のカードの数のため）。fleet はプロトコル 7 の `Want.containers` (v0.48.0)
 - [ ] containers の実機の確認 【実機】（TESTING.md 3m）。
 - [ ] containers: ランタイムが無い Linux で cgroup（`/sys/fs/cgroup`）から LXC・systemd-nspawn などを拾う。
-- [ ] containers: 開始・停止・再起動の操作（`svcctl` と同じ確認の形で）。
+- [x] containers: 開始・停止・再起動の操作（`svcctl` と同じ確認の形で）。
+  → `S`・`x`・`R`。エンジンの API に `POST /containers/{id}/{start,stop,restart}` を、一覧を読んだエンジンにだけ別のスレッドで送る。この機械だけ (v0.65.0)
+- [ ] containers: fleet の相手のコンテナの開始・停止・再起動（今は見るだけ。プロトコルに操作を足し、相手の側で確かめる形が要る）。
 - [x] containers: fleet のカードの警告に、再起動を繰り返すコンテナ・異常終了したコンテナの数を足す (v0.52.0)。
 
 ## 2. 構成と OS

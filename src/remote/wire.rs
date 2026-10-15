@@ -213,6 +213,7 @@ mod tests {
                 }],
                 runtime: Some(containers::Runtime::Podman),
                 note: None,
+                engine: None,
             })),
             Msg::Session(session::Session {
                 users: vec![session::User { name: "ann".into(), line: "tty1".into(), host: String::new(), since: 9 }],

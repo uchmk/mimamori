@@ -1,7 +1,7 @@
 //! The app's state and what each [`Act`] does. Drawing is in `ui/`; this
 //! side owns the selection, the layouts and the sampler's channels.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender};
@@ -127,14 +127,16 @@ const TOP_MEM: usize = 15;
 pub enum Ask {
     Kill(Target),
     Svc(svcctl::Target),
+    Ct(containers::act::Target),
 }
 
 impl Ask {
-    /// The process's or the service's name.
+    /// The process's, the service's or the container's name.
     pub fn name(&self) -> &str {
         match self {
             Ask::Kill(t) => &t.name,
             Ask::Svc(t) => &t.name,
+            Ask::Ct(t) => &t.name,
         }
     }
 
@@ -143,14 +145,17 @@ impl Ask {
         match self {
             Ask::Kill(_) => "kill",
             Ask::Svc(_) => "service",
+            Ask::Ct(_) => "container",
         }
     }
 
-    /// The request for another machine's agent.
-    fn act(&self) -> proto::Act {
+    /// The request for another machine's agent; none for a container,
+    /// which is moved on this machine only.
+    fn act(&self) -> Option<proto::Act> {
         match self {
-            Ask::Kill(t) => proto::Act::Kill { pid: t.pid, start: t.start },
-            Ask::Svc(t) => proto::Act::Service { action: t.action, name: t.name.clone(), driver: t.driver },
+            Ask::Kill(t) => Some(proto::Act::Kill { pid: t.pid, start: t.start }),
+            Ask::Svc(t) => Some(proto::Act::Service { action: t.action, name: t.name.clone(), driver: t.driver }),
+            Ask::Ct(_) => None,
         }
     }
 
@@ -163,6 +168,14 @@ impl Ask {
                     Action::Start => "toast.svc_starting",
                     Action::Stop => "toast.svc_stopping",
                     Action::Restart => "toast.svc_restarting",
+                };
+                trf(key, &[&t.name])
+            }
+            Ask::Ct(t) => {
+                let key = match t.action {
+                    Action::Start => "toast.ct_starting",
+                    Action::Stop => "toast.ct_stopping",
+                    Action::Restart => "toast.ct_restarting",
                 };
                 trf(key, &[&t.name])
             }
@@ -273,6 +286,27 @@ pub fn svc_toast(t: &svcctl::Target, o: svcctl::Outcome, family: Family) -> Stri
         (svcctl::Outcome::Failed(e), Action::Start) => trf("toast.svc_start_failed", &[n, &e]),
         (svcctl::Outcome::Failed(e), Action::Stop) => trf("toast.svc_stop_failed", &[n, &e]),
         (svcctl::Outcome::Failed(e), Action::Restart) => trf("toast.svc_restart_failed", &[n, &e]),
+    }
+}
+
+/// The toast once a container has moved, or not.
+pub fn ct_toast(t: &containers::act::Target, o: containers::act::Outcome) -> String {
+    use containers::act::Outcome as O;
+    let n = t.name.as_str();
+    match (o, t.action) {
+        (O::Done, Action::Start) => trf("toast.ct_started", &[n]),
+        (O::Done, Action::Stop) => trf("toast.ct_stopped", &[n]),
+        (O::Done, Action::Restart) => trf("toast.ct_restarted", &[n]),
+        (O::Already, Action::Start) => trf("toast.ct_already_running", &[n]),
+        (O::Already, _) => trf("toast.ct_not_running", &[n]),
+        (O::Gone, _) => trf("toast.ct_gone", &[n]),
+        (O::Denied, _) => trf("toast.ct_denied", &[n]),
+        (O::NoEngine, _) => trf("toast.ct_no_engine", &[n]),
+        (O::Slow, _) => trf("toast.ct_slow", &[n]),
+        (O::Unclear, _) => trf("toast.ct_unclear", &[n]),
+        (O::Failed(e), Action::Start) => trf("toast.ct_start_failed", &[n, &e]),
+        (O::Failed(e), Action::Stop) => trf("toast.ct_stop_failed", &[n, &e]),
+        (O::Failed(e), Action::Restart) => trf("toast.ct_restart_failed", &[n, &e]),
     }
 }
 
@@ -475,8 +509,12 @@ pub struct App {
     kill_rx: Receiver<(Target, Outcome)>,
     svc_tx: Sender<(svcctl::Target, svcctl::Outcome)>,
     svc_rx: Receiver<(svcctl::Target, svcctl::Outcome)>,
-    /// Repainted when a process has been ended or a service has moved, so
-    /// the toast shows at once.
+    ct_tx: Sender<(containers::act::Target, containers::act::Outcome)>,
+    ct_rx: Receiver<(containers::act::Target, containers::act::Outcome)>,
+    /// Containers asked to move whose answer has not come back, by key.
+    ct_busy: HashSet<String>,
+    /// Repainted when a process has been ended or a service or container
+    /// has moved, so the toast shows at once.
     pub wake: Option<egui::Context>,
     saver: Saver,
     pub quit: bool,
@@ -536,6 +574,7 @@ impl App {
         let (aff_tx, aff_rx) = crossbeam_channel::unbounded();
         let (look_tx, look_rx) = crossbeam_channel::unbounded();
         let (svc_tx, svc_rx) = crossbeam_channel::unbounded();
+        let (ct_tx, ct_rx) = crossbeam_channel::unbounded();
         let (proc_info_tx, proc_info_rx) = crossbeam_channel::unbounded();
         Self {
             km,
@@ -601,6 +640,9 @@ impl App {
             kill_rx,
             svc_tx,
             svc_rx,
+            ct_tx,
+            ct_rx,
+            ct_busy: HashSet::new(),
             wake: None,
             saver,
             quit: false,
@@ -922,6 +964,13 @@ impl App {
                 let _ = self.ctl.send(Ctl::Services(true));
             }
         }
+        while let Ok((t, o)) = self.ct_rx.try_recv() {
+            self.ct_busy.remove(t.key());
+            self.toast(ct_toast(&t, o));
+            if self.screen == Screen::Containers && self.away.is_none() {
+                let _ = self.ctl.send(Ctl::Containers(true));
+            }
+        }
         while let Ok(r) = self.prefs.rx.try_recv() {
             self.reload(r);
         }
@@ -1077,9 +1126,13 @@ impl App {
         let Some(i) = self.away.as_ref().map(|a| a.peer) else { return };
         let Some(p) = self.peers.get(i) else { return };
         let name = p.name.clone();
+        let Some(act) = ask.act() else {
+            self.toast(trf("toast.ct_remote", &[&name]));
+            return;
+        };
         self.next_act += 1;
         let id = self.next_act;
-        let sent = p.link == Link::Up && self.fleet_tx.get(i).is_some_and(|tx| tx.send(ToHost::Act(id, ask.act())).is_ok());
+        let sent = p.link == Link::Up && self.fleet_tx.get(i).is_some_and(|tx| tx.send(ToHost::Act(id, act)).is_ok());
         if !sent {
             self.toast(trf("toast.fleet_down", &[&name]));
             return;
@@ -1950,6 +2003,10 @@ impl App {
                 match ask {
                     Ask::Kill(t) => kill::spawn(t, self.kill_tx.clone(), self.wake.clone()),
                     Ask::Svc(t) => svcctl::spawn(t, self.svc_tx.clone(), self.wake.clone()),
+                    Ask::Ct(t) => {
+                        self.ct_busy.insert(t.key().to_string());
+                        containers::act::spawn(t, self.ct_tx.clone(), self.wake.clone())
+                    }
                 }
             }
             Act::Escape | Act::Quit => {
@@ -2106,6 +2163,42 @@ impl App {
         self.mode = Mode::Confirm;
     }
 
+    /// Ask before starting, stopping or restarting the container under the
+    /// cursor, on this machine only; one already where it would go, or a
+    /// paused one asked to start, only gets a toast.
+    fn ask_ct(&mut self, action: Action) {
+        if let Some(p) = self.away_peer() {
+            let s = trf("toast.ct_remote", &[&p.name]);
+            self.toast(s);
+            return;
+        }
+        let Some(c) = self.selected_ct() else {
+            self.toast(tr("ct.none"));
+            return;
+        };
+        let state = c.state;
+        let name = if c.name.is_empty() { c.id.clone() } else { c.name.clone() };
+        let list = self.model.containers.as_ref();
+        let runtime = list.and_then(|l| l.runtime).unwrap_or_default();
+        let engine = list.and_then(|l| l.engine.clone());
+        let t = containers::act::Target { action, id: c.id.clone(), name, runtime, engine };
+        if self.ct_busy.contains(t.key()) {
+            self.toast(trf("toast.ct_busy", &[&t.name]));
+            return;
+        }
+        if state == containers::State::Paused && action == Action::Start {
+            self.toast(trf("toast.ct_paused", &[&t.name, &containers::act::unpause(&t)]));
+            return;
+        }
+        if !containers::act::fits(action, state) {
+            let key = if action == Action::Start { "toast.ct_already_running" } else { "toast.ct_not_running" };
+            self.toast(trf(key, &[&t.name]));
+            return;
+        }
+        self.confirm = Some(Ask::Ct(t));
+        self.mode = Mode::Confirm;
+    }
+
     /// The keys while the fleet shows; false for those that work as on
     /// any screen.
     fn run_fleet(&mut self, a: Act) -> bool {
@@ -2169,6 +2262,8 @@ impl App {
         // `[agent] allow` may not let.
         let refused = self.away_peer().and_then(|p| {
             let word = match a {
+                // Containers are moved on this machine only, which `ask_ct` says.
+                Act::Kill | Act::Service(_) if self.screen == Screen::Containers => return None,
                 Act::Kill if self.screen != Screen::Svc => "kill",
                 Act::Kill | Act::Service(_) if self.screen == Screen::Svc => "service",
                 _ => return None,
@@ -2256,10 +2351,12 @@ impl App {
                 self.mode = Mode::Filter;
             }
             Act::Kill if self.screen == Screen::Svc => self.ask_svc(Action::Stop),
+            Act::Kill if self.screen == Screen::Containers => self.ask_ct(Action::Stop),
             Act::Kill => self.ask_kill(),
             Act::Priority(raise) => self.step_priority(raise),
             Act::Affinity => self.open_affinity(),
             Act::Service(action) if self.screen == Screen::Svc => self.ask_svc(action),
+            Act::Service(action) if self.screen == Screen::Containers => self.ask_ct(action),
             Act::Service(_) => self.toast(tr("toast.svc_elsewhere")),
             Act::Sort => {
                 self.sort = self.sort.next();
@@ -2606,6 +2703,7 @@ impl App {
         match &self.confirm {
             Some(Ask::Kill(t)) => s += &format!("confirm: kill {} {}\n", t.pid, t.name),
             Some(Ask::Svc(t)) => s += &format!("confirm: {:?} {}\n", t.action, t.name),
+            Some(Ask::Ct(t)) => s += &format!("confirm: ct {:?} {}\n", t.action, t.name),
             None => {}
         }
         if let Some((t, _)) = &self.toast {
@@ -3097,6 +3195,12 @@ mod tests {
         // service is not in its allow.
         keys(&mut a, "6 x");
         assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.fleet_view_only", &["nas", "service"])));
+        // Its containers are view only, whatever its allow says.
+        for k in ["C x", "S", "R"] {
+            keys(&mut a, k);
+            assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.ct_remote", &["nas"]))));
+        }
+        assert!(!wants0.try_iter().any(|w| matches!(w, ToHost::Act(..))));
     }
 
     #[test]
@@ -3321,7 +3425,8 @@ mod tests {
             ..Container::default()
         };
         let list = vec![ct("web", State::Running), ct("db", State::Running), ct("old", State::Exited), ct("hold", State::Paused)];
-        tx.send(Msg::Containers(Box::new(Containers { list, runtime: Some(containers::Runtime::Docker), note: None }))).unwrap();
+        tx.send(Msg::Containers(Box::new(Containers { list, runtime: Some(containers::Runtime::Docker), note: None, engine: None })))
+            .unwrap();
         a.pump();
         keys(&mut a, "C");
         assert_eq!(a.ct_rows.len(), 4);
@@ -3335,6 +3440,98 @@ mod tests {
         keys(&mut a, "/ d b <Enter>");
         assert_eq!(a.selected_ct().map(|c| c.name.as_str()), Some("db"));
         assert!(a.report().contains("containers: 1 of 4"), "{}", a.report());
+    }
+
+    #[test]
+    fn a_container_is_moved_after_asking_and_only_somewhere_else() {
+        use containers::act::{Outcome as O, Target as T};
+        use containers::{Container, Containers, Endpoint, Runtime, State};
+        let (mut a, tx, _ctl) = app();
+        // Where nothing listens: what is asked never reaches a real engine.
+        let nowhere = if cfg!(windows) {
+            Endpoint::Pipe(r"\\.\pipe\yagura-test-nowhere".into())
+        } else {
+            Endpoint::Unix("/nonexistent/yagura-test-nowhere".into())
+        };
+        keys(&mut a, "C");
+        // Nothing listed yet.
+        keys(&mut a, "x");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(tr("ct.none").to_string())));
+        let ct = |name: &str, state| Container {
+            id: format!("id-{name}"),
+            name: name.into(),
+            image: "img".into(),
+            state,
+            ..Container::default()
+        };
+        let list = vec![ct("web", State::Running), ct("old", State::Exited), ct("hold", State::Paused), ct("", State::Created)];
+        tx.send(Msg::Containers(Box::new(Containers { list, runtime: Some(Runtime::Podman), note: None, engine: Some(nowhere.clone()) })))
+            .unwrap();
+        a.pump();
+        keys(&mut a, "<Enter>");
+        assert_eq!(a.selected_ct().map(|c| c.name.as_str()), Some("web"));
+        let t = |action, name: &str, id: &str| {
+            Some(Ask::Ct(T { action, id: id.into(), name: name.into(), runtime: Runtime::Podman, engine: Some(nowhere.clone()) }))
+        };
+        // Stop and restart a running one, after asking; Esc forgets it.
+        keys(&mut a, "x");
+        assert_eq!((a.mode, &a.confirm), (Mode::Confirm, &t(Action::Stop, "web", "id-web")));
+        assert!(a.report().contains("confirm: ct Stop web\n"), "{}", a.report());
+        keys(&mut a, "<Esc>");
+        assert_eq!((a.mode, &a.confirm), (Mode::Normal, &None));
+        keys(&mut a, "R");
+        assert_eq!(a.confirm, t(Action::Restart, "web", "id-web"));
+        keys(&mut a, "<Esc>");
+        // A running one is not started again.
+        keys(&mut a, "S");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.ct_already_running", &["web"]))));
+        // A stopped one is not stopped, and is started.
+        keys(&mut a, "j x");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.ct_not_running", &["old"]))));
+        keys(&mut a, "S");
+        assert_eq!(a.confirm, t(Action::Start, "old", "id-old"));
+        // Asked: until the engine answers, it is not asked again.
+        keys(&mut a, "<Enter>");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.ct_starting", &["old"]))));
+        assert!(a.ct_busy.contains("id-old"), "{:?}", a.ct_busy);
+        keys(&mut a, "S");
+        assert_eq!((a.mode, a.toast.as_ref().map(|t| t.0.clone())), (Mode::Normal, Some(trf("toast.ct_busy", &["old"]))));
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !a.ct_busy.is_empty() && std::time::Instant::now() < until {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            a.pump();
+        }
+        assert!(a.ct_busy.is_empty(), "no answer in 5 s");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(trf("toast.ct_no_engine", &["old"])));
+        keys(&mut a, "S");
+        assert_eq!(a.confirm, t(Action::Start, "old", "id-old"));
+        keys(&mut a, "<Esc>");
+        // A paused one is resumed, not started; the toast says how.
+        keys(&mut a, "j S");
+        assert_eq!(
+            (a.mode, a.toast.as_ref().map(|t| t.0.clone())),
+            (Mode::Normal, Some(trf("toast.ct_paused", &["hold", "podman unpause hold"])))
+        );
+        // One with no name goes by its id.
+        keys(&mut a, "j S");
+        assert_eq!(a.confirm, t(Action::Start, "id-", "id-"));
+        keys(&mut a, "<Esc>");
+        // On another screen S says where it works.
+        keys(&mut a, "5 S");
+        assert_eq!(a.toast.as_ref().map(|t| t.0.clone()), Some(tr("toast.svc_elsewhere").to_string()));
+        // The toasts once the engine has answered.
+        let web = T { action: Action::Stop, id: "id-web".into(), name: "web".into(), runtime: Runtime::Docker, engine: None };
+        assert_eq!(ct_toast(&web, O::Done), trf("toast.ct_stopped", &["web"]));
+        assert_eq!(ct_toast(&web, O::Already), trf("toast.ct_not_running", &["web"]));
+        assert_eq!(ct_toast(&T { action: Action::Start, ..web.clone() }, O::Already), trf("toast.ct_already_running", &["web"]));
+        assert_eq!(ct_toast(&web, O::Gone), trf("toast.ct_gone", &["web"]));
+        assert_eq!(ct_toast(&web, O::Slow), trf("toast.ct_slow", &["web"]));
+        assert_eq!(ct_toast(&web, O::Unclear), trf("toast.ct_unclear", &["web"]));
+        assert_eq!(
+            ct_toast(&T { action: Action::Restart, ..web.clone() }, O::Failed("port is already allocated".into())),
+            trf("toast.ct_restart_failed", &["web", "port is already allocated"])
+        );
+        assert_eq!(Ask::Ct(web).starting(), trf("toast.ct_stopping", &["web"]));
     }
 
     #[test]

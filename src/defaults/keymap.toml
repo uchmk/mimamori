@@ -58,12 +58,12 @@ keymap = [
     { on = "s", run = "sort", desc = "Next sort column" },
     { on = "t", run = "tree", desc = "Tree of parents and children (devices: what hangs off what) / list" },
     { on = "u", run = "scope", desc = "Scope: every process / mine; connections: all / listening; svc: services / drivers" },
-    { on = "x", run = "kill", desc = "End the process; on svc, stop the service" },
+    { on = "x", run = "kill", desc = "End the process; on svc or containers, stop the service or container" },
     { on = "}", run = "priority raise", desc = "Make the process one step more urgent (nice -5 / next priority class)" },
     { on = "{", run = "priority lower", desc = "Make the process one step less urgent (nice +5 / previous priority class)" },
     { on = "A", run = "affinity", desc = "Choose the CPUs the process may run on" },
-    { on = "S", run = "service start", desc = "Start the selected service" },
-    { on = "R", run = "service restart", desc = "Restart the selected service" },
+    { on = "S", run = "service start", desc = "Start the selected service or container" },
+    { on = "R", run = "service restart", desc = "Restart the selected service or container" },
     { on = "P", run = "pause", desc = "Pause / resume sampling" },
     { on = "+", run = "interval +", desc = "Sample less often" },
     { on = "=", run = "interval +", desc = "Sample less often" },
@@ -111,8 +111,8 @@ keymap = [
     { on = "<Up>", run = "arrow -1", desc = "Up" },
 ]
 
-# The question before a process is ended (`x`) or a service is started,
-# stopped or restarted (`S`, `x`, `R` on svc).
+# The question before a process is ended (`x`) or a service or container is
+# started, stopped or restarted (`S`, `x`, `R` on svc and containers).
 [confirm]
 keymap = [
     { on = "y", run = "confirm", desc = "Yes" },

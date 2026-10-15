@@ -3,10 +3,13 @@
 //! too) over its socket: a Unix socket on Linux and macOS, a named pipe on
 //! Windows. Nothing is linked: the request is a few lines of HTTP and the
 //! answer JSON. Read only while the screen shows; a machine without an
-//! engine says so rather than showing an empty list.
+//! engine says so rather than showing an empty list. Starting, stopping and
+//! restarting one is [`act`].
 //!
 //! The parsing and the CPU arithmetic are pure functions so the tests run
 //! on every OS.
+
+pub mod act;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -137,11 +140,15 @@ pub struct Containers {
     pub list: Vec<Container>,
     pub runtime: Option<Runtime>,
     pub note: Option<Note>,
+    /// Where the list was read: what is done to one of its containers goes
+    /// there and nowhere else. Not sent to another machine.
+    #[serde(skip)]
+    pub engine: Option<Endpoint>,
 }
 
 /// Where an engine listens.
 #[derive(Clone, Debug, PartialEq)]
-enum Endpoint {
+pub enum Endpoint {
     #[cfg_attr(not(unix), allow(dead_code))]
     Unix(PathBuf),
     #[cfg_attr(not(windows), allow(dead_code))]
@@ -230,7 +237,7 @@ fn read_now(engine: Option<(Runtime, Endpoint)>, prev: Counters) -> (Containers,
         c.pids = s.pids;
         next.insert(c.id.clone(), (s.total, s.system));
     }
-    (Containers { list, runtime: Some(rt), note: None }, Some((rt, ep)), next)
+    (Containers { list, runtime: Some(rt), note: None, engine: Some(ep.clone()) }, Some((rt, ep)), next)
 }
 
 /// `docker stats`' formula: the container's CPU time over the machine's,
@@ -319,7 +326,8 @@ fn dechunk(mut b: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn get(ep: &Endpoint, path: &str) -> Result<String, Fail> {
-    let raw = request(ep, path).map_err(|e| if e.kind() == std::io::ErrorKind::PermissionDenied { Fail::Denied } else { Fail::Other })?;
+    let raw = request(ep, "GET", path, PATIENCE)
+        .map_err(|e| if e.kind() == std::io::ErrorKind::PermissionDenied { Fail::Denied } else { Fail::Other })?;
     match parse_http(&raw) {
         Some((200, body)) => Ok(body),
         _ => Err(Fail::Other),
@@ -334,36 +342,46 @@ fn stats(ep: &Endpoint, id: &str) -> Option<Sample> {
     parse_stats(&get(ep, &format!("/containers/{id}/stats?stream=false&one-shot=true")).ok()?)
 }
 
-fn http(path: &str) -> String {
-    // 1.0 so the engine neither chunks nor keeps the connection.
-    format!("GET {path} HTTP/1.0\r\nHost: engine\r\nAccept: application/json\r\nUser-Agent: yagura\r\n\r\n")
+fn http(method: &str, path: &str) -> String {
+    // 1.0 so the engine neither chunks nor keeps the connection. A POST says
+    // it has no body, which an engine may want to hear.
+    let len = if method == "GET" { "" } else { "Content-Length: 0\r\n" };
+    format!("{method} {path} HTTP/1.0\r\nHost: engine\r\nAccept: application/json\r\nUser-Agent: yagura\r\n{len}\r\n")
 }
 
-fn exchange(mut s: impl Read + Write, path: &str) -> std::io::Result<Vec<u8>> {
-    s.write_all(http(path).as_bytes())?;
+fn exchange(mut s: impl Read + Write, method: &str, path: &str) -> std::io::Result<Vec<u8>> {
+    s.write_all(http(method, path).as_bytes())?;
     let mut out = Vec::new();
     s.read_to_end(&mut out)?;
     Ok(out)
 }
 
+/// A connection to the engine. A read or write that waits longer than
+/// `patience` fails; a named pipe has no such limit, so whoever must not wait
+/// for ever asks on a thread of its own.
 #[cfg(unix)]
-fn request(ep: &Endpoint, path: &str) -> std::io::Result<Vec<u8>> {
+fn open(ep: &Endpoint, patience: Duration) -> std::io::Result<std::os::unix::net::UnixStream> {
     let Endpoint::Unix(p) = ep else { return Err(std::io::ErrorKind::Unsupported.into()) };
     let s = std::os::unix::net::UnixStream::connect(p)?;
-    s.set_read_timeout(Some(PATIENCE))?;
-    s.set_write_timeout(Some(PATIENCE))?;
-    exchange(s, path)
+    s.set_read_timeout(Some(patience))?;
+    s.set_write_timeout(Some(patience))?;
+    Ok(s)
 }
 
 #[cfg(windows)]
-fn request(ep: &Endpoint, path: &str) -> std::io::Result<Vec<u8>> {
+fn open(ep: &Endpoint, _patience: Duration) -> std::io::Result<std::fs::File> {
     let Endpoint::Pipe(p) = ep else { return Err(std::io::ErrorKind::Unsupported.into()) };
-    exchange(std::fs::OpenOptions::new().read(true).write(true).open(p)?, path)
+    std::fs::OpenOptions::new().read(true).write(true).open(p)
 }
 
 #[cfg(not(any(unix, windows)))]
-fn request(_ep: &Endpoint, _path: &str) -> std::io::Result<Vec<u8>> {
+fn open(_ep: &Endpoint, _patience: Duration) -> std::io::Result<std::fs::File> {
     Err(std::io::ErrorKind::Unsupported.into())
+}
+
+/// One request and its whole answer.
+fn request(ep: &Endpoint, method: &str, path: &str, patience: Duration) -> std::io::Result<Vec<u8>> {
+    exchange(open(ep, patience)?, method, path)
 }
 
 /// `DOCKER_HOST`'s `unix://` or `npipe://` form.
@@ -483,6 +501,42 @@ mod tests {
         let down = b"HTTP/1.0 404 Not Found\r\n\r\n{}";
         assert_eq!(parse_http(down).map(|r| r.0), Some(404));
         assert_eq!(parse_http(b"garbage"), None);
+    }
+
+    /// The stream an exchange runs on: what was written, and an answer to read.
+    struct Fake {
+        got: Vec<u8>,
+        answer: std::io::Cursor<Vec<u8>>,
+    }
+
+    impl Read for Fake {
+        fn read(&mut self, b: &mut [u8]) -> std::io::Result<usize> {
+            self.answer.read(b)
+        }
+    }
+
+    impl Write for Fake {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.got.write(b)
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn a_post_says_it_has_no_body_and_a_get_does_not() {
+        let get = http("GET", "/containers/json?all=1");
+        assert!(get.starts_with("GET /containers/json?all=1 HTTP/1.0\r\n"), "{get}");
+        assert!(!get.contains("Content-Length"), "{get}");
+        assert!(get.ends_with("\r\n\r\n"), "{get}");
+        let post = http("POST", "/containers/web/stop");
+        assert!(post.starts_with("POST /containers/web/stop HTTP/1.0\r\n"), "{post}");
+        assert!(post.ends_with("\r\nContent-Length: 0\r\n\r\n"), "{post}");
+        let mut f = Fake { got: Vec::new(), answer: std::io::Cursor::new(b"HTTP/1.0 204 No Content\r\n\r\n".to_vec()) };
+        let raw = exchange(&mut f, "POST", "/containers/web/stop").unwrap();
+        assert_eq!(parse_http(&raw), Some((204, String::new())));
+        assert_eq!(String::from_utf8(f.got).unwrap(), post);
     }
 
     #[test]

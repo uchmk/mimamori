@@ -42,7 +42,8 @@ pub enum Act {
     /// procs' scope: every process, or only mine (`Some(true)`); `None`
     /// switches to the other.
     Scope(Option<bool>),
-    /// Ask, then end the selected process; on svc, stop the service.
+    /// Ask, then end the selected process; on svc or containers, stop the
+    /// service or container.
     Kill,
     /// One step more urgent (`true`) or less urgent priority for the selected process.
     Priority(bool),
