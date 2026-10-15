@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 # Every check a push to main must pass, in the order CI would fail them, from
-# a Linux machine (a cloud session). The first failure stops with its output.
+# a Linux machine (a cloud session) or the owner's Windows PC. The first
+# failure stops with its output.
 #
 #   scripts/verify.sh
 #
-# The same steps as kura's, plus a macOS clippy. The Windows and macOS
-# clippy runs are type checks only -- they never run that code.
+# The same steps as kura's, plus a macOS clippy. Besides the host's own
+# clippy, every other target CI builds (Linux, Windows, macOS) gets one: those
+# are type checks only -- they never run that code. Before this, a run on the
+# Windows PC never compiled Linux and still said ALL OK, and v0.62.0 went red
+# on Linux.
 
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-for t in x86_64-pc-windows-msvc aarch64-apple-darwin; do
+host=$(rustc -vV | sed -n 's/^host: //p')
+others=
+for t in x86_64-unknown-linux-gnu x86_64-pc-windows-msvc aarch64-apple-darwin; do
+    [ "$t" = "$host" ] && continue
+    others="$others $t"
     rustup target list --installed 2>/dev/null | grep -qx "$t" || rustup target add "$t" >/dev/null 2>&1
 done
 
@@ -37,8 +45,9 @@ run cargo fmt --check
 run cargo test -q
 tests=$(echo "$last" | grep -m1 'test result')
 run cargo +stable clippy -q --all-targets -- -D warnings
-run cargo +stable clippy -q --all-targets --target x86_64-pc-windows-msvc -- -D warnings
-run cargo +stable clippy -q --all-targets --target aarch64-apple-darwin -- -D warnings
+for t in $others; do
+    run cargo +stable clippy -q --all-targets --target "$t" -- -D warnings
+done
 # The Windows test lane's scripts (scripts/check-ps1.ps1; CI runs it too).
 if command -v pwsh >/dev/null; then
     run pwsh -NoProfile -File scripts/check-ps1.ps1
