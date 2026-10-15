@@ -16,8 +16,10 @@ env:
 
 jobs:
   test:
-    # Windows is the target platform; Linux reads sysfs. macOS runners cost
-    # ten times the minutes, so it only builds and tests on main.
+    # Windows is the target platform; Linux reads sysfs. macOS only builds and
+    # tests on main, a limit set when its minutes were billed at ten times
+    # Linux's. That is a private repository's rate: standard runners bill a
+    # public one nothing (GitHub's billing docs, checked 2026-10-16).
     strategy:
       fail-fast: false
       matrix:
