@@ -212,6 +212,19 @@ impl Family {
     }
 }
 
+/// The toast once a process's priority was stepped, or not.
+pub fn renice_toast(t: &Target, o: crate::renice::Outcome) -> String {
+    use crate::renice::Outcome;
+    let (name, pid) = (t.name.as_str(), t.pid.to_string());
+    match o {
+        Outcome::Set(p) => trf("toast.prio_set", &[name, &pid, &p.label()]),
+        Outcome::Limit(p) => trf("toast.prio_limit", &[name, &pid, &p.label()]),
+        Outcome::Gone => trf("toast.gone", &[name, &pid]),
+        Outcome::Unknown => trf("toast.prio_unknown", &[name, &pid]),
+        Outcome::Failed(e) => trf("toast.prio_failed", &[name, &pid, &e]),
+    }
+}
+
 /// The toast once a process has been ended, or not.
 pub fn kill_toast(t: &Target, o: Outcome) -> String {
     let (name, pid) = (t.name.as_str(), t.pid.to_string());
@@ -423,6 +436,8 @@ pub struct App {
     proc_info_tx: Sender<(u32, crate::procinfo::Info)>,
     proc_info_rx: Receiver<(u32, crate::procinfo::Info)>,
     kill_tx: Sender<(Target, Outcome)>,
+    renice_tx: Sender<(Target, crate::renice::Outcome)>,
+    renice_rx: Receiver<(Target, crate::renice::Outcome)>,
     kill_rx: Receiver<(Target, Outcome)>,
     svc_tx: Sender<(svcctl::Target, svcctl::Outcome)>,
     svc_rx: Receiver<(svcctl::Target, svcctl::Outcome)>,
@@ -483,6 +498,7 @@ impl Default for Probe {
 impl App {
     pub fn new(km: Keymap, rx: Receiver<Msg>, ctl: Sender<Ctl>, layouts: HashMap<Screen, Node<Pane>>, saver: Saver, interval: f32) -> Self {
         let (kill_tx, kill_rx) = crossbeam_channel::unbounded();
+        let (renice_tx, renice_rx) = crossbeam_channel::unbounded();
         let (svc_tx, svc_rx) = crossbeam_channel::unbounded();
         let (proc_info_tx, proc_info_rx) = crossbeam_channel::unbounded();
         Self {
@@ -539,6 +555,8 @@ impl App {
             proc_info_tx,
             proc_info_rx,
             kill_tx,
+            renice_tx,
+            renice_rx,
             kill_rx,
             svc_tx,
             svc_rx,
@@ -842,6 +860,11 @@ impl App {
         }
         while let Ok((t, o)) = self.kill_rx.try_recv() {
             self.toast(kill_toast(&t, o));
+        }
+        while let Ok((t, o)) = self.renice_rx.try_recv() {
+            self.toast(renice_toast(&t, o));
+            // Read what the detail shows again, now.
+            self.proc_info = None;
         }
         while let Ok((t, o)) = self.svc_rx.try_recv() {
             self.toast(svc_toast(&t, o, Family::here()));
@@ -1874,6 +1897,24 @@ impl App {
         self.mode = Mode::Confirm;
     }
 
+    /// Step the priority of the process under the cursor, on this machine only.
+    fn step_priority(&mut self, raise: bool) {
+        if self.screen != Screen::Procs {
+            return;
+        }
+        if let Some(m) = self.away_peer() {
+            let s = trf("toast.prio_remote", &[&m.name]);
+            self.toast(s);
+            return;
+        }
+        let Some(p) = self.focused_proc() else {
+            self.toast(tr("toast.kill_none"));
+            return;
+        };
+        let t = Target { pid: p.pid, name: p.name.clone(), start: p.start };
+        crate::renice::spawn(t, raise, self.renice_tx.clone(), self.wake.clone());
+    }
+
     /// Ask before starting, stopping or restarting the service under the
     /// cursor; one already where it would go only gets a toast.
     fn ask_svc(&mut self, action: Action) {
@@ -1938,7 +1979,7 @@ impl App {
                 };
                 self.toast(t);
             }
-            Act::Sort | Act::Tree | Act::Scope(_) | Act::Resize(_) | Act::Equalize | Act::Backspace => {}
+            Act::Sort | Act::Tree | Act::Scope(_) | Act::Resize(_) | Act::Equalize | Act::Backspace | Act::Priority(_) => {}
             // The fleet's tab is the last one, so next is the first screen and
             // previous the last built one.
             Act::Screen(g @ (Goto::Next | Goto::Prev)) => {
@@ -2054,6 +2095,7 @@ impl App {
             }
             Act::Kill if self.screen == Screen::Svc => self.ask_svc(Action::Stop),
             Act::Kill => self.ask_kill(),
+            Act::Priority(raise) => self.step_priority(raise),
             Act::Service(action) if self.screen == Screen::Svc => self.ask_svc(action),
             Act::Service(_) => self.toast(tr("toast.svc_elsewhere")),
             Act::Sort => {

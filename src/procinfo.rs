@@ -66,6 +66,22 @@ pub fn spawn(pid: u32, tx: Sender<(u32, Info)>, wake: Option<egui::Context>) -> 
         .is_ok()
 }
 
+/// The priority alone, for stepping it.
+pub fn read_priority(pid: u32) -> Option<Prio> {
+    read(pid).priority
+}
+
+impl Prio {
+    /// What it is called on screen: the word of a class, or the nice number.
+    pub fn label(self) -> String {
+        match (self.key(), self) {
+            (Some(k), _) => crate::i18n::tr(k).to_string(),
+            (None, Prio::Nice(n)) => n.to_string(),
+            _ => String::new(),
+        }
+    }
+}
+
 fn conns(pid: u32) -> Option<u32> {
     let all = crate::collect::net::read_conns();
     if all.list.iter().all(|c| c.pid.is_none()) && !all.list.is_empty() {

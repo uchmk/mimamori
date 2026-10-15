@@ -66,6 +66,11 @@ pub fn end(t: &Target, grace: Duration) -> Outcome {
     os::end(&mut sys, t, grace)
 }
 
+/// Whether the process `t` names is still running (reads the OS afresh).
+pub fn is_alive(t: &Target) -> bool {
+    alive(&mut System::new(), t)
+}
+
 /// Whether the process `t` names is still running: not gone, not a zombie
 /// waiting for its parent, and not a newer process given the same PID.
 fn alive(sys: &mut System, t: &Target) -> bool {

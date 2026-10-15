@@ -20,6 +20,7 @@ mod persist;
 mod prefs;
 mod procinfo;
 mod remote;
+mod renice;
 mod screen;
 mod service;
 mod stacks;

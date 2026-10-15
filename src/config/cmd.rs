@@ -44,6 +44,8 @@ pub enum Act {
     Scope(Option<bool>),
     /// Ask, then end the selected process; on svc, stop the service.
     Kill,
+    /// One step more urgent (`true`) or less urgent priority for the selected process.
+    Priority(bool),
     /// Ask, then start, stop or restart the selected service.
     Service(Action),
     /// Every machine of `[[host]]` at once, or back to the screen.
@@ -154,6 +156,11 @@ pub fn parse(s: &str) -> Result<Act, String> {
         "sort" => none(Act::Sort),
         "tree" => none(Act::Tree),
         "kill" => none(Act::Kill),
+        "priority" => Ok(Act::Priority(match need()? {
+            "raise" | "up" => true,
+            "lower" | "down" => false,
+            _ => return Err(bad()),
+        })),
         "pause" => none(Act::Pause),
         "fleet" => none(Act::Fleet),
         "help" => none(Act::Help),
@@ -185,6 +192,9 @@ mod tests {
         assert_eq!(parse("interval +"), Ok(Act::Interval(1)));
         assert_eq!(parse("focus left"), Ok(Act::Focus(-1)));
         assert_eq!(parse("kill"), Ok(Act::Kill));
+        assert_eq!(parse("priority raise"), Ok(Act::Priority(true)));
+        assert_eq!(parse("priority lower"), Ok(Act::Priority(false)));
+        assert!(parse("priority").is_err());
         assert_eq!(parse("tree"), Ok(Act::Tree));
         assert_eq!(parse("fleet"), Ok(Act::Fleet));
         assert!(parse("fleet nas").is_err());
