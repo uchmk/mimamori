@@ -4,6 +4,13 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.62.3] - 2026-10-16
+
+### 変更
+
+- ito 0.37.9 に上げた。`--keys` の `<C-c>`・`<C-x>` が、キーボードと同じく Copy・Cut の出来事とキーの離しで届く（kura #383）。
+  yagura は Ctrl+C・Ctrl+X を使わないので、動きは変わらない。
+
 ## [0.62.2] - 2026-10-16
 
 ### 修正
