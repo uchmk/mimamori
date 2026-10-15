@@ -9,7 +9,7 @@ v0.1.0 で overview・cpu・mem・procs の 4 枚ができた。残りは下の�
 - [x] 値のまとめ出力: `--snapshot`（JSON）と `--log-metrics`（CSV）。v0.44.0。実機の確認は TESTING.md 3i 【実機】。
 - [x] 履歴の拡張（v0.45.0。実機の確認は TESTING.md 3j 【実機】）: 1 秒刻みで 5 分を基本に、15 分（5 秒平均）と 1 時間（30 秒平均）まで。システム全体の系列だけ（プロセスごとには持たない）。グラフをダブルクリックでフルサイズ、既定は 5 分、`[` `]` で 5 分 → 15 分 → 1 時間。
 - [x] 通知（v0.46.0。実機の確認は TESTING.md 3k 【実機】）: ito に `ito-notify`（通知・音・webhook）を切り出し、yagura は `[notify]` と `[[alert]]`（cpu・mem・swap・gpu・temp・disk・battery）を持つ。
-- [ ] 通知: tsumugi の `sound.rs`・`webhook.rs` を `ito-notify` に載せ替える（tsumugi の `rev` を上げる。トーストの Allow / Deny と点滅・バッジは tsumugi 側に残す）。
+- [x] 通知: tsumugi の `sound.rs`・`webhook.rs` を `ito-notify` に載せ替える（tsumugi v0.104.3 で済み。トーストの Allow / Deny と点滅・バッジは tsumugi 側に残る）。
 - [x] 通知: 設定の画面の「通知」のページ（v0.59.0。ito v0.30.0 の `notify_page`。実機の確認は TESTING.md 5.24 【実機】）。
 - [ ] 通知: サービスの停止のアラート（`[[alert]]` に service の種類を足す）。v0.51.0 で実装済み、残りは TESTING 3k.5 の確認 【実機】
 - [x] procs: 優先度・アフィニティ・開いているファイルとハンドル・ソケットの数（v0.47.0。実機の確認は TESTING.md 3l 【実機】）。
