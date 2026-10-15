@@ -5,11 +5,12 @@
 #
 #   scripts/verify.sh
 #
-# The same steps as kura's, plus a macOS clippy. Besides the host's own
-# clippy, every other target CI builds (Linux, Windows, macOS) gets one: those
-# are type checks only -- they never run that code. Before this, a run on the
-# Windows PC never compiled Linux and still said ALL OK, and v0.62.0 went red
-# on Linux.
+# The same steps as kura's. Besides the host's own clippy, every other target
+# CI builds (Linux, Windows, macOS) gets one: those are type checks only --
+# they never run that code. No dependency compiles C for any of them, so plain
+# clippy does it from any machine (ito, tsumugi and minato go through
+# cargo-zigbuild for that). Before 2026-10-15 a run on the Windows PC never
+# compiled Linux and still said ALL OK, and v0.62.0 went red on Linux.
 
 set -o pipefail
 cd "$(dirname "$0")/.." || exit 1
