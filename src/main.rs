@@ -123,7 +123,8 @@ struct Place {
     changed: std::time::Instant,
 }
 
-/// A guess at the primary monitor, to refuse a saved place no screen shows.
+/// A guess at the primary monitor, to refuse a saved place no screen shows,
+/// where the OS is not asked for its screens (macOS, Linux).
 const PRIMARY_GUESS: (f32, f32) = (1920.0, 1080.0);
 
 impl Place {
@@ -534,7 +535,9 @@ fn main() -> eframe::Result {
         // The title bar, Alt+Tab, the taskbar and the Dock; build.rs bakes
         // the same drawing into yagura.exe for Explorer.
         .with_icon(std::sync::Arc::new(egui::IconData { rgba: icon::rgba(ICON_PX), width: ICON_PX, height: ICON_PX }));
-    if let Some(w) = saved_place.filter(|w| w.reachable(PRIMARY_GUESS, 100.0)) {
+    // A place on none of the screens there are now (one that was unplugged)
+    // is not put back.
+    if let Some(w) = saved_place.filter(|w| w.reachable_now(PRIMARY_GUESS, 100.0)) {
         viewport = viewport.with_inner_size([w.w, w.h]).with_position([w.x, w.y]).with_maximized(w.maximized);
     }
     let options = eframe::NativeOptions { viewport, wgpu_options, ..Default::default() };

@@ -458,6 +458,19 @@ def section_items(text, name):
     return items
 
 
+# A leftover that only says there is none: `None.`, `(none)`, `None beyond the
+# issues above.`, `No open `vote` issues.`, `Nothing in the queue needs to change.`
+NOTHING = re.compile(r"\(?none\)?(?: (?:open|yet|so far|beyond .*|to (?:sort|add|propose|vote on)))?"
+                     r"|(?:there (?:was|were|is|are) )?no (?:open )?(?:vote|question)s?(?: issues?)?(?: (?:open|to vote on))?"
+                     r"|nothing(?: (?:new|else|in the queue))?(?: (?:needs? to change|to (?:sort|add|propose|change|vote on)))?")
+
+
+def says_nothing(item):
+    """Whether a report's bullet only says there is nothing to sort."""
+    text = re.sub(r"\s+", " ", re.sub(r"[`*_]", "", item)).strip().rstrip(".").strip().lower()
+    return NOTHING.fullmatch(text) is not None
+
+
 def changelog_line(number, machine, done, dropped):
     """One Japanese CHANGELOG line for a merged lane pull request.
 
@@ -916,7 +929,7 @@ def share_once(rules, share, base, since):
                 [("PR 本文", pr.get("body") or "")]:
             for kind, name in [("", "Proposals"), ("・キュー", "Queue"), ("・票", "Votes")]:
                 for item in section_items(text, name):
-                    if item not in seen:
+                    if item not in seen and not says_nothing(item):
                         seen.add(item)
                         items.append((name, where, item))
                         todo_lines.append(f"- [ ] （実機 #{n}{kind}）{item}（{where}）{mark}")
@@ -1314,6 +1327,12 @@ def self_test():
     assert section_items(report, "Queue") == ["2.67 stays `[ ]`."]
     assert section_items("## Queue\n\nNothing in the queue needs to change.\n", "Queue") == \
         ["Nothing in the queue needs to change."]
+    for nothing in ["None.", "(none)", "None beyond the issues above.", "None open.", "No open `vote` issues.",
+                    "No open `vote` issue.", "There was no open `vote` issue.", "Nothing in the queue needs to change."]:
+        assert says_nothing(nothing), nothing
+    for something in ["None of the toasts show.", "No toast after `Ctrl+Shift+N`.", "Nothing happens on `F2`.",
+                      "#98: TESTING 19.9 should say `Ctrl+,`."]:
+        assert not says_nothing(something), something
 
     done = [("TESTING-CHECKS.md", "x", "2.61"), ("TESTING-CHECKS.md", "~", "2.62"),
             ("TESTING-KEYS.md", "x", "F1")]
