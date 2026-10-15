@@ -276,7 +276,7 @@ sound = false                 # a sound of the system's
 sound_name = "alert"          # chime, low, alert or default
 focus_mode = true             # Windows: no sound while focus mode is on
 webhook = "https://ntfy.sh/my-topic"   # also send it here (empty: nowhere)
-webhook_format = "ntfy"       # ntfy, slack or json
+webhook_format = "ntfy"       # ntfy, slack, discord or json
 
 [[alert]]
 metric = "cpu"                # cpu, mem, swap, gpu, temp, disk or battery

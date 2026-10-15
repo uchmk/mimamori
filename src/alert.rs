@@ -10,7 +10,7 @@
 //! sound_name = "alert"          # chime, low, alert or default
 //! focus_mode = true             # Windows: no sound while focus mode is on
 //! webhook = "https://ntfy.sh/my-topic"
-//! webhook_format = "ntfy"       # ntfy, slack or json
+//! webhook_format = "ntfy"       # ntfy, slack, discord or json
 //!
 //! [[alert]]
 //! metric = "cpu"                # cpu, mem, swap, gpu, temp, disk, battery
@@ -456,6 +456,10 @@ mod tests {
         let mut w = Vec::new();
         let n = parse_notify(&t["notify"], &mut w);
         assert!(w.is_empty() && n.sound && n.system && n.sound_name == "low" && n.webhook_format == "slack");
+        let t: toml::Table = "[notify]\nwebhook_format = \"discord\"\n".parse().unwrap();
+        let mut w = Vec::new();
+        assert_eq!(parse_notify(&t["notify"], &mut w).webhook_format, "discord");
+        assert!(w.is_empty(), "{w:?}");
         let t: toml::Table =
             "[notify]\nwebhook = \"file:///x\"\nsound_name = \"boom\"\nwebhook_format = \"xml\"\nsystem = 3\nmore = 1\n".parse().unwrap();
         let mut w = Vec::new();

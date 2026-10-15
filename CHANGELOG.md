@@ -4,6 +4,18 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.63.0] - 2026-10-16
+
+### 追加
+
+- 通知の Webhook の形式に Discord を足した（`[notify] webhook_format = "discord"`、設定の「通知」の「形式」）。
+  Discord の incoming webhook に、太字の題と本文を送る。本文に `@everyone` などがあっても誰も呼ばない（ito 0.38.0）。
+
+### 変更
+
+- Webhook の相手が 400 以上で断ったとき（アドレスの誤り・回数の制限）も届かなかったとして、30 秒後に 1 回だけ送り直す
+  （ito 0.38.0 の `curl -f`）。今までは網が切れたときだけ送り直していた。
+
 ## [0.62.3] - 2026-10-16
 
 ### 変更
