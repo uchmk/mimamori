@@ -197,7 +197,7 @@ says otherwise.
 | Theme | Follow OS / Light / Dark, the list of themes, and a preview drawn with yagura's own tiles, process rows and status bar (common.toml) |
 | Fleet | This machine's agent (allow ending processes, allow controlling services, the port); the `[[host]]` list (name, address, Delete, Add host); the setup lines (`yagura --agent`, the ssh line, the tailscale line, the sample `[[host]]`, config.toml's path); and the direct connections (this machine's public key, the `[[agent.viewer]]` that lets it in, the `[agent] listen` line, the `[[host]]` that watches it directly), each with Copy. The ssh and tailscale lines, the sample and a new host's address follow `[agent] port`; Add host and Delete change only the `[[host]]` tables, keeping config.toml's comments and order |
 | Keys | Every operation in a row with its keys, its layer and the default when it was changed; search by name, command or key, **Find by key**, by layer, **Changed only**. **+** takes a new key (a sequence such as `g h` too, `Enter` sets it, `Esc` gives up, **Special keys** adds a bare `Enter` / `Esc` / `Backspace` / `Tab`), **x** takes one off, **Reset** gives the operation its defaults back. Only what was changed is written, to keymap.toml's `prepend_keymap` (a default taken off as `run = "noop"`), and the keys change at once. The same page as in every uchmk app (ito's `keys_page`) |
-| Notifications | How a fired alert reaches you (`[notify]`): the system's notification and the sound (switches), the alert's sound with a play button, quiet in focus mode, the webhook's address and format; **Send a test** and **Reset to defaults** (the address and format stay). The same page as in every uchmk app (ito's `notify_page`) |
+| Notifications | How a fired alert reaches you (`[notify]`): the system's notification and the sound (switches), the alert's sound with a play button, quiet in focus mode, the webhooks (as many as wanted: each with its address and format, **Remove** and **Send a test here**, then **Add an address**); **Send a test** and **Reset to defaults** (the webhooks stay). The same page as in every uchmk app (ito's `notify_page`) |
 | Advanced | The graphics backend (from the next start), the config folder (Copy, Open), common.toml's path, and what reading the files warned about |
 
 Only the `[settings]` section's keys are taken (`Esc` and `Ctrl+,` close, a
@@ -277,8 +277,14 @@ system = true                 # the system's notification (default)
 sound = false                 # a sound of the system's
 sound_name = "alert"          # chime, low, alert or default
 focus_mode = true             # Windows: no sound while focus mode is on
-webhook = "https://ntfy.sh/my-topic"   # also send it here (empty: nowhere)
-webhook_format = "ntfy"       # ntfy, slack, discord or json
+
+[[notify.webhooks]]           # also send it here; as many as wanted
+url = "https://ntfy.sh/my-topic"
+format = "ntfy"               # ntfy, slack, discord or json
+
+[[notify.webhooks]]
+url = "https://discord.com/api/webhooks/…"
+format = "discord"
 
 [[alert]]
 metric = "cpu"                # cpu, mem, swap, gpu, temp, disk or battery
@@ -290,6 +296,10 @@ name = "CPU is busy"          # optional; else "CPU is over 90%"
 metric = "service"            # fires when a service is stopped or failed
 service = "nginx"             # its name as svc shows it (case does not matter)
 ```
+
+The one address of before (`[notify] webhook` and `webhook_format`) is still
+read, as the first webhook; the settings page moves it to a `[[notify.webhooks]]`
+when you change the webhooks there.
 
 `cpu`, `mem`, `swap`, `gpu` (the busiest) and `disk` (the fullest volume) are
 percentages, `temp` is the hottest sensor in °C, `battery` the charge. A `service` rule takes a

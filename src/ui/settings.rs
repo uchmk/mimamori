@@ -42,8 +42,8 @@ struct Asked {
     open_folder: bool,
     /// The fleet page was shown: read this machine's key.
     key: bool,
-    /// The notifications page's "send a test" was pressed.
-    test: bool,
+    /// A "Send a test" of the notifications page was pressed.
+    test: Option<ito_prefs::Test>,
     toast: Option<String>,
 }
 
@@ -99,7 +99,7 @@ fn index() -> Vec<(usize, &'static str)> {
 }
 
 /// Each page's keys in config.toml and common.toml.
-const CONFIG_NAMES: [(usize, &str); 25] = [
+const CONFIG_NAMES: [(usize, &str); 27] = [
     (GENERAL, "language"),
     (GENERAL, "scale"),
     (GENERAL, "interval"),
@@ -122,8 +122,10 @@ const CONFIG_NAMES: [(usize, &str); 25] = [
     (NOTIFY, "system"),
     (NOTIFY, "sound_name"),
     (NOTIFY, "focus_mode"),
-    (NOTIFY, "webhook"),
-    (NOTIFY, "webhook_format"),
+    (NOTIFY, "[[notify.webhooks]]"),
+    (NOTIFY, "url"),
+    (NOTIFY, "format"),
+    (NOTIFY, "states"),
     (ADVANCED, "backend"),
 ];
 
@@ -335,6 +337,9 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
             if !keys.is_empty() {
                 asked.edits.push(Edit::Notify(keys));
             }
+            if let Some(places) = was.webhooks_of(&n) {
+                asked.edits.push(Edit::Webhooks(places));
+            }
         }
         ADVANCED => {
             section(ui, l, tr("settings.graphics"), |ui| {
@@ -411,8 +416,15 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
         app.set_interval(s);
         app.prefs.config_edit(Edit::Interval(s));
     }
-    if asked.test {
-        crate::alert::tell(&app.prefs.settings.notify, tr("settings.notify_test_title"), tr("settings.notify_test_body"));
+    let (title, body) = (tr("settings.notify_test_title"), tr("settings.notify_test_body"));
+    match asked.test {
+        Some(ito_prefs::Test::All) => crate::alert::tell(&app.prefs.settings.notify, title, body),
+        Some(ito_prefs::Test::Hook(k)) => {
+            if let Some(p) = app.prefs.settings.notify.webhooks.get(k) {
+                crate::alert::tell_one(p, title, body);
+            }
+        }
+        None => {}
     }
     if let Some(t) = asked.toast {
         app.toast(t);
@@ -523,6 +535,8 @@ mod tests {
             ("every", FLEET),
             ("focus_mode", NOTIFY),
             ("webhook", NOTIFY),
+            ("webhooks", NOTIFY),
+            ("format", NOTIFY),
             ("backend", ADVANCED),
         ] {
             assert_eq!(pages(q), [page], "{q}");

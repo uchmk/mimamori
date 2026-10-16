@@ -1,6 +1,6 @@
 //! Threshold alerts: `[[alert]]` rules in config.toml, checked against this
 //! machine's readings, and `[notify]`, how a fired one reaches a person (the
-//! system's notification, a sound, a webhook; `ito-notify`, the same words as
+//! system's notification, a sound, webhooks; `ito-notify`, the same words as
 //! tsumugi's `[notify]`).
 //!
 //! ```toml
@@ -9,9 +9,16 @@
 //! sound = false
 //! sound_name = "alert"          # chime, low, alert or default
 //! focus_mode = true             # Windows: no sound while focus mode is on
-//! webhook = "https://ntfy.sh/my-topic"
-//! webhook_format = "ntfy"       # ntfy, slack, discord or json
 //!
+//! [[notify.webhooks]]           # as many as wanted
+//! url = "https://ntfy.sh/my-topic"
+//! format = "ntfy"               # ntfy, slack, discord or json
+//! ```
+//!
+//! The one address of before (`[notify] webhook`, `webhook_format`) is still
+//! read, as the first webhook; the settings move it to a table.
+//!
+//! ```toml
 //! [[alert]]
 //! metric = "cpu"                # cpu, mem, swap, gpu, temp, disk, battery
 //! above = 90                    # or `below = 15`
@@ -27,6 +34,8 @@
 //! only after it has stopped holding.
 
 use std::time::{Duration, Instant};
+
+use ito_notify::webhook::{self, Place};
 
 use crate::collect::svc;
 use crate::i18n::{tr, trf};
@@ -149,22 +158,23 @@ pub struct Notify {
     /// Windows: no sound while focus mode (do not disturb) or a full-screen
     /// program is on.
     pub focus_mode: bool,
-    /// Where to send it too; empty: nowhere.
-    pub webhook: String,
-    pub webhook_format: String,
+    /// Where to send it too, in order: the old one address, then the
+    /// `[[notify.webhooks]]`; empty: nowhere.
+    pub webhooks: Vec<Place>,
 }
+
+/// The one event a webhook is told of, its `states`' word.
+pub const EVENTS: [&str; 1] = ["alert"];
 
 impl Default for Notify {
     fn default() -> Self {
-        Self {
-            system: true,
-            sound: false,
-            sound_name: "alert".into(),
-            focus_mode: true,
-            webhook: String::new(),
-            webhook_format: "ntfy".into(),
-        }
+        Self { system: true, sound: false, sound_name: "alert".into(), focus_mode: true, webhooks: Vec::new() }
     }
+}
+
+/// A webhook of nothing but its address: ntfy, told of the alert.
+fn place(url: &str) -> Place {
+    Place { url: url.to_owned(), format: "ntfy".into(), states: EVENTS.map(str::to_owned).to_vec() }
 }
 
 fn number(v: &toml::Value) -> Option<f64> {
@@ -178,6 +188,7 @@ pub fn parse_notify(v: &toml::Value, warn: &mut Vec<String>) -> Notify {
         warn.push("config.toml: `notify` must be a table".into());
         return n;
     };
+    let (mut old, mut list) = (place(""), Vec::new());
     for (k, v) in t {
         let bool_of = |warn: &mut Vec<String>| {
             let b = v.as_bool();
@@ -208,18 +219,64 @@ pub fn parse_notify(v: &toml::Value, warn: &mut Vec<String>) -> Notify {
                     if !s.is_empty() && !ito_notify::is_http(&s) {
                         warn.push(format!("config.toml: [notify] `webhook` `{s}` is not an http(s) address"));
                     }
-                    n.webhook = s;
+                    old.url = s;
                 }
             }
             "webhook_format" => match str_of(warn) {
-                Some(s) if ito_notify::FORMATS.contains(&s.as_str()) => n.webhook_format = s,
+                Some(s) if ito_notify::FORMATS.contains(&s.as_str()) => old.format = s,
                 Some(s) => warn.push(format!("config.toml: [notify] `webhook_format` `{s}` is not {}", ito_notify::FORMATS.join(", "))),
                 None => {}
             },
+            "webhooks" => list = parse_webhooks(v, warn),
             other => warn.push(format!("config.toml: unknown setting `notify.{other}`")),
         }
     }
+    n.webhooks = webhook::places(old, list);
     n
+}
+
+/// `[[notify.webhooks]]`: what is wrong is warned about and put back to the
+/// default, but an address that is not http(s) stays, for the settings to
+/// show in red (nothing is sent to it).
+fn parse_webhooks(v: &toml::Value, warn: &mut Vec<String>) -> Vec<Place> {
+    let Some(list) = v.as_array() else {
+        warn.push("config.toml: `notify.webhooks` must be [[notify.webhooks]] tables".into());
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (i, x) in list.iter().enumerate() {
+        let file = format!("config.toml [[notify.webhooks]] {}", i + 1);
+        let Some(t) = x.as_table() else {
+            warn.push(format!("{file} must be a table"));
+            continue;
+        };
+        for k in t.keys().filter(|k| !["url", "format", "states"].contains(&k.as_str())) {
+            warn.push(format!("{file}: unknown setting `{k}`"));
+        }
+        let mut p = place("");
+        for (key, to) in [("url", &mut p.url), ("format", &mut p.format)] {
+            match t.get(key).map(|v| v.as_str()) {
+                Some(Some(s)) => *to = s.trim().to_owned(),
+                Some(None) => warn.push(format!("{file}: `{key}` must be a string")),
+                None => {}
+            }
+        }
+        match t
+            .get("states")
+            .map(|v| v.as_array().and_then(|a| a.iter().map(|s| s.as_str().map(str::to_owned)).collect::<Option<Vec<_>>>()))
+        {
+            Some(Some(states)) => p.states = states,
+            Some(None) => warn.push(format!("{file}: `states` is a list of {}", EVENTS.join(", "))),
+            None => {}
+        }
+        warn.extend(p.problems(&EVENTS).into_iter().map(|w| format!("{file}: {w}")));
+        if !ito_notify::FORMATS.contains(&p.format.as_str()) {
+            p.format = "ntfy".into();
+        }
+        p.states.retain(|s| EVENTS.contains(&s.as_str()));
+        out.push(p);
+    }
+    out
 }
 
 /// `[[alert]]`: a rule that cannot be read is warned about and left out.
@@ -343,7 +400,7 @@ impl Tracker {
     }
 }
 
-/// Tell a person: the system's notification, a sound and the webhook, as
+/// Tell a person: the system's notification, a sound and the webhooks, as
 /// `[notify]` asks.
 pub fn tell(n: &Notify, title: &str, body: &str) {
     if n.system {
@@ -352,31 +409,35 @@ pub fn tell(n: &Notify, title: &str, body: &str) {
     if n.sound && !(n.focus_mode && ito_notify::sound::quiet_time()) {
         ito_notify::sound::play(&n.sound_name);
     }
-    if ito_notify::is_http(&n.webhook) {
-        ito_notify::webhook::send(
-            n.webhook.clone(),
-            n.webhook_format.clone(),
-            ito_notify::webhook::Level::Alert,
-            title.to_owned(),
-            body.to_owned(),
-            String::new(),
-        );
+    webhook::send_all(&n.webhooks, EVENTS[0], webhook::Level::Alert, title, body, "");
+}
+
+/// Send to the one webhook `p`, whatever it is told of: the settings' test
+/// of its address.
+pub fn tell_one(p: &Place, title: &str, body: &str) {
+    if ito_notify::is_http(&p.url) {
+        webhook::send(p.url.trim().to_owned(), p.format.clone(), webhook::Level::Alert, title.to_owned(), body.to_owned(), String::new());
     }
 }
 
 impl Notify {
     /// As the settings' Notifications page shows it: one event, the alert,
-    /// and the webhook told of every one.
+    /// and no row per webhook (each is told of it).
     pub fn page(&self) -> ito_prefs::Notify {
         ito_prefs::Notify {
             system: vec![self.system],
             sound: vec![self.sound],
-            webhook: Vec::new(),
             sounds: vec![self.sound_name.clone()],
             focus: self.focus_mode,
-            webhook_url: self.webhook.clone(),
-            webhook_format: self.webhook_format.clone(),
+            hooks: self.webhooks.iter().map(|p| ito_prefs::Hook::of(p, &EVENTS, false)).collect(),
         }
+    }
+
+    /// The webhooks to write when the page's `p` changed them, from the
+    /// settings now (`self`): None when they are the same.
+    pub fn webhooks_of(&self, p: &ito_prefs::Notify) -> Option<Vec<Place>> {
+        let now: Vec<Place> = p.hooks.iter().map(|h| h.place(&EVENTS)).collect();
+        (now != self.webhooks).then_some(now)
     }
 
     /// The `[notify]` keys to write so that this reads as the page's `p`.
@@ -394,14 +455,8 @@ impl Notify {
             }
         }
         let name = p.sounds.first().unwrap_or(&self.sound_name);
-        for (key, was, now) in [
-            ("sound_name", &self.sound_name, name),
-            ("webhook", &self.webhook, &p.webhook_url),
-            ("webhook_format", &self.webhook_format, &p.webhook_format),
-        ] {
-            if was != now {
-                out.push((key, quote(now)));
-            }
+        if *name != self.sound_name {
+            out.push(("sound_name", quote(name)));
         }
         out
     }
@@ -418,15 +473,14 @@ mod tests {
         assert!(was.edits(&p).is_empty());
         p.sound[0] = true;
         p.sounds[0] = "chime".into();
-        p.webhook_url = "http://127.0.0.1:8765/hook".into();
-        assert_eq!(
-            was.edits(&p),
-            [
-                ("sound", "true".to_owned()),
-                ("sound_name", "\"chime\"".to_owned()),
-                ("webhook", "\"http://127.0.0.1:8765/hook\"".to_owned())
-            ]
-        );
+        assert_eq!(was.edits(&p), [("sound", "true".to_owned()), ("sound_name", "\"chime\"".to_owned())]);
+        assert_eq!(was.webhooks_of(&p), None, "no webhook, none to write");
+        p.hooks.push(ito_prefs::Hook::new(1));
+        p.hooks[0].url = "http://127.0.0.1:8765/hook".into();
+        assert_eq!(was.webhooks_of(&p), Some(vec![place("http://127.0.0.1:8765/hook")]));
+        let now = Notify { webhooks: vec![place("http://127.0.0.1:8765/hook")], ..was };
+        assert_eq!(now.page().hooks, p.hooks, "and back");
+        assert_eq!(now.webhooks_of(&p), None);
     }
 
     fn rules(text: &str) -> (Vec<Rule>, Vec<String>) {
@@ -455,17 +509,52 @@ mod tests {
             "[notify]\nsound = true\nsound_name = \"low\"\nwebhook = \"https://ntfy.sh/x\"\nwebhook_format = \"slack\"\n".parse().unwrap();
         let mut w = Vec::new();
         let n = parse_notify(&t["notify"], &mut w);
-        assert!(w.is_empty() && n.sound && n.system && n.sound_name == "low" && n.webhook_format == "slack");
+        assert!(w.is_empty() && n.sound && n.system && n.sound_name == "low");
+        assert_eq!(n.webhooks, [Place { format: "slack".into(), ..place("https://ntfy.sh/x") }], "the old address is the first webhook");
         let t: toml::Table = "[notify]\nwebhook_format = \"discord\"\n".parse().unwrap();
         let mut w = Vec::new();
-        assert_eq!(parse_notify(&t["notify"], &mut w).webhook_format, "discord");
+        assert_eq!(parse_notify(&t["notify"], &mut w).webhooks, [], "a format and no address: nowhere");
         assert!(w.is_empty(), "{w:?}");
         let t: toml::Table =
             "[notify]\nwebhook = \"file:///x\"\nsound_name = \"boom\"\nwebhook_format = \"xml\"\nsystem = 3\nmore = 1\n".parse().unwrap();
         let mut w = Vec::new();
         // The address that is not http stays, for the settings to show in red.
-        assert_eq!(parse_notify(&t["notify"], &mut w), Notify { webhook: "file:///x".into(), ..Notify::default() });
+        assert_eq!(parse_notify(&t["notify"], &mut w), Notify { webhooks: vec![place("file:///x")], ..Notify::default() });
         assert_eq!(w.len(), 5, "{w:?}");
+    }
+
+    #[test]
+    fn webhooks_are_tables_after_the_old_address() {
+        let t: toml::Table = "[notify]\nwebhook = \"https://ntfy.sh/old\"\n\n[[notify.webhooks]]\nurl = \"https://ntfy.sh/a\"\n\
+                              \n[[notify.webhooks]]\nurl = \" https://discord.com/api/webhooks/1 \"\nformat = \"discord\"\nstates = [\"alert\"]\n\
+                              \n[[notify.webhooks]]\nurl = \"https://ntfy.sh/off\"\nstates = []\n"
+            .parse()
+            .unwrap();
+        let mut w = Vec::new();
+        let n = parse_notify(&t["notify"], &mut w);
+        assert!(w.is_empty(), "{w:?}");
+        let discord = Place { format: "discord".into(), ..place("https://discord.com/api/webhooks/1") };
+        let off = Place { states: Vec::new(), ..place("https://ntfy.sh/off") };
+        assert_eq!(n.webhooks, [place("https://ntfy.sh/old"), place("https://ntfy.sh/a"), discord, off]);
+        assert!(n.webhooks[1].takes("alert") && !n.webhooks[3].takes("alert"), "`states = []`: told of nothing");
+        let t: toml::Table = "[[notify.webhooks]]\nurl = \"ntfy.sh/x\"\nformat = \"xml\"\nstates = [\"late\", \"alert\"]\ntopic = 1\n\
+                              [[notify.webhooks]]\nurl = 3\nstates = \"alert\"\n"
+            .parse()
+            .unwrap();
+        let mut w = Vec::new();
+        let n = parse_notify(&t["notify"], &mut w);
+        assert_eq!(n.webhooks, [place("ntfy.sh/x"), place("")], "back to the defaults, but the address that is not http");
+        assert_eq!(
+            w,
+            [
+                "config.toml [[notify.webhooks]] 1: unknown setting `topic`",
+                "config.toml [[notify.webhooks]] 1: `url` `ntfy.sh/x` is not an http(s) address",
+                "config.toml [[notify.webhooks]] 1: `format` `xml` is not ntfy, slack, discord, json",
+                "config.toml [[notify.webhooks]] 1: `states` `late` is not alert",
+                "config.toml [[notify.webhooks]] 2: `url` must be a string",
+                "config.toml [[notify.webhooks]] 2: `states` is a list of alert",
+            ]
+        );
     }
 
     #[test]

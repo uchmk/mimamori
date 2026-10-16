@@ -24,6 +24,9 @@ pub enum Edit {
     Hosts(Vec<Host>),
     /// `[notify]`'s keys and their values as written, in one go.
     Notify(Vec<(&'static str, String)>),
+    /// Every `[[notify.webhooks]]`, in place of the ones there and of the old
+    /// one address (`[notify] webhook`).
+    Webhooks(Vec<ito_notify::webhook::Place>),
 }
 
 impl Edit {
@@ -46,6 +49,8 @@ impl Edit {
                 }
                 Ok(out)
             }
+            // A webhook is told of the one event there is: no `states`.
+            Self::Webhooks(places) => ito_prefs::write_webhooks(text, places, false),
         }
     }
 }
@@ -133,8 +138,13 @@ mod tests {
         let keyed = Host { key: Some([7; 32]), every: Some(5.0), ..host("far", "far.example") };
         save(&d, &Edit::Hosts(vec![host("nas", "localhost:7314"), keyed.clone()])).unwrap();
         save(&d, &Edit::Allow(vec!["kill".into(), "service".into()])).unwrap();
+        let hook = |url: &str| ito_notify::webhook::Place { url: url.into(), format: "ntfy".into(), states: vec!["alert".into()] };
+        save(&d, &Edit::Notify(vec![("webhook", "\"https://ntfy.sh/old\"".into())])).unwrap();
+        save(&d, &Edit::Webhooks(vec![hook("https://ntfy.sh/old"), hook("https://ntfy.sh/new")])).unwrap();
         let s = settings::load(Some(&d));
         assert!(s.warnings.is_empty(), "{:?}", s.warnings);
+        assert_eq!(s.notify.webhooks, [hook("https://ntfy.sh/old"), hook("https://ntfy.sh/new")], "the old address became a table");
+        assert!(!std::fs::read_to_string(config_path(&d)).unwrap().contains("webhook ="));
         assert_eq!(s.interval, 5.0);
         assert_eq!(s.backend.as_deref(), Some("gl"));
         assert_eq!(s.hosts, [host("nas", "localhost:7314"), keyed], "the key and the pace go back");

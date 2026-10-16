@@ -460,10 +460,12 @@ def section_items(text, name):
 
 
 # A leftover that only says there is none: `None.`, `(none)`, `None beyond the
-# issues above.`, `No open `vote` issues.`, `Nothing in the queue needs to change.`
-NOTHING = re.compile(r"\(?none\)?(?: (?:open|yet|so far|beyond .*|to (?:sort|add|propose|vote on)))?"
+# issues above.`, `None new.`, `None filed this run.`, `None from this run.`,
+# `No open `vote` issues.`, `Nothing in the queue needs to change.`
+NOTHING = re.compile(r"\(?none\)?(?: (?:open|yet|so far|new|filed|beyond .*|to (?:sort|add|propose|vote on)))?(?: (?:from )?this run)?"
                      r"|(?:there (?:was|were|is|are) )?no (?:open )?(?:vote|question)s?(?: issues?)?(?: (?:open|to vote on))?"
-                     r"|nothing(?: (?:new|else|in the queue))?(?: (?:needs? to change|to (?:sort|add|propose|change|vote on)))?")
+                     r"|nothing(?: (?:new|else|in the queue))?(?: (?:needs? to change|to (?:sort|add|propose|change|vote on)))?"
+                     r"(?: (?:from )?this run)?")
 
 
 def says_nothing(item):
@@ -1329,10 +1331,13 @@ def self_test():
     assert section_items("## Queue\n\nNothing in the queue needs to change.\n", "Queue") == \
         ["Nothing in the queue needs to change."]
     for nothing in ["None.", "(none)", "None beyond the issues above.", "None open.", "No open `vote` issues.",
-                    "No open `vote` issue.", "There was no open `vote` issue.", "Nothing in the queue needs to change."]:
+                    "No open `vote` issue.", "There was no open `vote` issue.", "Nothing in the queue needs to change.",
+                    "None this run.", "None new.", "None filed this run.", "None new this run.", "Nothing new this run.",
+                    "None from this run.", "Nothing from this run."]:
         assert says_nothing(nothing), nothing
     for something in ["None of the toasts show.", "No toast after `Ctrl+Shift+N`.", "Nothing happens on `F2`.",
-                      "#98: TESTING 19.9 should say `Ctrl+,`."]:
+                      "#98: TESTING 19.9 should say `Ctrl+,`.", "None this run passed 2.4.", "None new: 3.1 still fails.",
+                      "None from this run passed 2.4."]:
         assert not says_nothing(something), something
 
     done = [("TESTING-CHECKS.md", "x", "2.61"), ("TESTING-CHECKS.md", "~", "2.62"),
