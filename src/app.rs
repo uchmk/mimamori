@@ -2410,6 +2410,10 @@ impl App {
                 self.mode = Mode::Help;
                 self.help_scroll = 0;
             }
+            Act::BugReport => {
+                self.prefs.open_url(crate::bugreport::url(&self.prefs.settings, self.prefs.common.scale_or_one()));
+                self.toast(tr("toast.bugreport"));
+            }
             Act::Settings => self.open_settings(),
             Act::Palette => {
                 self.palette = ito_palette::View::new();

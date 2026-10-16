@@ -60,6 +60,8 @@ pub enum Act {
     /// One step faster (-1) or slower (+1) sampling.
     Interval(i32),
     Help,
+    /// A bug report in the browser, with the version, the OS and the config files filled in.
+    BugReport,
     /// The command palette (`Ctrl+Shift+P`).
     Palette,
     /// The settings screen, open or closed.
@@ -168,6 +170,7 @@ pub fn parse(s: &str) -> Result<Act, String> {
         "pause" => none(Act::Pause),
         "fleet" => none(Act::Fleet),
         "help" => none(Act::Help),
+        "bugreport" => none(Act::BugReport),
         "palette" => none(Act::Palette),
         "settings" => none(Act::Settings),
         "copy" => none(Act::Copy),

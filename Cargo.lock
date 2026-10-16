@@ -1806,9 +1806,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ito-bugreport"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
+dependencies = [
+ "windows",
+]
+
+[[package]]
 name = "ito-common"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "chrono",
  "egui",
@@ -1823,24 +1831,24 @@ dependencies = [
 
 [[package]]
 name = "ito-console"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "windows",
 ]
 
 [[package]]
 name = "ito-gpu"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui-wgpu",
 ]
 
 [[package]]
 name = "ito-i18n"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "ito-common",
  "toml",
@@ -1848,8 +1856,8 @@ dependencies = [
 
 [[package]]
 name = "ito-keymap"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "ito-common",
  "ito-keys",
@@ -1859,16 +1867,16 @@ dependencies = [
 
 [[package]]
 name = "ito-keys"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-keyscript"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui",
  "ito-keys",
@@ -1877,8 +1885,8 @@ dependencies = [
 
 [[package]]
 name = "ito-layout"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui",
  "serde",
@@ -1886,8 +1894,8 @@ dependencies = [
 
 [[package]]
 name = "ito-notify"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "png",
  "windows",
@@ -1895,16 +1903,16 @@ dependencies = [
 
 [[package]]
 name = "ito-palette"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-prefs"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui",
  "ito-common",
@@ -1917,16 +1925,16 @@ dependencies = [
 
 [[package]]
 name = "ito-select"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui",
 ]
 
 [[package]]
 name = "ito-theme"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "egui",
  "ito-select",
@@ -1935,8 +1943,8 @@ dependencies = [
 
 [[package]]
 name = "ito-winres"
-version = "0.47.0"
-source = "git+https://github.com/uchmk/ito?rev=37bf3ded67c7602a2a0813a15e93fb639419ef92#37bf3ded67c7602a2a0813a15e93fb639419ef92"
+version = "0.49.0"
+source = "git+https://github.com/uchmk/ito?rev=4b0140e051dfbb6b3ddaede62c31e58a410983bb#4b0140e051dfbb6b3ddaede62c31e58a410983bb"
 dependencies = [
  "png",
 ]
@@ -4797,7 +4805,7 @@ checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
 
 [[package]]
 name = "yagura"
-version = "0.67.0"
+version = "0.68.0"
 dependencies = [
  "base64",
  "chrono",
@@ -4805,6 +4813,7 @@ dependencies = [
  "dirs",
  "eframe",
  "egui",
+ "ito-bugreport",
  "ito-common",
  "ito-console",
  "ito-gpu",

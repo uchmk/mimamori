@@ -141,6 +141,7 @@ remote_no_answer = "{0}: the connection was lost before it answered; look at its
 copied = "Copied: {0}"
 copy_none = "Nothing to copy here"
 save_failed = "Could not save: {0}"
+bugreport = "Opening a bug report in the browser"
 key_added = "{0} runs {1}"
 key_removed = "{0} no longer runs {1}"
 key_reset = "{0} back to its defaults"

@@ -248,6 +248,16 @@ impl Prefs {
         });
     }
 
+    /// Open `url` in the browser, on a thread.
+    pub fn open_url(&self, url: String) {
+        let (tx, wake) = (self.tx.clone(), self.wake.clone());
+        std::thread::spawn(move || {
+            if let Err(e) = open_target(url.as_ref()) {
+                Self::send_back(&tx, &wake, Reload::Failed(e));
+            }
+        });
+    }
+
     /// The theme common.toml picks, in force from this frame on: egui's
     /// widgets follow when it changes. Called every frame (the OS may have
     /// gone light or dark).
@@ -332,9 +342,14 @@ fn opener() -> std::process::Command {
 }
 
 fn open_path(path: &Path) -> Result<(), String> {
+    open_target(path.as_os_str())
+}
+
+/// A file, a folder or a link, with what the OS opens it with.
+fn open_target(target: &std::ffi::OsStr) -> Result<(), String> {
     // explorer answers 1 even when it opened the file, so only a failure to
     // start it is said; waited for, so it leaves nothing behind.
-    opener().arg(path).status().map(drop).map_err(|e| format!("{}: {e}", path.display()))
+    opener().arg(target).status().map(drop).map_err(|e| format!("{}: {e}", target.to_string_lossy()))
 }
 
 #[cfg(test)]

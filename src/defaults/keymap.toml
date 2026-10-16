@@ -71,6 +71,7 @@ keymap = [
     { on = "y", run = "copy", desc = "Copy (devices and containers: the id; fleet: the sample [[host]], or the machine's address)" },
     { on = "?", run = "help", desc = "Help" },
     { on = "<F1>", run = "help", desc = "Help" },
+    { on = "<F12>", run = "bugreport", desc = "Report a bug (opens a pre-filled form in the browser)" },
     { on = "<C-,>", run = "settings", desc = "Settings" },
     { on = "<C-S-p>", run = "palette", desc = "Command palette" },
     # The scale every uchmk app shares (common.toml). `<C-;>` is for JIS

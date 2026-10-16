@@ -7,6 +7,7 @@
 mod affinity;
 mod alert;
 mod app;
+mod bugreport;
 mod collect;
 mod config;
 mod envreport;

@@ -1,0 +1,65 @@
+name: Bug report / 不具合報告
+description: It does not work, it crashes, or it does something you did not expect / 動かない、落ちる、思っているのと違う挙動をする
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English or Japanese, whichever you write more easily. `<F12>` in yagura opens this form
+        with the version, the OS and what yagura knew already filled in.
+
+        最初の往復で必要になるものを先に聞きます。空欄でも出せますが、埋まっているほど調べ始めるのが早くなります。
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / 何が起きたか
+      description: 期待した挙動と、実際の挙動。
+    validations:
+      required: true
+
+  - type: textarea
+    id: keys
+    attributes:
+      label: Steps that reproduce it / 再現する操作
+      description: 押したキーの並び、始めた場所、状態。
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: "yagura version / yagura の版"
+      description: "`yagura --version` の出力。"
+      placeholder: "yagura 0.1.0 (x86_64)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: os
+    attributes:
+      label: OS and architecture / OS とアーキテクチャ
+      description: "**yagura が起動するなら `<F12>` を押すのが早いです**。この欄も版の欄も埋まった状態で開きます。"
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: What yagura knew / yagura が知っていたこと
+      description: |
+        Filled in by `<F12>`: the last error, how it was drawing, the display scale, and the config files it read -- by name, never by path.
+        `<F12>` が埋めます: 最後に出たエラー、描画のアダプタとバックエンド、画面の倍率、読んだ設定ファイルの名前（パスは入れない）。
+      render: text
+    validations:
+      required: false
+
+{{extra}}  - type: textarea
+    id: backtrace
+    attributes:
+      label: Backtrace, if it crashes / バックトレース（落ちる場合）
+      description: "`RUST_BACKTRACE=1` を立てて起動したときの出力。"
+      render: text
+    validations:
+      required: false
