@@ -4,6 +4,26 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.65.1] - 2026-10-16
+
+### 追加
+
+- CI に `Checklists`（`.github/workflows/checklists.yml`）を足した。`tests/checklist.rs` が TESTING.md の行の形
+  （節の見出しの下に `- [ ] 3d.8 …`、印は ` `・`x`・`~`、ID は節と合い、二度出ない）を確かめ、TESTING.md だけの変更でも回る。
+  形を外れた行は wintest-queue.ps1・merge-lanes.py・`retest` の issue のどれからも黙って抜けていた。
+- CI に `Build`（`.github/workflows/build.yml`）を足した。main への push と手動で、リリースと同じ 6 つのターゲット
+  （Windows・macOS・Linux の x64 と ARM64）を `--release` でリンクし、Windows x64 では `yagura.com` を確かめ、
+  実行ファイルとライセンスを成果物に残す。テストは回さない（ci.yml と arm64.yml の役目）。
+
+### 変更
+
+- ito 0.38.2 に上げ、`scripts/lanes.sh sync` で merge-lanes.py を写した。レーンの PR が行に印を付けたときは `checklists` が緑になるまで待ち、
+  分担を main に push した後は ci.yml と checklists.yml を起こす（そのための `workflow_dispatch` を ci.yml に足した）。
+
+### 修正
+
+- TESTING.md で 3.12 が二つあった（v0.62.0 の優先度の行と、v0.41.4 からの開始の時刻の行）。優先度の行を 3.16 にした。
+
 ## [0.65.0] - 2026-10-16
 
 ### 追加

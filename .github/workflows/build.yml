@@ -1,0 +1,101 @@
+name: Build
+
+# A downloadable binary for each of the six targets of a release, on every
+# push to main, as kura's build.yml. Kept apart from ci.yml: this one produces
+# an artifact, that one is the gate, and a failure here should not read as a
+# failing test. clippy type-checks the macOS and Windows code from Linux but
+# never links, and ci.yml and arm64.yml build in debug and never macOS x64;
+# this is where every target is linked as a release links it.
+#
+# The targets and runners are release.yml's: both Windows builds on the x64
+# runner, macOS x64 cross-built on the ARM runner, Linux on native runners.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'LICENSE-*']
+  # Or from the Actions tab, on any branch, whenever a build is wanted.
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      # Which target broke, and whether the rest still build, is the useful
+      # information.
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: windows-arm64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+          - name: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+          - name: macos-x64
+            os: macos-14
+            target: x86_64-apple-darwin
+          - name: linux-x64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: linux-arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+
+    name: ${{ matrix.name }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Add the target
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # The jobs sharing a runner image would otherwise share one cache
+          # entry and keep evicting each other's.
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # The console front a release ships beside yagura.exe, as release.yml
+      # checks it: PowerShell waits for it, so the bare forms come back whole.
+      # x64 only: the runner cannot run ARM64.
+      - name: Check yagura.com
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $dir = "target/${{ matrix.target }}/release"
+          Copy-Item "$dir/yagura-com.exe" "$dir/yagura.com"
+          $lines = & "$dir/yagura.com" env
+          if ($lines.Count -lt 10) { throw "`$v = & yagura.com env gave $($lines.Count) line(s)" }
+          $ver = & "$dir/yagura.com" --version
+          if (-not ($ver -match '^yagura \d')) { throw "& yagura.com --version gave: '$ver'" }
+          "yagura.com: $($lines.Count) lines, $ver"
+
+      # The files a release packs: the binary (and on Windows yagura.com
+      # beside it) and the two licences.
+      - name: Gather the files
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/yagura${{ runner.os == 'Windows' && '.exe' || '' }} dist/
+          if [ "${{ runner.os }}" = Windows ]; then cp target/${{ matrix.target }}/release/yagura-com.exe dist/yagura.com; fi
+          cp LICENSE-MIT LICENSE-APACHE dist/
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          # The commit is in the name, so two downloads are never confused.
+          name: yagura-${{ matrix.name }}-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error

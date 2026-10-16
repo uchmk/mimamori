@@ -50,7 +50,12 @@
   `release.yml` はこれが緑でないと何も出さない。
 - `Audit`（`.github/workflows/audit.yml`、2026-10-16 から。kura・tsumugi・ito と同じ）は `cargo audit`（RustSec の脆弱性の一覧）を
   main への push・PR・毎週月曜に回す。脆弱性で落ち、警告（保守されていないクレートなど）では落ちない。ci.yml と分けてあるのは、
-  コードが変わらなくても新しい脆弱性が出れば赤くなるから。`merge-lanes.yml` は CI と Audit の終わりで起きる。
+  コードが変わらなくても新しい脆弱性が出れば赤くなるから。`merge-lanes.yml` は CI・Checklists・Audit の終わりで起きる。
+- `Checklists`（`.github/workflows/checklists.yml`、v0.65.1 から）は `tests/checklist.rs` で TESTING.md の行の形（`## 3d. …` の節の下に
+  `- [ ] 3d.8 …`、印は ` `・`x`・`~`、ID は節と合い重ならない）を確かめる。TESTING.md だけの変更でも回る。行を足すときは節の中で空いている番号を使う。
+  レーンの PR は行に印を付ければこれ（ジョブ `checklists`）が緑になるまでマージされず、merge-lanes.py は分担を push した後に ci.yml と checklists.yml を起こす。
+- `Build`（`.github/workflows/build.yml`、v0.65.1 から。kura と同じ 6 つ）は main への push と手動で、リリースと同じ 6 つのターゲットを
+  `--release` でリンクし、`yagura.com` を確かめ、実行ファイルとライセンスを成果物 `yagura-<名前>-<コミット>` に残す。テストは回さない。
 - CI の `smoke` は `scripts/smoke-linux.sh`（xrun.sh で 1〜0 と F（fleet）の画面を順に撮り、panic・別の画面・真っ平らな画像で落ちる）。画像は成果物 `linux-smoke` に残る。
   画面を足したら、このスクリプトの `screens` にも足す。
 

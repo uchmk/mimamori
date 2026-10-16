@@ -4,9 +4,8 @@
 """Merge the real-machine lanes' pull requests that keep to the rules.
 
 Run by .github/workflows/merge-lanes.yml. It merges a pull request from a lane
-branch (test/win-*, in tsumugi test/arm-*, in kura test/linux-*) with a merge commit
-pinned to its head, and only when all of these hold (yagura has no lanes: there
-it only keeps the labels and counts the votes):
+branch (test/win-*, in tsumugi and yagura test/arm-*, in kura test/linux-*) with
+a merge commit pinned to its head, and only when all of these hold:
 
   1. it touches only the files a lane may write: the checklists and one new
      report under qa-reports/ (kura), or the checklists and new files under
@@ -157,15 +156,17 @@ RULES = {
         "lanes": {"test/win-": YAGURA_WINDOWS_MARKS, "test/arm-": YAGURA_WINDOWS_MARKS},
         "reports": (0, 99),
         "evidence_in_report": True,
-        # the pull request of a lane touches only markdown, which ci.yml ignores
-        "required_checks": [],
+        # the pull request of a lane touches only markdown, which ci.yml
+        # ignores; checklists.yml checks TESTING.md's rows (yagura v0.65.1)
+        "required_checks": ["checklists"],
         "hold_heading": None,
         "share": {
             "role": None,
             "todo_heading": None,
             "todo_mark": "",
             "issues": True,
-            "dispatch": [],
+            # a push with the workflow's token starts no workflows, except these
+            "dispatch": ["ci.yml", "checklists.yml"],
         },
         "labels": True,
         "votes": True,

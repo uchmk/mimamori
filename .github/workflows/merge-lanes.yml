@@ -19,11 +19,13 @@ name: Merge lanes
 # when a lane's pull request is opened or updated (one that changes only
 # markdown has no check to finish), every hour as a fallback, and by hand. It reads pull requests through the
 # API and git and runs only main's copy of the script, never the pull
-# request's code. Its pushes start no workflows, so it starts CI on main by workflow_dispatch after a share.
+# request's code. Its pushes start no workflows, so it starts CI and
+# Checklists on main by workflow_dispatch after a share. A lane's pull request
+# that ticks rows waits for Checklists (TESTING.md's rows keep their form).
 
 on:
   workflow_run:
-    workflows: [CI, Audit]
+    workflows: [CI, Checklists, Audit]
     types: [completed]
   # A pull request that changes only markdown starts no CI (paths-ignore), so no
   # check workflow finishes for it; its own update starts this instead.

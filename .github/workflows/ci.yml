@@ -6,6 +6,9 @@ on:
     paths-ignore: ['**.md', 'LICENSE-*']
   pull_request:
     paths-ignore: ['**.md', 'LICENSE-*']
+  # merge-lanes.py starts it after pushing its share to main, since a push
+  # with the workflow's token starts no workflows.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
