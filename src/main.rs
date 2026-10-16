@@ -38,6 +38,7 @@ use app::{App, Mode};
 use config::cmd::Act;
 use config::keys::{Key, from_egui};
 use config::{keymap::Keymap, settings, theme};
+use ito_common::window::{Seen, Tracker};
 use ito_keyscript::{Do, Runner};
 
 /// The window's icon, in pixels square.
@@ -111,66 +112,15 @@ struct Yagura {
     todo: Vec<Do>,
     /// The one question to GitHub about a newer release, until it answers.
     update: Option<std::sync::mpsc::Receiver<ito_common::update::Update>>,
-    /// Where the window is and was last written (`window.toml`); `None`
-    /// folder (or `--keys`) remembers nothing.
-    place: Place,
-}
-
-/// The window's place, written to `window.toml` once it has stayed put.
-struct Place {
-    dir: Option<PathBuf>,
-    now: Option<ito_common::window::Window>,
-    saved: Option<ito_common::window::Window>,
-    changed: std::time::Instant,
+    /// Writes the window's place to `window.toml` once it has stayed put, and
+    /// when the window closes (#58); `None` folder (or `--keys`) remembers
+    /// nothing.
+    place: Option<Tracker>,
 }
 
 /// A guess at the primary monitor, to refuse a saved place no screen shows,
 /// where the OS is not asked for its screens (macOS, Linux).
 const PRIMARY_GUESS: (f32, f32) = (1920.0, 1080.0);
-
-impl Place {
-    /// Note where the window is and write it once it has stayed there for a
-    /// moment (`force` at the end: now). The disk is touched on a thread of
-    /// its own.
-    fn remember(&mut self, ctx: &egui::Context, force: bool) {
-        use ito_common::window::Window;
-        let Some(dir) = self.dir.clone() else { return };
-        let (outer, inner, maximized, minimized) = ctx.input(|i| {
-            let v = i.viewport();
-            (v.outer_rect, v.inner_rect, v.maximized.unwrap_or(false), v.minimized.unwrap_or(false))
-        });
-        if let (Some(o), Some(i)) = (outer, inner)
-            && !minimized
-        {
-            // Maximized, the place is the one before it: leaving the maximum
-            // goes back there.
-            let was = self.now.filter(|_| maximized);
-            let now = match was {
-                Some(w) => Window { maximized, ..w },
-                None => Window { x: o.min.x, y: o.min.y, w: i.width(), h: i.height(), maximized },
-            };
-            if self.now != Some(now) {
-                self.now = Some(now);
-                self.changed = std::time::Instant::now();
-            }
-        }
-        let Some(place) = self.now.filter(|p| self.saved != Some(*p)) else { return };
-        let still = Duration::from_millis(800);
-        let left = still.saturating_sub(self.changed.elapsed());
-        if !force && !left.is_zero() {
-            ctx.request_repaint_after(left);
-            return;
-        }
-        self.saved = Some(place);
-        if force {
-            let _ = ito_common::window::write(&dir, &place);
-        } else {
-            let _ = std::thread::Builder::new().name("yagura-window".into()).spawn(move || {
-                let _ = ito_common::window::write(&dir, &place);
-            });
-        }
-    }
-}
 
 impl Yagura {
     fn write_state(&self, path: PathBuf, tail: &str) {
@@ -264,8 +214,8 @@ impl Yagura {
 
 impl eframe::App for Yagura {
     fn on_exit(&mut self) {
-        if let Some(ctx) = self.app.wake.clone() {
-            self.place.remember(&ctx, true);
+        if let (Some(place), Some(ctx)) = (&mut self.place, &self.app.wake) {
+            place.close(Seen::of(ctx));
         }
     }
 
@@ -318,7 +268,9 @@ impl eframe::App for Yagura {
         if let Some(left) = self.app.probe_agent() {
             ctx.request_repaint_after(left);
         }
-        self.place.remember(&ctx, false);
+        if let Some(left) = self.place.as_mut().and_then(|p| p.see(Seen::of(&ctx))) {
+            ctx.request_repaint_after(left);
+        }
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
@@ -518,10 +470,11 @@ fn main() -> eframe::Result {
         eprintln!("yagura: {w}");
     }
     // Where the window was when it last closed, unless a script is driving
-    // it (its screenshots want the size they ask for). What no screen could
-    // show is not put back.
+    // it (its screenshots want the size they ask for). A place on none of the
+    // screens there are now (one that was unplugged) is not put back.
     let remembers = script.is_none();
-    let saved_place = state_dir.as_deref().filter(|_| remembers).and_then(ito_common::window::read);
+    let place =
+        state_dir.as_deref().filter(|_| remembers).and_then(ito_common::window::read).filter(|w| w.reachable_now(PRIMARY_GUESS, 100.0));
     let place_dir = state_dir.clone().filter(|_| remembers);
     let saver = persist::Saver::new(state_dir);
     let interval = s.interval;
@@ -536,16 +489,21 @@ fn main() -> eframe::Result {
         // The title bar, Alt+Tab, the taskbar and the Dock; build.rs bakes
         // the same drawing into yagura.exe for Explorer.
         .with_icon(std::sync::Arc::new(egui::IconData { rgba: icon::rgba(ICON_PX), width: ICON_PX, height: ICON_PX }));
-    // A place on none of the screens there are now (one that was unplugged)
-    // is not put back.
-    if let Some(w) = saved_place.filter(|w| w.reachable_now(PRIMARY_GUESS, 100.0)) {
-        viewport = viewport.with_inner_size([w.w, w.h]).with_position([w.x, w.y]).with_maximized(w.maximized);
+    // Made at the place without the zoom; on Windows `put` (in the creator
+    // below, while the window is hidden) moves it to the pixels it was
+    // closed at, so a second screen at another scale gets it back (#58).
+    if let Some(w) = place {
+        let o = w.opening();
+        viewport = viewport.with_inner_size(o.size).with_position(o.pos).with_maximized(o.maximized);
     }
     let options = eframe::NativeOptions { viewport, wgpu_options, ..Default::default() };
     eframe::run_native(
         "yagura",
         options,
         Box::new(move |cc| {
+            if let Some(w) = place {
+                w.put(cc);
+            }
             cc.egui_ctx.set_visuals(theme::visuals());
             fonts::load_in_background(cc.egui_ctx.clone());
             let (rx, ctl) = collect::spawn(Some(cc.egui_ctx.clone()), Duration::from_secs_f32(interval));
@@ -580,7 +538,7 @@ fn main() -> eframe::Result {
                 script: script.map(|steps| Runner::new(steps, done)),
                 todo: Vec::new(),
                 update,
-                place: Place { dir: place_dir, now: saved_place, saved: saved_place, changed: std::time::Instant::now() },
+                place: place_dir.map(|dir| Tracker::new(dir, place)),
             }))
         }),
     )

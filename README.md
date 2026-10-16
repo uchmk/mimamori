@@ -107,8 +107,9 @@ start moves it.
 
 The window's position, size and maximized state go to `window.toml` in the same
 folder (the file kura and tsumugi use too, one per app), written once the window
-has stayed put for a moment and again on exit, and put back at the next start.
-A place no screen could show is ignored, and so is any under `--keys`.
+has stayed put for a moment and again on exit, and put back at the next start,
+on a second screen at another scale too. A place no screen could show is
+ignored, and so is any under `--keys`.
 
 `common.toml` is shared: change it and every uchmk app (tsumugi, yagura,
 and kura to come) follows within 2 s, with no restart:
