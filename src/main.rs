@@ -38,7 +38,7 @@ use app::{App, Mode};
 use config::cmd::Act;
 use config::keys::{Key, from_egui};
 use config::{keymap::Keymap, settings, theme};
-use ito_common::window::{Seen, Tracker};
+use ito_common::window::{Saved, Seen, Tracker};
 use ito_keyscript::{Do, Runner};
 
 /// The window's icon, in pixels square.
@@ -117,10 +117,6 @@ struct Yagura {
     /// nothing.
     place: Option<Tracker>,
 }
-
-/// A guess at the primary monitor, to refuse a saved place no screen shows,
-/// where the OS is not asked for its screens (macOS, Linux).
-const PRIMARY_GUESS: (f32, f32) = (1920.0, 1080.0);
 
 impl Yagura {
     fn write_state(&self, path: PathBuf, tail: &str) {
@@ -268,8 +264,8 @@ impl eframe::App for Yagura {
         if let Some(left) = self.app.probe_agent() {
             ctx.request_repaint_after(left);
         }
-        if let Some(left) = self.place.as_mut().and_then(|p| p.see(Seen::of(&ctx))) {
-            ctx.request_repaint_after(left);
+        if let Some(place) = self.place.as_mut() {
+            place.follow(&ctx);
         }
     }
 
@@ -487,12 +483,11 @@ fn main() -> eframe::Result {
         err(&format!("yagura: {w}\n"));
     }
     // Where the window was when it last closed, unless a script is driving
-    // it (its screenshots want the size they ask for). A place on none of the
-    // screens there are now (one that was unplugged) is not put back.
-    let remembers = script.is_none();
-    let place =
-        state_dir.as_deref().filter(|_| remembers).and_then(ito_common::window::read).filter(|w| w.reachable_now(PRIMARY_GUESS, 100.0));
-    let place_dir = state_dir.clone().filter(|_| remembers);
+    // it (its screenshots want the size they ask for). ito's `Saved` reads
+    // it: a place on none of the screens there are now (one that was
+    // unplugged) is not put back, and a file from before the zoom was kept
+    // is read at common.toml's `scale`.
+    let saved = Saved::load(state_dir.clone().filter(|_| script.is_none()));
     let saver = persist::Saver::new(state_dir);
     let interval = s.interval;
     let check_updates = s.check_updates;
@@ -509,18 +504,13 @@ fn main() -> eframe::Result {
     // Made at the place without the zoom; on Windows `put` (in the creator
     // below, while the window is hidden) moves it to the pixels it was
     // closed at, so a second screen at another scale gets it back (#58).
-    if let Some(w) = place {
-        let o = w.opening();
-        viewport = viewport.with_inner_size(o.size).with_position(o.pos).with_maximized(o.maximized);
-    }
+    viewport = saved.viewport(viewport);
     let options = eframe::NativeOptions { viewport, wgpu_options, ..Default::default() };
     eframe::run_native(
         "yagura",
         options,
         Box::new(move |cc| {
-            if let Some(w) = place {
-                w.put(cc);
-            }
+            saved.put(cc);
             cc.egui_ctx.set_visuals(theme::visuals());
             fonts::load_in_background(cc.egui_ctx.clone());
             let (rx, ctl) = collect::spawn(Some(cc.egui_ctx.clone()), Duration::from_secs_f32(interval));
@@ -555,7 +545,7 @@ fn main() -> eframe::Result {
                 script: script.map(|steps| Runner::new(steps, done)),
                 todo: Vec::new(),
                 update,
-                place: place_dir.map(|dir| Tracker::new(dir, place)),
+                place: saved.tracker(),
             }))
         }),
     )
