@@ -41,7 +41,7 @@ pub fn current_language() -> &'static str {
 fn table(code: &str) -> Table {
     let (t, errors) = Table::new(AVAILABLE, code);
     for e in errors {
-        eprintln!("yagura: {e}");
+        crate::err(&format!("yagura: {e}\n"));
     }
     t
 }

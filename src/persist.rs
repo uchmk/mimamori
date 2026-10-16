@@ -124,7 +124,7 @@ impl Saver {
                     text = newer;
                 }
                 if let Err(e) = write(&dir, &text) {
-                    eprintln!("yagura: state.toml: {e}");
+                    crate::err(&format!("yagura: state.toml: {e}\n"));
                 }
             }
         });

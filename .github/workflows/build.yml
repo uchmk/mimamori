@@ -69,7 +69,10 @@ jobs:
 
       # The console front a release ships beside yagura.exe, as release.yml
       # checks it: PowerShell waits for it, so the bare forms come back whole.
-      # x64 only: the runner cannot run ARM64.
+      # x64 only: the runner cannot run ARM64. Run straight, yagura.exe gets a
+      # pipe for `$v = & yagura.exe --version` and closes it without waiting.
+      # The write is let go there, where println! panicked (os error 232):
+      # here the pipe is closed before yagura.exe has started writing.
       - name: Check yagura.com
         if: matrix.target == 'x86_64-pc-windows-msvc'
         shell: pwsh
@@ -80,6 +83,15 @@ jobs:
           if ($lines.Count -lt 10) { throw "`$v = & yagura.com env gave $($lines.Count) line(s)" }
           $ver = & "$dir/yagura.com" --version
           if (-not ($ver -match '^yagura \d')) { throw "& yagura.com --version gave: '$ver'" }
+          $p = [System.Diagnostics.Process]::new()
+          $p.StartInfo.FileName = (Resolve-Path "$dir/yagura.exe").Path
+          $p.StartInfo.Arguments = '--version'
+          $p.StartInfo.UseShellExecute = $false
+          $p.StartInfo.RedirectStandardOutput = $true
+          [void]$p.Start()
+          $p.StandardOutput.Close()
+          $p.WaitForExit()
+          if ($p.ExitCode -ne 0) { throw "yagura.exe --version into a closed pipe exited $($p.ExitCode)" }
           "yagura.com: $($lines.Count) lines, $ver"
 
       # The files a release packs: the binary (and on Windows yagura.com

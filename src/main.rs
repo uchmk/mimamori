@@ -126,7 +126,7 @@ impl Yagura {
     fn write_state(&self, path: PathBuf, tail: &str) {
         let text = format!("{}{tail}", self.app.report());
         if let Err(e) = std::fs::write(&path, text) {
-            eprintln!("yagura --keys: {}: {e}", path.display());
+            err(&format!("yagura --keys: {}: {e}\n", path.display()));
         }
     }
 
@@ -278,8 +278,25 @@ impl eframe::App for Yagura {
     }
 }
 
+/// Writes an answer (`--version`, `env`, `--snapshot`) to standard output:
+/// ito's `ito_console::out` (v0.66.0, shared with every uchmk app). A file or
+/// a pipe gets the text as it is, a console gets it in UTF-16 whatever its
+/// code page, and nobody reading lets it go: `$v = & yagura.exe --version`
+/// hands it a pipe PowerShell has already closed, where `println!` panicked.
+/// No newline is added.
+fn out(text: &str) {
+    ito_console::out(text);
+}
+
+/// [`out`] on standard error, for warnings, refusals and the agent's log.
+fn err(text: &str) {
+    ito_console::err(text);
+}
+
 /// A release build on Windows has no console of its own: borrow the one it
-/// was started from, so `--help`, `--version` and `--agent` can be read.
+/// was started from. [`out`] and [`err`] would join it themselves; this is
+/// for the programs it starts (`reg` for `--install-service`), so they write
+/// there too rather than open a console of their own.
 #[cfg(windows)]
 fn attach_console() {
     use ::windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
@@ -307,29 +324,29 @@ fn main() -> eframe::Result {
     while let Some(a) = args.next() {
         match a.as_str() {
             "--version" | "-V" => {
-                println!("yagura {}", env!("CARGO_PKG_VERSION"));
+                out(&format!("yagura {}\n", env!("CARGO_PKG_VERSION")));
                 return Ok(());
             }
             "--help" | "-h" => {
-                println!("{USAGE}");
+                out(&format!("{USAGE}\n"));
                 return Ok(());
             }
             "env" | "--env" => {
-                let out = match (args.next().as_deref(), args.next()) {
+                let to = match (args.next().as_deref(), args.next()) {
                     (None, _) => None,
                     (Some("--out"), Some(p)) => Some(PathBuf::from(p)),
                     _ => {
-                        eprintln!("yagura: env takes only `--out FILE`");
+                        err("yagura: env takes only `--out FILE`\n");
                         std::process::exit(2);
                     }
                 };
                 let text = envreport::text();
-                match out {
-                    None => print!("{text}"),
+                match to {
+                    None => out(&text),
                     Some(path) => match std::fs::write(&path, &text) {
-                        Ok(()) => eprintln!("yagura: wrote {}", std::path::absolute(&path).unwrap_or(path).display()),
+                        Ok(()) => err(&format!("yagura: wrote {}\n", std::path::absolute(&path).unwrap_or(path).display())),
                         Err(e) => {
-                            eprintln!("yagura: {}: {e}", path.display());
+                            err(&format!("yagura: {}: {e}\n", path.display()));
                             std::process::exit(1);
                         }
                     },
@@ -339,7 +356,7 @@ fn main() -> eframe::Result {
             "--agent" => agent = true,
             "--log" => {
                 let Some(p) = args.next() else {
-                    eprintln!("yagura: --log needs a file");
+                    err("yagura: --log needs a file\n");
                     std::process::exit(2);
                 };
                 log = Some(PathBuf::from(p));
@@ -347,7 +364,7 @@ fn main() -> eframe::Result {
             "--snapshot" => snapshot = true,
             "--log-metrics" => {
                 let Some(p) = args.next() else {
-                    eprintln!("yagura: --log-metrics needs a file");
+                    err("yagura: --log-metrics needs a file\n");
                     std::process::exit(2);
                 };
                 metrics = Some(PathBuf::from(p));
@@ -355,7 +372,7 @@ fn main() -> eframe::Result {
             "--every" => match args.next().and_then(|v| v.parse::<f64>().ok()).filter(|v| *v >= 1.0 && v.is_finite()) {
                 Some(v) => every = v,
                 None => {
-                    eprintln!("yagura: --every needs a number of seconds, 1 or more");
+                    err("yagura: --every needs a number of seconds, 1 or more\n");
                     std::process::exit(2);
                 }
             },
@@ -364,19 +381,19 @@ fn main() -> eframe::Result {
             "--uninstall-service" => service = Some(false),
             "--keys" => {
                 let Some(s) = args.next() else {
-                    eprintln!("yagura: --keys needs a script");
+                    err("yagura: --keys needs a script\n");
                     std::process::exit(2);
                 };
                 match ito_keyscript::parse(&s) {
                     Ok(steps) => script = Some(steps),
                     Err(e) => {
-                        eprintln!("yagura --keys: {e}");
+                        err(&format!("yagura --keys: {e}\n"));
                         std::process::exit(2);
                     }
                 }
             }
             other => {
-                eprintln!("yagura: unknown argument `{other}`\n\n{USAGE}");
+                err(&format!("yagura: unknown argument `{other}`\n\n{USAGE}\n"));
                 std::process::exit(2);
             }
         }
@@ -385,20 +402,20 @@ fn main() -> eframe::Result {
     let s = settings::load(None);
     if let Some(install) = service {
         for w in &s.warnings {
-            eprintln!("yagura: {w}");
+            err(&format!("yagura: {w}\n"));
         }
         let done = if install { service::install(s.port) } else { service::uninstall(s.port) };
         if let Err(e) = done {
-            eprintln!("yagura: {e}");
+            err(&format!("yagura: {e}\n"));
             std::process::exit(1);
         }
         return Ok(());
     }
     if snapshot {
         match export::snapshot() {
-            Ok(json) => println!("{json}"),
+            Ok(json) => out(&format!("{json}\n")),
             Err(e) => {
-                eprintln!("yagura --snapshot: {e}");
+                err(&format!("yagura --snapshot: {e}\n"));
                 std::process::exit(1);
             }
         }
@@ -406,20 +423,20 @@ fn main() -> eframe::Result {
     }
     if let Some(path) = &metrics {
         if let Err(e) = export::log_metrics(path, Duration::from_secs_f64(every)) {
-            eprintln!("yagura --log-metrics: {e}");
+            err(&format!("yagura --log-metrics: {e}\n"));
             std::process::exit(1);
         }
         return Ok(());
     }
     if show_key {
         let Some(dir) = &s.dir else {
-            eprintln!("yagura --key: this machine has no config folder to keep a key in");
+            err("yagura --key: this machine has no config folder to keep a key in\n");
             std::process::exit(1);
         };
         match remote::noise::load_or_make(dir) {
-            Ok(keys) => print!("{}", remote::noise::howto(&keys.public, &remote::noise::key_path(dir), &remote::noise::host_name())),
+            Ok(keys) => out(&remote::noise::howto(&keys.public, &remote::noise::key_path(dir), &remote::noise::host_name())),
             Err(e) => {
-                eprintln!("yagura --key: {e}");
+                err(&format!("yagura --key: {e}\n"));
                 std::process::exit(1);
             }
         }
@@ -429,25 +446,25 @@ fn main() -> eframe::Result {
         if let Some(path) = &log
             && let Err(e) = remote::agent::log_to(path)
         {
-            eprintln!("yagura --log: {}: {e}", path.display());
+            err(&format!("yagura --log: {}: {e}\n", path.display()));
             std::process::exit(1);
         }
         for w in &s.warnings {
-            eprintln!("yagura: {w}");
+            err(&format!("yagura: {w}\n"));
         }
         let direct = s.listen.as_ref().map(|listen| {
             let keys = s.dir.as_deref().ok_or_else(|| "this machine has no config folder to keep a key in".to_string());
             match keys.and_then(|d| remote::noise::load_or_make(d).map_err(|e| e.to_string())) {
                 Ok(keys) => remote::agent::Direct { listen: listen.clone(), keys, viewers: s.viewers.clone() },
                 Err(e) => {
-                    eprintln!("yagura --agent: [agent] listen: {e}");
+                    err(&format!("yagura --agent: [agent] listen: {e}\n"));
                     std::process::exit(1);
                 }
             }
         });
         let cfg = remote::agent::Config { allow: s.allow.clone(), interval: s.interval, direct, metrics: s.metrics.clone() };
         if let Err(e) = remote::agent::run(s.port, cfg) {
-            eprintln!("yagura --agent: 127.0.0.1:{}: {e}", s.port);
+            err(&format!("yagura --agent: 127.0.0.1:{}: {e}\n", s.port));
             std::process::exit(1);
         }
         return Ok(());
@@ -467,7 +484,7 @@ fn main() -> eframe::Result {
         .chain(state_note)
         .collect();
     for w in &warnings {
-        eprintln!("yagura: {w}");
+        err(&format!("yagura: {w}\n"));
     }
     // Where the window was when it last closed, unless a script is driving
     // it (its screenshots want the size they ask for). A place on none of the

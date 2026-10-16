@@ -501,7 +501,10 @@ comes back empty and `yagura --version` prints after the prompt. The Windows zip
 `yagura` finds it first. For the commands that answer in text (`env`, `--version`, `--help`,
 `--agent`, `--snapshot`, `--log-metrics`, `--key`, `--install-service`, `--uninstall-service`) it
 runs `yagura.exe` with the same arguments and handles, waits, and passes on the exit code;
-anything else opens the window and returns once it is up. **Keep the two in one folder.**
+anything else opens the window and returns once it is up. Opened from a pipe, the window
+writes into a file of its own in the temporary folder (`yagura-com-*.out` and `.err`), copied
+out once it is up and deleted when it closes. The front is the one every uchmk app shares
+(ito's `ito-console`). **Keep the two in one folder.**
 Building yourself, `cargo build --release` makes `yagura-com.exe`: copy it to `yagura.com`
 beside `yagura.exe`.
 

@@ -39,7 +39,7 @@ pub fn install(port: u16) -> Result<(), String> {
 /// Stop the agent started at logon and forget it. Nothing installed is fine.
 pub fn uninstall(port: u16) -> Result<(), String> {
     if !imp::uninstall(port)? {
-        println!("yagura: the agent was not installed as a service");
+        crate::out("yagura: the agent was not installed as a service\n");
     }
     Ok(())
 }
@@ -51,7 +51,7 @@ fn run(prog: &str, args: &[String]) -> Result<(), String> {
     let out = Command::new(prog).args(args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).output();
     match out {
         Ok(o) if o.status.success() => {
-            println!("ran {shown}");
+            crate::out(&format!("ran {shown}\n"));
             Ok(())
         }
         Ok(o) => {
@@ -74,14 +74,14 @@ fn write(path: &Path, body: &[u8]) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     }
     std::fs::write(path, body).map_err(|e| format!("{}: {e}", path.display()))?;
-    println!("wrote {}", path.display());
+    crate::out(&format!("wrote {}\n", path.display()));
     Ok(())
 }
 
 #[cfg(not(windows))]
 fn remove(path: &Path) -> Result<(), String> {
     std::fs::remove_file(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    println!("removed {}", path.display());
+    crate::out(&format!("removed {}\n", path.display()));
     Ok(())
 }
 
@@ -178,7 +178,7 @@ mod imp {
         write(&unit()?, systemd_unit(exe, env).as_bytes())?;
         systemctl(&["daemon-reload"])?;
         systemctl(&["enable", "--now", &format!("{NAME}.service")])?;
-        println!("the agent starts at logon; `journalctl --user -u {NAME}` shows what it says");
+        crate::out(&format!("the agent starts at logon; `journalctl --user -u {NAME}` shows what it says\n"));
         Ok(())
     }
 
@@ -226,11 +226,11 @@ mod imp {
         let log = log.map(|l| l.to_string_lossy().into_owned());
         write(&path, &launchd_plist(exe, env, log.as_deref()))?;
         if bootout() {
-            println!("unloaded the agent loaded before");
+            crate::out("unloaded the agent loaded before\n");
         }
         run("launchctl", &["bootstrap".to_string(), format!("gui/{}", uid()), path.to_string_lossy().into_owned()])?;
         if let Some(log) = log {
-            println!("the agent starts at logon; it writes to {log}");
+            crate::out(&format!("the agent starts at logon; it writes to {log}\n"));
         }
         Ok(())
     }
@@ -241,7 +241,7 @@ mod imp {
             return Ok(false);
         }
         if bootout() {
-            println!("stopped the agent");
+            crate::out("stopped the agent\n");
         }
         remove(&path)?;
         Ok(true)
@@ -264,13 +264,13 @@ mod imp {
     pub fn install(exe: &str, env: &[(String, String)], log: Option<&Path>, port: u16) -> Result<(), String> {
         if !env.is_empty() {
             let names: Vec<&str> = env.iter().map(|(k, _)| k.as_str()).collect();
-            eprintln!("yagura: {} will not reach the agent started at logon; set them for the user instead", names.join(", "));
+            crate::err(&format!("yagura: {} will not reach the agent started at logon; set them for the user instead\n", names.join(", ")));
         }
         let log = log.map(|l| l.to_string_lossy().into_owned());
         run("reg", &reg_add(&run_line(exe, log.as_deref())))?;
         // The Run key starts it at the next logon; this one starts it now.
         match client::probe(port) {
-            Ok((hello, _)) => println!("an agent is already running (process {})", hello.pid),
+            Ok((hello, _)) => crate::out(&format!("an agent is already running (process {})\n", hello.pid)),
             Err(Why::Refused) => {
                 let mut cmd = Command::new(exe);
                 cmd.arg("--agent");
@@ -284,12 +284,12 @@ mod imp {
                     .stderr(Stdio::null())
                     .spawn()
                     .map_err(|e| format!("{exe} --agent: {e}"))?;
-                println!("started the agent (process {})", child.id());
+                crate::out(&format!("started the agent (process {})\n", child.id()));
             }
-            Err(e) => eprintln!("yagura: 127.0.0.1:{port}: {}", crate::ui::fleet::why_text(&e)),
+            Err(e) => crate::err(&format!("yagura: 127.0.0.1:{port}: {}\n", crate::ui::fleet::why_text(&e))),
         }
         if let Some(log) = log {
-            println!("the agent starts at logon; it writes to {log}");
+            crate::out(&format!("the agent starts at logon; it writes to {log}\n"));
         }
         Ok(())
     }
@@ -310,7 +310,7 @@ mod imp {
             let t = kill::Target { pid: hello.pid, name: "yagura".into(), start: 0 };
             match kill::end(&t, kill::GRACE) {
                 kill::Outcome::Failed(e) => return Err(format!("process {}: {e}", hello.pid)),
-                _ => println!("stopped the agent (process {})", hello.pid),
+                _ => crate::out(&format!("stopped the agent (process {})\n", hello.pid)),
             }
         }
         Ok(true)

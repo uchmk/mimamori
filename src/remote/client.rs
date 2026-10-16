@@ -149,7 +149,7 @@ pub fn spawn(hosts: &[Host], dir: Option<PathBuf>, wake: Option<egui::Context>) 
             })
         });
         if let Err(e) = spawned {
-            eprintln!("yagura: {}: {e}", h.name);
+            crate::err(&format!("yagura: {}: {e}\n", h.name));
         }
     }
     (rx, senders)

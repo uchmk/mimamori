@@ -89,7 +89,7 @@ pub fn log_to(path: &Path) -> io::Result<()> {
 
 /// A line to stderr and the log.
 fn say(line: std::fmt::Arguments) {
-    eprintln!("{line}");
+    crate::err(&format!("{line}\n"));
     if let Some(f) = LOG.get()
         && let Ok(mut f) = f.lock()
     {

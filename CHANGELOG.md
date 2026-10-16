@@ -4,6 +4,22 @@
 [セマンティックバージョニング](https://semver.org/lang/ja/) に従う。版は `Cargo.toml` の
 `version` が正。手順は [CLAUDE.md](CLAUDE.md) の「版・変更ログ・push」を参照。
 
+## [0.66.0] - 2026-10-16
+
+### 変更
+
+- `yagura.com` の中身を ito 0.42.0 の `ito_console::front` にした（kura・tsumugi・minato・michi と同じもの）。
+  yagura に残るのは、文字で答えるコマンドの表（`ANSWERS`）と値を取るオプションの表（`TAKES_VALUE`）だけ。
+  パイプから窓を開いたとき、窓の出力は一時フォルダのファイル（`yagura-com-<番号>-<番号>.out` と `.err`）に書き、
+  窓が上がった時点で一度だけ写し、窓を閉じると消える（前は `yagura.com` 自身のパイプを窓が上がるまで写していた）。
+- `yagura.exe` の答え（`env`・`--version`・`--help`・`--snapshot` など）とエラー・警告の行（`--agent` のログ、
+  `--install-service` を含む）は `ito_console::out` / `err` で書く。読む側が閉じたパイプでも panic しない
+  （`$v = & yagura.exe --version` を `.com` を通さずに回したとき）。コンソールには UTF-16 で書くので、
+  日本語のパスも cmd で読める。
+- ito 0.42.0 に上げた。
+- TESTING.md に 5.27（一時ファイル・日本語のパス・閉じたパイプ）を足した。build.yml の `Check yagura.com` に、
+  閉じたパイプへの `yagura.exe --version` を足した。
+
 ## [0.65.2] - 2026-10-16
 
 ### 修正
