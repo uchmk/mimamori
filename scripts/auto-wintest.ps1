@@ -635,6 +635,7 @@ $chunkText
 - コミットするのは TESTING.md と報告だけです（``git add TESTING.md <報告>``。``git add -A`` は使わない）。``--keys`` の ``<State:…>``・``<Shot:…>`` の出力先は $kit の下にし、チェックアウトには作りません。
 - TESTING.md で変えてよいのは行頭の印（``[ ]`` → ``[x]``・``[~]``）だけです。行の文に結果や日付を書き足さないでください（Merge lanes が「a row's text changed」で止めます）。確かめた内容は報告に書きます。
 - 作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています。
+- 起動するエージェントは 127.0.0.1 だけで待ち受けます。直接つなぐ行（``[agent] listen``）で見る側もこの機械にいるときは、``listen = "127.0.0.1:7314"`` と ``[[host]]`` の ``addr = "127.0.0.1"`` を書きます（``--key`` が出す ``0.0.0.0`` にしない）。すべてのアドレスで待ち受けると Windows Defender ファイアウォールの確認が出て、人が答えるまでほかのアプリのレーンの机まで止めます（uchmk/tsumugi#24）。それでも確認が出たら、どちらのボタンも押さず（キャンセルは拒否の規則を足す）、起動したものを止めて報告に書きます。
 - 所見（不具合・提案）は ``gh issue create --repo $repo -l finding,lane:$Lane --title "<1 行>" --body-file <ファイル>`` で issue にし（欄は .github/ISSUE_TEMPLATE/finding.yml、不具合なら ``bug`` も付ける）、PR 本文に ``Findings: #N, #M`` と書きます。gh で issue が作れなかったときだけ、報告の ``### Proposals`` に書きます。
 
 "@
