@@ -6,6 +6,14 @@
 
 ## [未リリース]
 
+## [0.68.1] - 2026-10-17
+
+### 修正
+
+- CI・ARM64・Build・Checklists・Audit のワークフローに `permissions: contents: read` を書いた。書いていなかったので `GITHUB_TOKEN` が
+  リポジトリの既定の広い権限で動いていた（code scanning の `actions/missing-workflow-permissions` 10 件）。これらはコードを取り出して
+  ビルド・テストし、成果物を上げるだけで、キャッシュと成果物はトークンでなく Actions の実行環境の権限で動くので、読むだけで足りる。
+
 ## [0.68.0] - 2026-10-16
 
 ### 追加
