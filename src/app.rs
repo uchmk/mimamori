@@ -841,6 +841,12 @@ impl App {
         self.give_up_key();
     }
 
+    /// Opens the pre-filled bug report (F12, and the button on the Advanced page).
+    pub fn bug_report(&mut self) {
+        self.prefs.open_url(crate::bugreport::url(&self.prefs.settings, self.prefs.common.scale_or_one()));
+        self.toast(tr("toast.bugreport"));
+    }
+
     pub fn close_settings(&mut self) {
         self.mode = Mode::Normal;
         self.give_up_key();
@@ -2414,10 +2420,7 @@ impl App {
                 self.mode = Mode::Help;
                 self.help_scroll = 0;
             }
-            Act::BugReport => {
-                self.prefs.open_url(crate::bugreport::url(&self.prefs.settings, self.prefs.common.scale_or_one()));
-                self.toast(tr("toast.bugreport"));
-            }
+            Act::BugReport => self.bug_report(),
             Act::Settings => self.open_settings(),
             Act::Palette => {
                 self.palette = ito_palette::View::new();

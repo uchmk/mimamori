@@ -40,6 +40,8 @@ struct Asked {
     interval: Option<f32>,
     copy: Option<String>,
     open_folder: bool,
+    /// The bug-report button was pressed.
+    bug: bool,
     /// The fleet page was shown: read this machine's key.
     key: bool,
     /// A "Send a test" of the notifications page was pressed.
@@ -90,6 +92,7 @@ fn index() -> Vec<(usize, &'static str)> {
     v.extend(ito_prefs::keys_index(ito_prefs::KeyWords::of(current_language())).into_iter().map(|t| (KEYS, t)));
     v.extend(LAYERS.iter().map(|(_, k)| (KEYS, tr(k))));
     v.extend(ito_prefs::notify_index(w).into_iter().map(|t| (NOTIFY, t)));
+    v.extend(ito_prefs::bug_index(w).into_iter().map(|t| (ADVANCED, t)));
     for k in ["settings.backend", "settings.folder", "settings.common", "settings.warnings"] {
         v.push((ADVANCED, tr(k)));
     }
@@ -371,6 +374,9 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                     row(ui, l, tr("settings.folder"), tr("settings.no_folder"), |_| ());
                 }
             });
+            if ito_prefs::bug_card(ui, l, w) {
+                asked.bug = true;
+            }
             section(ui, l, tr("settings.warnings"), |ui| {
                 if warnings.is_empty() {
                     row(ui, l, tr("settings.no_warnings"), "", |_| ());
@@ -403,6 +409,9 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     }
     if asked.open_folder {
         app.prefs.open(false);
+    }
+    if asked.bug {
+        app.bug_report();
     }
     if asked.key {
         app.prefs.ask_key();
