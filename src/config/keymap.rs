@@ -5,6 +5,12 @@
 //! ito 0.32.0, so the two say the same about a key that can never run.
 
 use super::cmd::{self, Act};
+/// The bindings of a layer that a key can reach (`ito_keymap::live`): not
+/// `noop` and not shadowed. What the help and the hints name.
+pub fn live(layer: &[Binding]) -> impl Iterator<Item = &Binding> {
+    ito_keymap::live(layer, "noop")
+}
+
 #[cfg(test)]
 use super::keys::Key;
 
@@ -80,21 +86,6 @@ impl Keymap {
         static BUILT_IN_LAYERS: std::sync::OnceLock<Vec<(String, Vec<Binding>)>> = std::sync::OnceLock::new();
         BUILT_IN_LAYERS.get_or_init(|| Self::load(None).0.layers())
     }
-}
-
-/// The bindings of a layer that a key can reach: not `noop` (a key taken
-/// from a built-in operation) and not shadowed by an earlier binding with the
-/// same keys or a shorter one they start with. What the help and the hints
-/// name, so a key taken away is not offered.
-pub fn live(layer: &[Binding]) -> impl Iterator<Item = &Binding> {
-    layer.iter().filter(move |b| {
-        b.run != [Act::Noop]
-            && (1..=b.on.len()).all(|i| match resolve(layer, &b.on[..i]) {
-                Match::Exact(x) => i == b.on.len() && std::ptr::eq(x, *b),
-                Match::Pending(_) => i < b.on.len(),
-                Match::None => false,
-            })
-    })
 }
 
 #[cfg(test)]

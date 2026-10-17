@@ -1,6 +1,6 @@
 [package]
 name = "yagura"
-version = "0.68.3"
+version = "0.68.4"
 edition = "2024"
 rust-version = "1.95"
 description = "A keyboard-driven system monitor: cores and threads at a glance"
@@ -32,6 +32,7 @@ ito-i18n = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d2
 # yazi's key notation and egui's key events in the same terms, shared with tsumugi.
 ito-keys = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309", features = ["egui"] }
 ito-keymap = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
+ito-help = { git = "https://github.com/uchmk/ito", rev = "2c82056fc6da21003b77d27b562eb509d7adf309" }
 # common.toml (theme, clock, language), editing a TOML file in place and
 # watching it; the themes; the settings screen's frame and widgets. All
 # shared with tsumugi and kura (ito's docs/common-spec.md).

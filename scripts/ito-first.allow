@@ -1,5 +1,4 @@
 # Known gaps against ito, kept visible on purpose: `<crate> <reason>`. Each line is a migration still to do, not a decision to stay.
-ito-help yagura has no ? / F1 key help from ito-help yet
 ito-testcheck yagura has no examples/make-testcheck yet; to be added with ito-testcheck
 dirs used in src/bugreport.rs and src/collect/svc/mac.rs; not yet replaced by ito_common::base_dir / app_dir / state_dir
 postcard used in src/remote/proto.rs for the remote protocol; whether ito-ipc covers it is undecided (ask ito if not)

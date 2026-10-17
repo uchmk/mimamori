@@ -6,6 +6,13 @@
 
 ## [未リリース]
 
+## [0.68.4] - 2026-10-17
+
+### 変更
+
+- `?` のヘルプの行の作りと描画を ito の `ito-help` に替えた（`ito_keymap::help_lines` で同じ動作の行をまとめる）。見た目は同じで、
+  文字が行の上寄せになる。`config::keymap::live` は `ito_keymap::live` の薄い包みにした。`scripts/ito-first.allow` から `ito-help` を外した。
+
 ## [0.68.3] - 2026-10-17
 
 ### 変更
