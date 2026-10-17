@@ -6,6 +6,12 @@
 
 ## [未リリース]
 
+## [0.72.1] - 2026-10-17
+
+### 変更
+
+- ito を v0.77.0（a37f44e）に上げた。全クレートを同じ rev にそろえた。組み込みのテーマが 13 から 20 に増えた（Campbell・VS Code Dark+ / Light+・GitHub Light・One Light・Rosé Pine Dawn・Tokyo Night Day）。
+
 ## [0.72.0] - 2026-10-17
 
 ### 追加

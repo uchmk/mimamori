@@ -129,9 +129,10 @@ date_format = "YYYY/MM/DD"   # or "YYYY-MM-DD", "MM/DD", "DD/MM", "MM/DD/YYYY", 
 weekday = true               # "(Sat)", or "(土)" in Japanese
 ```
 
-The 13 built-in themes are tsumugi's: tsumugi Dark and Light, Tokyo Night,
-Catppuccin Mocha and Latte, Dracula, Nord, Gruvbox Dark and Light, Solarized
-Dark and Light, One Dark and Rosé Pine. A theme of
+The 20 built-in themes are tsumugi's: tsumugi Dark and Light, Tokyo Night and
+Tokyo Night Day, Catppuccin Mocha and Latte, Dracula, Nord, Gruvbox Dark and
+Light, Solarized Dark and Light, One Dark and One Light, Rosé Pine and Rosé Pine
+Dawn, Campbell, VS Code Dark+ and Light+, and GitHub Light. A theme of
 your own is a TOML file in `<config dir>/uchmk/themes/`, in the form of
 tsumugi's themes; it shows in every app's list. The rules every uchmk app
 keeps (where the files are, the settings screen, the clock) are ito's
