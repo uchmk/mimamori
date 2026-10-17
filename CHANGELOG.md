@@ -6,6 +6,15 @@
 
 ## [未リリース]
 
+## [0.68.2] - 2026-10-17
+
+### 変更
+
+- ito を 2c82056（ito-palette 0.59.0 ほか）に上げた。パレットの `Style` に `hit`・`accent`、`Words` に `header`・`footer` が増えたので足した
+  （`header`・`footer` は空）。`Answer::Key` は `View::keys` を空のままにしているので届かず、何もしない。
+- ito の共通の確認 `scripts/ito-first.py`（ito に同じ役目のクレートがあるのに直接足した依存を落とす）を `lanes.conf` の `files=` に足して取り込んだ。
+  まだ移していないもの（`ito-help`・`ito-testcheck`・`dirs`・`postcard`）は `scripts/ito-first.allow` に理由を付けて残した。
+
 ## [0.68.1] - 2026-10-17
 
 ### 修正

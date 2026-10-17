@@ -819,10 +819,14 @@ impl App {
             dim: theme::dim(),
             selected_bg: theme::sel(),
             selected_text: theme::strong(),
+            hit: theme::yellow(),
+            accent: theme::green(),
         };
-        let words = ito_palette::Words { hint: tr("palette.hint"), none: tr("palette.none") };
+        let words = ito_palette::Words { hint: tr("palette.hint"), none: tr("palette.none"), header: "", footer: "" };
         match ito_palette::show(ctx, &mut self.palette, &entries, &style, &words) {
             None => {}
+            // No extra keys are registered (`View::keys` stays empty), so this never fires.
+            Some(ito_palette::Answer::Key(..)) => {}
             Some(ito_palette::Answer::Close) => self.mode = Mode::Normal,
             Some(ito_palette::Answer::Pick(act)) => {
                 self.mode = Mode::Normal;

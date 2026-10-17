@@ -1,0 +1,21 @@
+# ito crates every uchmk app depends on (each from some workspace member), so a
+# new app starts with them and none is "found missing" a release later.
+# `scripts/ito-first.py` fails when one is absent. An app that does not need
+# one says why in scripts/ito-first.allow (`<crate> <reason>`).
+#
+# Not listed because they are optional: ito-palette (command palette),
+# ito-layout / ito-pane / ito-select / ito-browser / ito-ipc / ito-mcp /
+# ito-graph / ito-match / ito-confirm (take them when the app has that part).
+ito-common      common.toml, config folders, window::Saved (the window's place), watching files
+ito-i18n        words by key, the language from common.toml
+ito-theme       the built-in themes and theme files
+ito-prefs       the settings screen: language / theme / clock pages, keys_page, notify_page, update_card
+ito-keys        yazi's key notation
+ito-keymap      keymap.toml and its default keys
+ito-keyscript   the --keys script, so the real window is tested without a person
+ito-help        the ? / F1 key help
+ito-notify      system notification, sound, webhook
+ito-bugreport   F12: an issue form filled with the version, OS and what the app knows
+ito-testcheck   TESTING.md -> the lanes' check tables (examples/make-testcheck)
+ito-console     APP.com in front of APP.exe
+ito-winres      the .exe's icon and version

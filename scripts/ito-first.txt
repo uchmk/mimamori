@@ -1,0 +1,48 @@
+# Crates an app must not depend on directly, because an ito crate already does
+# that job for every uchmk app. `scripts/ito-first.py` fails when a workspace
+# member lists one of these (in [dependencies], [dev-dependencies] or
+# [build-dependencies]); a crate that is only a transitive dependency is fine.
+#
+# One line: <crate> <ito crate and what to use instead>. Add a line when ito
+# gains a crate that replaces a dependency (and say so in CHANGELOG.md).
+#
+# An app that has a reason to keep one lists it, with the reason, in its own
+# scripts/ito-first.allow (same shape: `<crate> <why ito's does not do>`). If
+# ito's crate lacks something, ask ito for it (an issue in uchmk/ito) first.
+toml_edit        ito-common (edit_key / write_atomic: one key of a TOML file, comments kept)
+sys-locale       ito-common (os_language)
+dirs             ito-common (base_dir / app_dir / state_dir)
+dirs-next        ito-common (base_dir / app_dir / state_dir)
+directories      ito-common (base_dir / app_dir / state_dir)
+platform-dirs    ito-common (base_dir / app_dir / state_dir)
+etcetera         ito-common (base_dir / app_dir / state_dir)
+notify           ito-common (watch: look at files every few seconds and call back)
+notify-debouncer-mini      ito-common (watch)
+notify-debouncer-full      ito-common (watch)
+notify-rust      ito-notify (system notification, sound, webhook)
+winrt-notification         ito-notify (system notification)
+tauri-winrt-notification   ito-notify (system notification)
+win-toast-notify ito-notify (system notification)
+portable-pty     ito-pane (PTY / ConPTY)
+conpty           ito-pane (ConPTY)
+pty-process      ito-pane (PTY)
+alacritty_terminal         ito-pane (terminal emulation)
+vte              ito-pane (escape sequences)
+fancy-regex      ito-match (regex or fuzzy match rules)
+interprocess     ito-ipc (Unix socket / named pipe with length-prefixed messages)
+ipc-channel      ito-ipc
+parity-tokio-ipc ito-ipc
+postcard         ito-ipc (framed serde messages)
+wry              ito-browser (OS WebView beside a pane)
+webview2-com     ito-browser
+rmcp             ito-mcp (small stdio MCP server)
+wgpu             ito-gpu (backend choice and options; eframe's own wgpu feature is fine)
+egui-wgpu        ito-gpu
+winres           ito-winres (the .exe icon and version, no rc.exe)
+winresource      ito-winres
+embed-resource   ito-winres
+embed_resource   ito-winres
+fluent           ito-i18n (words by key, language from common.toml)
+fluent-bundle    ito-i18n
+rust-i18n        ito-i18n
+gettext-rs       ito-i18n
