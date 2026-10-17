@@ -16,6 +16,9 @@ use crate::config::edit::{self, Edit};
 use crate::config::settings::{self, Settings};
 use crate::config::theme;
 
+/// The name yagura starts at login under (`ito_common::startup`).
+const STARTUP: &str = "yagura";
+
 /// How often the files are looked at.
 const WATCH: Duration = Duration::from_secs(2);
 
@@ -29,6 +32,8 @@ pub enum Reload {
     Keys(Box<Settings>, String),
     /// This machine's public key and name, or why it could not be read.
     Key(Result<(String, String), String>),
+    /// Whether the OS starts yagura at login, as it said just now.
+    Startup(bool),
     Failed(String),
 }
 
@@ -55,6 +60,11 @@ pub struct Prefs {
     /// `None` until read.
     pub key: Option<Result<(String, String), String>>,
     key_asked: bool,
+    /// The folder of window.toml and state.toml; `None` keeps nothing.
+    pub state_dir: Option<PathBuf>,
+    /// Starts at login, as the OS said; `None` until it answers.
+    pub startup: Option<bool>,
+    startup_asked: bool,
     tx: Sender<Reload>,
     pub rx: Receiver<Reload>,
     wake: Option<egui::Context>,
@@ -80,6 +90,9 @@ impl Prefs {
             keys_edit: ito_prefs::KeysEdit::default(),
             key: None,
             key_asked: false,
+            state_dir: None,
+            startup: None,
+            startup_asked: false,
             tx,
             rx,
             wake: None,
@@ -217,6 +230,76 @@ impl Prefs {
                 .map(|k| (crate::remote::noise::encode(&k.public), crate::remote::noise::host_name()))
                 .map_err(|e| e.to_string());
             Self::send_back(&tx, &wake, Reload::Key(r));
+        });
+    }
+
+    /// Ask the OS once, on a thread, whether yagura starts at login: the
+    /// General page asks when it is first shown.
+    pub fn ask_startup(&mut self) {
+        if std::mem::replace(&mut self.startup_asked, true) {
+            return;
+        }
+        let (tx, wake) = (self.tx.clone(), self.wake.clone());
+        std::thread::spawn(move || Self::send_back(&tx, &wake, Reload::Startup(ito_common::startup::enabled(STARTUP))));
+    }
+
+    /// Start yagura at login, or stop, on a thread; the OS's answer comes back.
+    pub fn set_startup(&mut self, on: bool) {
+        self.startup = Some(on);
+        let (tx, wake) = (self.tx.clone(), self.wake.clone());
+        std::thread::spawn(move || {
+            let done = std::env::current_exe().map_err(|e| e.to_string()).and_then(|exe| ito_common::startup::set(STARTUP, &exe, &[], on));
+            if let Err(e) = done {
+                Self::send_back(&tx, &wake, Reload::Failed(e));
+            }
+            Self::send_back(&tx, &wake, Reload::Startup(ito_common::startup::enabled(STARTUP)));
+        });
+    }
+
+    /// Delete the saved window place, on a thread.
+    pub fn forget_place(&self) {
+        let (tx, wake, dir) = (self.tx.clone(), self.wake.clone(), self.state_dir.clone());
+        let Some(dir) = dir else { return };
+        std::thread::spawn(move || {
+            if let Err(e) = ito_prefs::forget_place(&dir) {
+                Self::send_back(&tx, &wake, Reload::Failed(e));
+            }
+        });
+    }
+
+    /// Open the folder of state.toml and window.toml, on a thread.
+    pub fn open_state(&self) {
+        let (tx, wake, dir) = (self.tx.clone(), self.wake.clone(), self.state_dir.clone());
+        let Some(dir) = dir else { return };
+        std::thread::spawn(move || {
+            if let Err(e) = std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display())).and_then(|()| open_path(&dir)) {
+                Self::send_back(&tx, &wake, Reload::Failed(e));
+            }
+        });
+    }
+
+    /// Put config.toml and keymap.toml aside as `*.bak-<seconds>` (the copy
+    /// stays) so yagura starts over from the built-in settings; common.toml
+    /// is every uchmk app's and stays. On a thread, then read again.
+    pub fn reset(&self) {
+        let (tx, wake) = (self.tx.clone(), self.wake.clone());
+        let Some(base) = self.base.clone() else {
+            Self::send_back(&tx, &wake, Reload::Failed(crate::i18n::tr("settings.no_folder").into()));
+            return;
+        };
+        std::thread::spawn(move || {
+            let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+            let moved = [edit::config_path(&base), keymap_path(&base)].into_iter().filter(|p| p.is_file()).try_for_each(|p| {
+                let mut aside = p.clone().into_os_string();
+                aside.push(format!(".bak-{secs}"));
+                std::fs::rename(&p, &aside).map_err(|e| format!("{}: {e}", p.display()))
+            });
+            let r = match moved {
+                // `Keys` reads config.toml and keymap.toml again and says it.
+                Ok(()) => Reload::Keys(Box::new(settings::load(Some(&base))), crate::i18n::tr("toast.reset_done").into()),
+                Err(e) => Reload::Failed(e),
+            };
+            Self::send_back(&tx, &wake, r);
         });
     }
 

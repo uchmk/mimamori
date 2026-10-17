@@ -5,12 +5,12 @@
 //! drawn and done once it is.
 
 use egui::{Align2, FontId, Rect, Sense, Ui, pos2, vec2};
-use ito_common::{Clock, CommonChange, common_path, themes_dir};
+use ito_common::{Clock, CommonChange, themes_dir};
 use ito_prefs::{Words, button, field, row, section, select, sep, status, switch};
 
 use crate::app::{App, INTERVALS, fmt_interval};
 use crate::config::edit::Edit;
-use crate::config::settings::{ALLOW, BACKENDS, Host, own_dir};
+use crate::config::settings::{ALLOW, BACKENDS, Host};
 use crate::config::theme::{self, ramp};
 use crate::i18n::{current_language, tr, trf};
 use crate::remote::{self, proto};
@@ -21,6 +21,7 @@ const FLEET: usize = 2;
 const KEYS: usize = 3;
 const NOTIFY: usize = 4;
 const ADVANCED: usize = 5;
+const ABOUT: usize = 6;
 
 /// The keymap's layers, and each one's name on the Keys page.
 const LAYERS: [(&str, &str); 6] = [
@@ -39,9 +40,15 @@ struct Asked {
     edits: Vec<Edit>,
     interval: Option<f32>,
     copy: Option<String>,
-    open_folder: bool,
     /// The bug-report button was pressed.
     bug: bool,
+    /// "Forget the remembered place" was pressed.
+    forget: bool,
+    /// The Startup switch was clicked: the state it now asks for.
+    startup: Option<bool>,
+    advanced: Vec<ito_prefs::Advanced>,
+    /// The Startup card was shown: ask the OS once.
+    ask_startup: bool,
     /// The fleet page was shown: read this machine's key.
     key: bool,
     /// A "Send a test" of the notifications page was pressed.
@@ -92,8 +99,13 @@ fn index() -> Vec<(usize, &'static str)> {
     v.extend(ito_prefs::keys_index(ito_prefs::KeyWords::of(current_language())).into_iter().map(|t| (KEYS, t)));
     v.extend(LAYERS.iter().map(|(_, k)| (KEYS, tr(k))));
     v.extend(ito_prefs::notify_index(w).into_iter().map(|t| (NOTIFY, t)));
-    v.extend(ito_prefs::bug_index(w).into_iter().map(|t| (ADVANCED, t)));
-    for k in ["settings.backend", "settings.folder", "settings.common", "settings.warnings"] {
+    let m = ito_prefs::MoreWords::of(current_language());
+    v.extend(ito_prefs::window_index(m).into_iter().map(|t| (GENERAL, t)));
+    v.extend(ito_prefs::WINDOW_KEYS.into_iter().map(|t| (GENERAL, t)));
+    v.extend(ito_prefs::startup_index(m).into_iter().map(|t| (GENERAL, t)));
+    v.extend(ito_prefs::advanced_index(m).into_iter().map(|t| (ADVANCED, t)));
+    v.extend(ito_prefs::about_index(m, w).into_iter().map(|t| (ABOUT, t)));
+    for k in ["settings.backend", "settings.graphics", "settings.warnings"] {
         v.push((ADVANCED, tr(k)));
     }
     // The names in the files, so a search finds them in any language.
@@ -135,6 +147,9 @@ const CONFIG_NAMES: [(usize, &str); 27] = [
 pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     let lang = current_language();
     let w = Words::of(lang);
+    let mw = ito_prefs::MoreWords::of(lang);
+    let startup_now = app.prefs.startup;
+    let state_dir = app.prefs.state_dir.is_some();
     let pages = [
         (tr("settings.general"), tr("settings.general_lead")),
         (tr("settings.theme"), tr("settings.theme_lead")),
@@ -142,6 +157,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
         (tr("settings.keys"), tr("settings.keys_lead")),
         (w.notify, tr("settings.notify_lead")),
         (tr("settings.advanced"), tr("settings.advanced_lead")),
+        ito_prefs::Page::About.words(mw),
     ];
     let index = index();
     let nav = ito_prefs::Nav { pages: &pages, index: &index, words: w, file: "config.toml" };
@@ -190,6 +206,11 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 }
             });
             asked.common.extend(ito_prefs::clock_card(ui, l, w, &common.clock_or(None)));
+            let out = ito_prefs::window_card(ui, l, mw, &common.window_or_default());
+            asked.common.extend(out.changes);
+            asked.forget = out.forget;
+            asked.ask_startup = true;
+            asked.startup = ito_prefs::startup_card(ui, l, mw, startup_now);
         }
         THEME => {
             let (t, d, li) = common.theme_choice(None);
@@ -353,30 +374,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                     asked.edits.push(Edit::Backend(b.to_string()));
                 }
             });
-            section(ui, l, tr("settings.files"), |ui| match base {
-                Some(b) => {
-                    let folder = own_dir(b).display().to_string();
-                    row(ui, l, tr("settings.folder"), &folder, |ui| {
-                        if button(ui, l, tr("settings.open")) {
-                            asked.open_folder = true;
-                        }
-                        if button(ui, l, tr("settings.copy")) {
-                            asked.copy = Some(folder.clone());
-                        }
-                    });
-                    sep(ui, l);
-                    let shared = common_path(b).display().to_string();
-                    if row(ui, l, tr("settings.common"), &shared, |ui| button(ui, l, tr("settings.copy"))) {
-                        asked.copy = Some(shared.clone());
-                    }
-                }
-                None => {
-                    row(ui, l, tr("settings.folder"), tr("settings.no_folder"), |_| ());
-                }
-            });
-            if ito_prefs::bug_card(ui, l, w) {
-                asked.bug = true;
-            }
+            asked.advanced = ito_prefs::advanced_card(ui, l, mw, state_dir);
             section(ui, l, tr("settings.warnings"), |ui| {
                 if warnings.is_empty() {
                     row(ui, l, tr("settings.no_warnings"), "", |_| ());
@@ -390,6 +388,14 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                     ui.add_space(8.0);
                 }
             });
+        }
+        ABOUT => {
+            let os = os_line();
+            let about =
+                ito_prefs::About { version: env!("CARGO_PKG_VERSION"), commit: None, system: os, license: Some("MIT OR Apache-2.0") };
+            if ito_prefs::about_page(ui, l, mw, w, "yagura", &about).contains(&ito_prefs::AboutAction::Report) {
+                asked.bug = true;
+            }
         }
         _ => {}
     });
@@ -407,8 +413,22 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     if out.open_file {
         app.prefs.open(true);
     }
-    if asked.open_folder {
-        app.prefs.open(false);
+    for a in asked.advanced {
+        match a {
+            ito_prefs::Advanced::OpenConfigDir => app.prefs.open(false),
+            ito_prefs::Advanced::OpenStateDir => app.prefs.open_state(),
+            ito_prefs::Advanced::Reset => app.prefs.reset(),
+        }
+    }
+    if asked.forget {
+        app.prefs.forget_place();
+        app.toast(tr("toast.place_forgotten"));
+    }
+    if asked.ask_startup {
+        app.prefs.ask_startup();
+    }
+    if let Some(on) = asked.startup {
+        app.prefs.set_startup(on);
     }
     if asked.bug {
         app.bug_report();
@@ -442,6 +462,12 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
         app.copy(text);
     }
     draw_toast(ui, app);
+}
+
+/// The OS line of the bug report, read once (it can touch the registry).
+fn os_line() -> &'static str {
+    static OS: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    OS.get_or_init(ito_bugreport::os_line)
 }
 
 /// The toast over the foot of the page: there is no status bar here.

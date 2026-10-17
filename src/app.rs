@@ -919,6 +919,7 @@ impl App {
                 self.relanguage();
             }
             Reload::Key(k) => self.prefs.key = Some(k),
+            Reload::Startup(on) => self.prefs.startup = Some(on),
             Reload::Failed(e) => self.toast(trf("toast.save_failed", &[&e])),
         }
     }

@@ -117,6 +117,8 @@ struct Yagura {
     /// when the window closes (#58); `None` folder (or `--keys`) remembers
     /// nothing.
     place: Option<Tracker>,
+    /// The "always on top" the window was last told (common.toml's `[window]`).
+    on_top: bool,
 }
 
 impl Yagura {
@@ -211,7 +213,10 @@ impl Yagura {
 
 impl eframe::App for Yagura {
     fn on_exit(&mut self) {
-        if let (Some(place), Some(ctx)) = (&mut self.place, &self.app.wake) {
+        let keeps = ito_prefs::keeps_place(&self.app.prefs.common.window_or_default());
+        if let (Some(place), Some(ctx)) = (&mut self.place, &self.app.wake)
+            && keeps
+        {
             place.close(Seen::of(ctx));
         }
     }
@@ -265,7 +270,17 @@ impl eframe::App for Yagura {
         if let Some(left) = self.app.probe_agent() {
             ctx.request_repaint_after(left);
         }
-        if let Some(place) = self.place.as_mut() {
+        let window = self.app.prefs.common.window_or_default();
+        if window.always_on_top != self.on_top {
+            self.on_top = window.always_on_top;
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(if self.on_top {
+                egui::WindowLevel::AlwaysOnTop
+            } else {
+                egui::WindowLevel::Normal
+            }));
+        }
+        // `remember_place = false` neither saves the place nor restores it.
+        if let Some(place) = self.place.as_mut().filter(|_| ito_prefs::keeps_place(&window)) {
             place.follow(&ctx);
         }
     }
@@ -488,7 +503,10 @@ fn main() -> eframe::Result {
     // it: a place on none of the screens there are now (one that was
     // unplugged) is not put back, and a file from before the zoom was kept
     // is read at common.toml's `scale`.
-    let saved = Saved::load(state_dir.clone().filter(|_| script.is_none()));
+    let window =
+        settings::base_dir().and_then(|b| ito_common::Common::read(&b).ok()).map(|(c, _)| c).unwrap_or_default().window_or_default();
+    let saved = Saved::load(state_dir.clone().filter(|_| script.is_none() && ito_prefs::keeps_place(&window)));
+    let persist_dir = state_dir.clone();
     let saver = persist::Saver::new(state_dir);
     let interval = s.interval;
     let check_updates = s.check_updates;
@@ -506,6 +524,9 @@ fn main() -> eframe::Result {
     // below, while the window is hidden) moves it to the pixels it was
     // closed at, so a second screen at another scale gets it back (#58).
     viewport = saved.viewport(viewport);
+    if window.always_on_top {
+        viewport = viewport.with_always_on_top();
+    };
     let options = eframe::NativeOptions { viewport, wgpu_options, ..Default::default() };
     eframe::run_native(
         "yagura",
@@ -519,6 +540,7 @@ fn main() -> eframe::Result {
             app.stacks = stacks;
             app.wake = Some(cc.egui_ctx.clone());
             app.prefs = prefs::Prefs::load(settings::base_dir(), s);
+            app.prefs.state_dir = persist_dir.clone();
             app.prefs.keymap_warn = km_warn;
             app.prefs.watch(&cc.egui_ctx);
             app.prefs.apply_theme(&cc.egui_ctx);
@@ -547,6 +569,7 @@ fn main() -> eframe::Result {
                 todo: Vec::new(),
                 update,
                 place: saved.tracker(),
+                on_top: window.always_on_top,
             }))
         }),
     )
