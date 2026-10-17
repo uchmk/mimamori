@@ -6,11 +6,11 @@ body:
     attributes:
       value: |
         Opened by the session that changed the behaviour, after taking the rows' `[x]` off in
-        TESTING.md. The x64 lane takes the oldest open `retest` issue first, ticks rows here
+        TESTING-CHECKS.md. The x64 lane takes the oldest open `retest` issue first, ticks rows here
         as it presses them, and its pull request says `Closes #N` once all are ticked (`Refs #N` before).
         The ARM64 lane does not take re-tests.
 
-        動きを変えたセッションが、TESTING.md の `[x]` を外してから立てます。x64 のレーンはいちばん古いものから取り、
+        動きを変えたセッションが、TESTING-CHECKS.md の `[x]` を外してから立てます。x64 のレーンはいちばん古いものから取り、
         押した行をここで `[x]` にし、全部済んだら PR に `Closes #N` と書きます。ARM64 のレーンは再テストを取りません。
 
   - type: input

@@ -2,15 +2,16 @@
 # plain functions over the checklist's text, so scripts/check-ps1.ps1 tests
 # them on Linux too.
 #
-# A run gets one chunk: up to -Rows rows of one section of TESTING.md, or the
+# A run gets one chunk: up to -Rows rows of one section of TESTING-CHECKS.md, or the
 # re-tests of one `retest` issue. It is told those rows and nothing else,
 # which is most of what keeps a run small. A row a run was given and left
 # `[ ]` (a look, a failure, a row it could not reach) is written to the
 # attempted list with a hash of its words, so the next run moves on; changing
-# the row's words in TESTING.md, or naming it in a new retest issue, offers it
+# the row's words in TESTING.md (so TESTING-CHECKS.md), or naming it in a new retest issue, offers it
 # again.
 #
-# yagura's rows are `- [ ] 3d.8 text` (the id is the section's number, its
+# yagura's rows are TESTING.md's tables, which `cargo run --example
+# make-testcheck` writes as `- [ ] **3d.8** text` into TESTING-CHECKS.md (the id is the section's number, its
 # letter if it has one, a dot and the row's number). The marks a run set are
 # made again on main by lane-marks.ps1 (ito's).
 
@@ -31,13 +32,13 @@ function Test-Unattended([string]$Lane, $Row) {
     $Row.Text -notmatch '^(Linux|macOS|A person:|Windows ARM64\b)'
 }
 
-# Every `- [ ] 3d.8 text` of TESTING.md, in file order, with its section's id
+# Every `- [ ] **3d.8** text` of TESTING-CHECKS.md, in file order, with its section's id
 # (`3d`) and title.
 function Get-OpenRows([string]$Checks) {
     $title = @{}
     foreach ($line in $Checks -split "`r?`n") {
         if ($line -match '^## (\d+[a-z]?)\. (.*)$') { $title[$Matches[1]] = $Matches[2]; continue }
-        if ($line -match '^- \[ \] ((\d+[a-z]?)\.\d+) (.*)$') {
+        if ($line -match '^- \[ \] \*\*((\d+[a-z]?)\.\d+)\*\* (.*)$') {
             $sec = $Matches[2]
             [pscustomobject]@{ Id = $Matches[1]; Section = $sec; Title = $title[$sec]; Text = $Matches[3] }
         }

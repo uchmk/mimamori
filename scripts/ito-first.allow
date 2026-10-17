@@ -1,2 +1,1 @@
 # Known gaps against ito, kept visible on purpose: `<crate> <reason>`. Each line is a migration still to do, not a decision to stay.
-ito-testcheck yagura keeps TESTING.md itself as the checklist (lane scripts and tests/checklist.rs read its rows); a generated second copy would need the lane scripts reworked first, owner to decide

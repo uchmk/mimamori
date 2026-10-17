@@ -1,0 +1,4 @@
+# Annotations for examples/make-testcheck.rs: yagura's checklist has no second
+# language, so the rows are printed as TESTING.md writes them.
+plain = true
+strict = true

@@ -6,6 +6,24 @@
 
 ## [未リリース]
 
+## [0.70.0] - 2026-10-17
+
+### 変更
+
+- 実機の確認表を ito の `ito-testcheck` に移した。`TESTING.md` は表（`| 3d.8 | … |`）だけが元になり、印（` `・`x`・`~`）は
+  生成物の `TESTING-CHECKS.md`（`cargo run --example make-testcheck`。既存の印は ID で引き継ぐ）に付く。
+  Windows 実機のレーン（`auto-wintest.ps1`・`wintest-queue.ps1`）と `retest` の手順は `TESTING-CHECKS.md` を読む。ID は変わらない。
+- `Checklists` は `make-testcheck --check`（`scripts/testcheck.toml` の `strict`）で表の形と生成物の古さを確かめる。`tests/checklist.rs` は廃止。
+- ito を `b280e08`（v0.64.0）に上げた。
+
+### 修正
+
+- `TESTING.md` の 5.28 に混じっていた制御文字（``）を直した。表の中の ` | ` を含むコードを `|` に直した。
+
+### 整理
+
+- `scripts/ito-first.allow` から `ito-testcheck` を外した（これで許可の行は無い）。
+
 ## [0.69.0] - 2026-10-17
 
 ### 追加

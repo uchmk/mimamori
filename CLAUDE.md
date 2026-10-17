@@ -9,7 +9,7 @@
 - 返答は日本語。コード・コメント・コミットメッセージは英語。
 - コミットと push は、そのリポジトリの検証（`scripts/verify.sh` が `ALL OK`）が通ったら、頼まれなくてもしてよい（`main` へ直接。force push・履歴の書き換えはしない。自分の変更だけを `git add` する）。
 - 改行は LF（`.gitattributes` の `eol=lf`）。スクリプトで書き換えるときは改行を変えない（Python なら `newline=''`）。
-- タスクは [TODO.md](TODO.md)、人への確認事項は `question` の issue（下の「確認事項」。QUESTIONS.md は Q1-Q2 の archive）。実機でしか確かめられないことは [TESTING.md](TESTING.md) に積む（機能を足したら行を足してから完了にする）。
+- タスクは [TODO.md](TODO.md)、人への確認事項は `question` の issue（下の「確認事項」。QUESTIONS.md は Q1-Q2 の archive）。実機でしか確かめられないことは [TESTING.md](TESTING.md)（表が元）に積む（機能を足したら行を足し、`cargo run --example make-testcheck` で `TESTING-CHECKS.md` を作り直してから完了にする。印はこちらに付く）。
   - 未完了の項目の末尾の `【人】` `【実機】` `（要確認: #N）` は開発のセッションが進めない印。印は**裸で書く**（バッククォートで囲むと言及の扱いになり、
     `scripts/todo-open.sh` が数える。v0.42.0 で直した）。開発のセッションが進められる項目の数は `scripts/todo-open.sh`（`-v` で項目も）。
   - 実機の確認で見つかったもの: はっきり間違っていれば `bug`、そうでなければ `finding` の issue（フォーム `.github/ISSUE_TEMPLATE/finding.yml`）。直したら版を書いて閉じる。
@@ -51,8 +51,8 @@
 - `Audit`（`.github/workflows/audit.yml`、2026-10-16 から。kura・tsumugi・ito と同じ）は `cargo audit`（RustSec の脆弱性の一覧）を
   main への push・PR・毎週月曜に回す。脆弱性で落ち、警告（保守されていないクレートなど）では落ちない。ci.yml と分けてあるのは、
   コードが変わらなくても新しい脆弱性が出れば赤くなるから。`merge-lanes.yml` は CI・Checklists・Audit の終わりで起きる。
-- `Checklists`（`.github/workflows/checklists.yml`、v0.65.1 から）は `tests/checklist.rs` で TESTING.md の行の形（`## 3d. …` の節の下に
-  `- [ ] 3d.8 …`、印は ` `・`x`・`~`、ID は節と合い重ならない）を確かめる。TESTING.md だけの変更でも回る。行を足すときは節の中で空いている番号を使う。
+- `Checklists`（`.github/workflows/checklists.yml`、v0.65.1 から）は `cargo run --example make-testcheck -- --check`（ito の `ito-testcheck`）で TESTING.md の表（`## 3d. …` の節の下に
+  `| 3d.8 | … |`、`scripts/testcheck.toml` の `strict`）の形と、`TESTING-CHECKS.md`（生成物。行 `- [ ] **3d.8** …`、印は ` `・`x`・`~`）が元と合っているかを確かめる。TESTING.md だけの変更でも回る。行を足すときは節の中で空いている番号を使い、作り直した `TESTING-CHECKS.md` も一緒にコミットする。
   レーンの PR は行に印を付ければこれ（ジョブ `checklists`）が緑になるまでマージされず、merge-lanes.py は分担を push した後に ci.yml と checklists.yml を起こす。
 - `Build`（`.github/workflows/build.yml`、v0.65.1 から。kura と同じ 6 つ）は main への push と手動で、リリースと同じ 6 つのターゲットを
   `--release` でリンクし、`yagura.com` を確かめ、実行ファイルとライセンスを成果物 `yagura-<名前>-<コミット>` に残す。テストは回さない。
@@ -77,7 +77,7 @@ tsumugi・kura と同じ仕組み（v0.58.0 から）。役割は [.claude/windo
 - タスク スケジューラの `yagura-auto-wintest` が毎時 :01 に `scripts/lane-boot.ps1`（ito の共通）を回す（tsumugi は :21、kura は :41）。
   main の `scripts/` を状態フォルダ（`%LOCALAPPDATA%\yagura-wintest`）に取り出して `auto-wintest.ps1` を実行する。作業フォルダは `C:\dev\yagura-wintest`
   （ARM64 は `C:\dev\yagura-armtest`、`-Lane arm`、タスク `yagura-auto-wintest-arm`）。
-- `auto-wintest.ps1` がビルドとテストを済ませ、1 回分の塊（開いている `retest` の issue の行（x64 だけ、古い順）→ TESTING.md の節の順、最大 15 行。
+- `auto-wintest.ps1` がビルドとテストを済ませ、1 回分の塊（開いている `retest` の issue の行（x64 だけ、古い順）→ TESTING-CHECKS.md の節の順、最大 15 行。
   `scripts/wintest-queue.ps1`）を選んで Claude を起動する。道具は `scripts/wintest-kit.ps1`。塊が無い・自分の PR が開いている・ビルドが落ちたときは起動しない。
 - 行の ID は TESTING.md の `3d.8` の形。`retest` の issue（題 `Re-test: vX.Y.Z`、本文は ID のチェックリスト）は、動きを変えた行を再テストに回すもの。
   動きを変えた行は印を `[ ]` に戻す。所見は `finding` の issue（`lane:win` / `lane:arm`）。

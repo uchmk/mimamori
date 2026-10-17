@@ -6,7 +6,7 @@
 # is done here before claude starts, and claude is given one chunk.
 #
 #   1. The chunk. scripts/wintest-queue.ps1 picks it from origin/main's
-#      TESTING.md and the oldest open `retest` issue (x64 only): up to 15 rows
+#      TESTING-CHECKS.md (generated from TESTING.md) and the oldest open `retest` issue (x64 only): up to 15 rows
 #      of one section, or the rows of one retest issue. Rows a run was given
 #      and left `[ ]` go to %LOCALAPPDATA%\yagura-wintest\attempted*.txt so the
 #      next run moves on; no chunk left, no run (0 tokens).
@@ -443,7 +443,7 @@ function Save-DirtyWorktree([string[]]$changes) {
 # no mark, and the pull request says so. Anything else that conflicts is left
 # as it is for the Merge lanes workflow and a person. Never throws.
 function Sync-LaneBranch([string]$Branch) {
-    $lists = @('TESTING.md')
+    $lists = @('TESTING-CHECKS.md')
     Push-Location $Work
     try {
         if ((git rev-parse --abbrev-ref HEAD).Trim() -ne $Branch) { Say "Sync: $Work is not on $Branch; left as it is."; return }
@@ -552,7 +552,7 @@ try {
         $retests = @($json | ConvertFrom-Json | Sort-Object { [datetime]$_.createdAt } |
             ForEach-Object { [pscustomobject]@{ Number = $_.number; Body = $_.body } })
     }
-    $chunk = Select-Chunk -Lane $Lane -Checks (& $show 'TESTING.md') `
+    $chunk = Select-Chunk -Lane $Lane -Checks (& $show 'TESTING-CHECKS.md') `
         -Retests $retests -Attempted (Read-Attempted $attemptedFile) -Rows $Rows
     if (-not $chunk) {
         if ($DryRun) { 'Nothing left for this lane: every open row has been tried.' }
@@ -618,11 +618,11 @@ try {
     $Scratch = Join-Path $Scratch "run-$stamp"
     $kit = Join-Path $Scratch 'kit'
 
-    $what = "TESTING.md の次の $(@($chunk.Rows).Count) 行"
+    $what = "TESTING-CHECKS.md の次の $(@($chunk.Rows).Count) 行"
     $prompt = @"
-無人実行です。人は見ていません。.claude/windows-role.md を読み、その「Unattended runs」の節に従ってください。TESTING.md は規則の部分（先頭から最初の ``## `` 見出しの手前まで）と、この塊の行だけを読んでください。
+無人実行です。人は見ていません。.claude/windows-role.md を読み、その「Unattended runs」の節に従ってください。TESTING.md は規則の部分（先頭から最初の ``## `` 見出しの手前まで）だけを読んでください。行は TESTING-CHECKS.md のこの塊だけです。
 
-この実行で確かめるのは、このスクリプトが選んだ ${what}だけです。ほかの行には触れません。TESTING.md でも、この行の印だけを変えます。
+この実行で確かめるのは、このスクリプトが選んだ ${what}だけです。ほかの行には触れません。TESTING-CHECKS.md でも、この行の印だけを変えます。
 
 $chunkText
 
@@ -632,8 +632,8 @@ $chunkText
 - ビルド（--release）と ``cargo test`` は、このスクリプトが済ませました。exe は $exe で、テストは緑です。cargo build / cargo test はしないでください。
 - 道具は scripts\wintest-kit.ps1 にあります。PowerShell を呼ぶたびに、先頭で ``. .\scripts\wintest-kit.ps1`` を読み込んでください（関数の一覧はファイルの先頭）。SendInput・PrintWindow・バックアップを自分で書き直さないでください。
 - 環境変数は分離済みです（YAGURA_STATE_HOME・YAGURA_CONFIG_HOME・WINTEST_KIT=$kit・WINTEST_EXE）。持ち主の設定と状態には触れません。終わる前に ``Stop-Mine`` を呼びます。
-- コミットするのは TESTING.md と報告だけです（``git add TESTING.md <報告>``。``git add -A`` は使わない）。``--keys`` の ``<State:…>``・``<Shot:…>`` の出力先は $kit の下にし、チェックアウトには作りません。
-- TESTING.md で変えてよいのは行頭の印（``[ ]`` → ``[x]``・``[~]``）だけです。行の文に結果や日付を書き足さないでください（Merge lanes が「a row's text changed」で止めます）。確かめた内容は報告に書きます。
+- コミットするのは TESTING-CHECKS.md と報告だけです（``git add TESTING-CHECKS.md <報告>``。``git add -A`` は使わない）。``--keys`` の ``<State:…>``・``<Shot:…>`` の出力先は $kit の下にし、チェックアウトには作りません。
+- TESTING-CHECKS.md で変えてよいのは行頭の印（``[ ]`` → ``[x]``・``[~]``）だけです。行の文に結果や日付を書き足さないでください（Merge lanes が「a row's text changed」で止めます）。確かめた内容は報告に書きます。
 - 作業用の一時ディレクトリは $Scratch で、TEMP / TMP も既にそこを指しています。
 - 起動するエージェントは 127.0.0.1 だけで待ち受けます。直接つなぐ行（``[agent] listen``）で見る側もこの機械にいるときは、``listen = "127.0.0.1:7314"`` と ``[[host]]`` の ``addr = "127.0.0.1"`` を書きます（``--key`` が出す ``0.0.0.0`` にしない）。すべてのアドレスで待ち受けると Windows Defender ファイアウォールの確認が出て、人が答えるまでほかのアプリのレーンの机まで止めます（uchmk/tsumugi#24）。それでも確認が出たら、どちらのボタンも押さず（キャンセルは拒否の規則を足す）、起動したものを止めて報告に書きます。
 - 所見（不具合・提案）は ``gh issue create --repo $repo -l finding,lane:$Lane --title "<1 行>" --body-file <ファイル>`` で issue にし（欄は .github/ISSUE_TEMPLATE/finding.yml、不具合なら ``bug`` も付ける）、PR 本文に ``Findings: #N, #M`` と書きます。gh で issue が作れなかったときだけ、報告の ``### Proposals`` に書きます。
@@ -648,7 +648,7 @@ $chunkText
     if ($chunk.Kind -eq 'retest') {
         $n = $chunk.Issue
         $prompt += @"
-- この塊は再テストの issue #$n の行です。押した結果は TESTING.md に加えて issue の本文にも付けます（``gh issue view $n --repo $repo --json body -q .body`` をファイルに書き、箱を ``[x]`` にして ``gh issue edit $n --repo $repo --body-file <ファイル>``）。
+- この塊は再テストの issue #$n の行です。押した結果は TESTING-CHECKS.md に加えて issue の本文にも付けます（``gh issue view $n --repo $repo --json body -q .body`` をファイルに書き、箱を ``[x]`` にして ``gh issue edit $n --repo $repo --body-file <ファイル>``）。
 - PR 本文には、issue の行が全部 ``[x]`` になったら ``Closes #$n``、残りがあれば ``Refs #$n`` と書きます。落ちた行は所見の issue にし、その番号を #$n へのコメント 1 つに書きます。
 
 "@

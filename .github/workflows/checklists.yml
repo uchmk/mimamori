@@ -1,17 +1,18 @@
 name: Checklists
 
-# TESTING.md's rows keep the form the lane scripts read (tests/checklist.rs):
-# a section heading over each row, the row's ID first, one of the three marks,
-# no ID twice. Unlike kura's and minato's, yagura's checklist is TESTING.md
-# itself, with nothing generated from it. Not skipped for Markdown, unlike CI:
-# a lane's pull request changes TESTING.md alone, and merge-lanes.py waits for
-# this job (`checklists`) before it merges one that ticks rows.
+# TESTING.md is the source and TESTING-CHECKS.md is generated from it by
+# `cargo run --example make-testcheck` (ito's ito-testcheck). This job fails
+# when the generated file is out of date or TESTING.md breaks the form the
+# generator reads (a `## N. Title` heading over each table, the row's id first,
+# no id twice). Not skipped for Markdown, unlike CI: a lane's pull request
+# changes TESTING-CHECKS.md alone, and merge-lanes.py waits for this job
+# (`checklists`) before it merges one that ticks rows.
 on:
   push:
     branches: [main]
-    paths: ['TESTING.md', 'tests/checklist.rs', '.github/workflows/checklists.yml', 'Cargo.toml', 'Cargo.lock']
+    paths: ['TESTING.md', 'TESTING-CHECKS.md', 'scripts/testcheck.toml', 'examples/make-testcheck.rs', '.github/workflows/checklists.yml', 'Cargo.toml', 'Cargo.lock']
   pull_request:
-    paths: ['TESTING.md', 'tests/checklist.rs', '.github/workflows/checklists.yml', 'Cargo.toml', 'Cargo.lock']
+    paths: ['TESTING.md', 'TESTING-CHECKS.md', 'scripts/testcheck.toml', 'examples/make-testcheck.rs', '.github/workflows/checklists.yml', 'Cargo.toml', 'Cargo.lock']
   # merge-lanes.py starts it after pushing its share, since that push starts
   # no workflows.
   workflow_dispatch:
@@ -36,6 +37,4 @@ jobs:
         with:
           key: checklists
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # The test is std only, but Cargo builds yagura's binaries for any
-      # integration test, so this takes as long as a build.
-      - run: cargo test --locked --test checklist
+      - run: cargo run --locked --example make-testcheck -- --check

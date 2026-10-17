@@ -100,6 +100,7 @@ TSUMUGI_WINDOWS_MARKS = {
 # yagura has one checklist, TESTING.md, whose rows are `- [ ] 3e.12 text`
 YAGURA_WINDOWS_MARKS = {
     "TESTING.md": {(" ", "x"), (" ", "~")},
+    "TESTING-CHECKS.md": {(" ", "x"), (" ", "~")},
 }
 
 RULES = {
