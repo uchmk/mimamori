@@ -35,7 +35,16 @@ pub fn draw(pen: &Pen, app: &App, full: Rect, out: &mut Out) {
     let body = panel(pen, r, tr("help.title"), tr("help.close_hint"), true);
     pen.p.rect_stroke(r, 6.0, Stroke::new(1.0, theme::line()), StrokeKind::Outside);
 
-    let style = ito_help::Style { font: font(), row_h: ROW, head: theme::cyan(), keys: theme::fg(), desc: theme::dim(), bar: theme::dim() };
+    let style = ito_help::Style {
+        font: font(),
+        row_h: ROW,
+        head: theme::cyan(),
+        keys: theme::fg(),
+        desc: theme::dim(),
+        warn: theme::yellow(),
+        dim: theme::dim(),
+        bar: theme::dim(),
+    };
     let drawn = ito_help::draw(&pen.p, body, &lines(app), app.help_scroll, &style);
     out.help_max = Some(drawn.max);
 }
