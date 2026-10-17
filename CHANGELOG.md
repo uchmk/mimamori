@@ -6,6 +6,17 @@
 
 ## [未リリース]
 
+## [0.68.5] - 2026-10-17
+
+### 変更
+
+- `scripts/ito-first.allow` の 3 行の理由を決着に合わせて書き直した（コードは変えない）。
+  `dirs` は ito-common にホームフォルダーの関数が無いため uchmk/ito#8、`postcard` は fleet のプロトコルが
+  すでに ito-ipc のフレームと同じ形（長さ u32 LE + postcard）だが、1 回だけ encode して多数に送る・本体を先に読む・
+  最初のメッセージの版を覗く、が `ito_ipc::frame` に無いため uchmk/ito#9 に頼んだ。
+  `ito-testcheck` は、yagura は TESTING.md そのものがチェックリスト（レーンのスクリプトと `tests/checklist.rs` が行を読む）で、
+  生成する写しを足すにはレーンの作りを変える必要があるので、持ち主の判断待ち。
+
 ## [0.68.4] - 2026-10-17
 
 ### 変更

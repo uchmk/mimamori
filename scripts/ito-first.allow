@@ -1,4 +1,4 @@
 # Known gaps against ito, kept visible on purpose: `<crate> <reason>`. Each line is a migration still to do, not a decision to stay.
-ito-testcheck yagura has no examples/make-testcheck yet; to be added with ito-testcheck
-dirs used in src/bugreport.rs and src/collect/svc/mac.rs; not yet replaced by ito_common::base_dir / app_dir / state_dir
-postcard used in src/remote/proto.rs for the remote protocol; whether ito-ipc covers it is undecided (ask ito if not)
+ito-testcheck yagura keeps TESTING.md itself as the checklist (lane scripts and tests/checklist.rs read its rows); a generated second copy would need the lane scripts reworked first, owner to decide
+dirs src/bugreport.rs and src/collect/svc/mac.rs need a home directory; ito-common has none: crate-request uchmk/ito#8
+postcard src/remote/proto.rs is already the ito-ipc frame on the wire but needs encode-once, read_body and head helpers: crate-request uchmk/ito#9
