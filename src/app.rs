@@ -920,6 +920,7 @@ impl App {
             }
             Reload::Key(k) => self.prefs.key = Some(k),
             Reload::Startup(on) => self.prefs.startup = Some(on),
+            Reload::Said(s) => self.toast(&s),
             Reload::Failed(e) => self.toast(trf("toast.save_failed", &[&e])),
         }
     }

@@ -2,7 +2,7 @@
 
 Generated from TESTING.md by `cargo run --example make-testcheck`. **TESTING.md is the source**; ticks (`[x]`) are the only thing to write by hand here, and they survive regeneration.
 
-230 rows to press (230 in TESTING.md, 0 of them covered by `cargo test`). Progress per section: `cargo run --example make-testcheck -- --stats`. `[~]` does not count as done until the owner looks at the same picture.
+231 rows to press (231 in TESTING.md, 0 of them covered by `cargo test`). Progress per section: `cargo run --example make-testcheck -- --stats`. `[~]` does not count as done until the owner looks at the same picture.
 
 ## 1. Start and idle
 
@@ -292,4 +292,5 @@ Generated from TESTING.md by `cargo run --example make-testcheck`. **TESTING.md 
 - [ ] **5.31** Settings, General page, **Window** card (v0.71.0): with **Remember the window's place** off, move and resize the window, close and start: it opens at 1280x800 and `window.toml` is not rewritten; on again, the place is kept as 5.22 says. **Keep on top** puts the window above others at once and it stays so after a restart (`[window] always_on_top` in common.toml). **Forget the saved place** deletes `window.toml` and a toast says so.
 - [ ] **5.32** Settings, General page, **Startup** card (v0.71.0): the switch is greyed for an instant, then shows whether yagura starts at sign-in (Windows: the `Run` value `yagura` under HKCU; macOS: a LaunchAgent; Linux: an autostart entry). On starts yagura at the next sign-in, off removes it; a failure shows a toast and the switch goes back.
 - [ ] **5.33** Settings, **Advanced** page (v0.71.0): **Open** on the config folder and on the state folder open them in the file manager; **Reset** needs a second press (the button changes its words, a click elsewhere disarms it), then moves config.toml and keymap.toml to `*.bak-<time>`, shows a toast, and leaves common.toml alone; the screen is on the defaults at once.
+- [ ] **5.34** Settings, **Advanced** page, **Backup** card (v0.72.0): **Export** writes one TOML (default `~/yagura-settings.toml`) with common.toml, the shared themes and yagura's config.toml / keymap.toml and shows a toast with the count; the fleet `key` file, window.toml and state.toml are not in it. Change a setting, then **Import** (second press to confirm) puts the saved values back, the replaced files stay as `<name>.bak-<time>`, the screen follows within about 2 s, and a toast says how many were read. A broken file (not TOML) writes nothing and shows an error toast. Searching "export" finds the card.
 - [x] **5.18** Put `theme = 3` and `scale = "x"` in `common.toml`: Advanced's warnings list shows both (each key named), and the other keys still apply (v0.42.2; before, only the first was reported, uchmk/yagura#11). — v0.42.3 (uchmk/yagura#14): both warnings show with their keys, and `[clock] hour24 = false` still applies.

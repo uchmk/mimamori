@@ -47,6 +47,7 @@ struct Asked {
     /// The Startup switch was clicked: the state it now asks for.
     startup: Option<bool>,
     advanced: Vec<ito_prefs::Advanced>,
+    backup: Vec<ito_prefs::Backup>,
     /// The Startup card was shown: ask the OS once.
     ask_startup: bool,
     /// The fleet page was shown: read this machine's key.
@@ -104,6 +105,7 @@ fn index() -> Vec<(usize, &'static str)> {
     v.extend(ito_prefs::WINDOW_KEYS.into_iter().map(|t| (GENERAL, t)));
     v.extend(ito_prefs::startup_index(m).into_iter().map(|t| (GENERAL, t)));
     v.extend(ito_prefs::advanced_index(m).into_iter().map(|t| (ADVANCED, t)));
+    v.extend(ito_prefs::backup_index(m).into_iter().map(|t| (ADVANCED, t)));
     v.extend(ito_prefs::about_index(m, w).into_iter().map(|t| (ABOUT, t)));
     for k in ["settings.backend", "settings.graphics", "settings.warnings"] {
         v.push((ADVANCED, tr(k)));
@@ -150,6 +152,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
     let mw = ito_prefs::MoreWords::of(lang);
     let startup_now = app.prefs.startup;
     let state_dir = app.prefs.state_dir.is_some();
+    let backup_file = ito_common::home_dir().unwrap_or_default().join("yagura-settings.toml");
     let pages = [
         (tr("settings.general"), tr("settings.general_lead")),
         (tr("settings.theme"), tr("settings.theme_lead")),
@@ -375,6 +378,7 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
                 }
             });
             asked.advanced = ito_prefs::advanced_card(ui, l, mw, state_dir);
+            asked.backup = ito_prefs::backup_card(ui, l, mw, &backup_file);
             section(ui, l, tr("settings.warnings"), |ui| {
                 if warnings.is_empty() {
                     row(ui, l, tr("settings.no_warnings"), "", |_| ());
@@ -419,6 +423,9 @@ pub fn show(ui: &mut Ui, app: &mut App, keys: ito_prefs::Keys) {
             ito_prefs::Advanced::OpenStateDir => app.prefs.open_state(),
             ito_prefs::Advanced::Reset => app.prefs.reset(),
         }
+    }
+    for b in asked.backup {
+        app.prefs.backup(b);
     }
     if asked.forget {
         app.prefs.forget_place();

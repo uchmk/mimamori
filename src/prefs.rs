@@ -34,6 +34,8 @@ pub enum Reload {
     Key(Result<(String, String), String>),
     /// Whether the OS starts yagura at login, as it said just now.
     Startup(bool),
+    /// A settings export or import is done: what to say.
+    Said(String),
     Failed(String),
 }
 
@@ -264,6 +266,40 @@ impl Prefs {
             if let Err(e) = ito_prefs::forget_place(&dir) {
                 Self::send_back(&tx, &wake, Reload::Failed(e));
             }
+        });
+    }
+
+    /// Write the settings to a file, or read them back from one
+    /// (`ito_common::bundle`), on a thread; common.toml and yagura's files are
+    /// read again by their watchers. Only yagura's `.toml` / `.json` files go in:
+    /// the fleet `key` file and the state folder stay out.
+    pub fn backup(&self, what: ito_prefs::Backup) {
+        use crate::i18n::{tr, trf};
+        let (tx, wake) = (self.tx.clone(), self.wake.clone());
+        let (Some(base), Some(app_dir)) = (self.base.clone(), self.base.as_deref().map(settings::own_dir)) else {
+            Self::send_back(&tx, &wake, Reload::Failed(tr("settings.no_folder").into()));
+            return;
+        };
+        std::thread::spawn(move || {
+            let said = match what {
+                ito_prefs::Backup::Export(file) => {
+                    ito_common::bundle::export(&file, &base, &app_dir, "yagura", env!("CARGO_PKG_VERSION"), &ito_common::bundle::all)
+                        .map(|n| trf("toast.backup_wrote", &[&n.to_string(), &file.display().to_string()]))
+                }
+                ito_prefs::Backup::Import(file) => ito_common::bundle::import(&file, &base, &app_dir, "yagura", &ito_common::bundle::all)
+                    .map(|r| {
+                        let mut s = trf(
+                            "toast.backup_read",
+                            &[&r.written.len().to_string(), &file.display().to_string(), &r.unchanged.to_string()],
+                        );
+                        for (name, why) in &r.skipped {
+                            s.push_str("; ");
+                            s.push_str(&trf("toast.backup_skipped", &[name, why]));
+                        }
+                        s
+                    }),
+            };
+            Self::send_back(&tx, &wake, said.map_or_else(Reload::Failed, Reload::Said));
         });
     }
 

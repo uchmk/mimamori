@@ -146,7 +146,7 @@ tsumugi・kura と同じ仕組み（v0.58.0 から）。役割は [.claude/windo
 | `src/tree.rs` | procs の木の並び（親子と枝の線。親が隠れていれば一番近い見えている祖先へ、PID の使い回しは親にしない） |
 | `src/model.rs` | 履歴のリングバッファ（60 秒）と最新の値 |
 | `src/config/` | `keys.rs`（キーの文字列。中身は `ito-keys` の再エクスポート、`rev` は `ito-layout` と揃える）、`keymap.rs`、`cmd.rs`（コマンド文字列 → `Act`）、`settings.rs`、`edit.rs`（設定の画面から config.toml への書き込み。`[[host]]` は ito の `set_tables` で表をその場で直し、コメントと並びを残す）、`theme.rs`（今のテーマの色を読む関数と egui の `Visuals`。テーマは `ito-theme`） |
-| `src/prefs.rs` | 設定の画面が読み書きするもの（common.toml・config.toml・自分のテーマ）。`ito-common` の見張りで 2 秒ごとに読み直して `Reload` で返し、書き込みと「Open」はスレッドで。自動起動の問い合わせ・設定したことの書き込み（`ask_startup`/`set_startup`）、覚えた窓の位置を忘れる（`forget_place`）、状態フォルダーを開く（`open_state`）、設定の初期化（`reset`。config.toml と keymap.toml を `*.bak-<秒>` に改名し、common.toml は残す）も同じ。結果は `Reload::Startup` などで返る |
+| `src/prefs.rs` | 設定の画面が読み書きするもの（common.toml・config.toml・自分のテーマ）。`ito-common` の見張りで 2 秒ごとに読み直して `Reload` で返し、書き込みと「Open」はスレッドで。自動起動の問い合わせ・設定したことの書き込み（`ask_startup`/`set_startup`）、覚えた窓の位置を忘れる（`forget_place`）、状態フォルダーを開く（`open_state`）、設定の書き出し・読み込み（`backup`。`ito_common::bundle`、yagura のフォルダーの `.toml` / `.json` だけ）、設定の初期化（`reset`。config.toml と keymap.toml を `*.bak-<秒>` に改名し、common.toml は残す）も同じ。結果は `Reload::Startup` などで返る |
 | `src/i18n.rs`, `src/lang/` | `tr()` と言語の表（`en.toml`・`ja.toml`）、ヘルプの説明の `tr_desc()`。表・言語の決め方・`common.toml` の読み方・テストの検査は `ito-i18n`（ito のクレート、`rev` は `ito-layout` と揃える） |
 | `src/fonts.rs` | CJK のフォント（OS のフォントをスレッドで読み、egui のフォントの後ろに足す） |
 | `src/persist.rs` | `state.toml`（列の幅と、列の中のパネルの高さ）の読み書き |
