@@ -67,7 +67,7 @@ fn folders(root: bool) -> Vec<std::path::PathBuf> {
     if root {
         return vec!["/Library/LaunchDaemons".into(), "/System/Library/LaunchDaemons".into()];
     }
-    let mut v: Vec<PathBuf> = dirs::home_dir().map(|h| h.join("Library/LaunchAgents")).into_iter().collect();
+    let mut v: Vec<PathBuf> = ito_common::home_dir().map(|h| h.join("Library/LaunchAgents")).into_iter().collect();
     v.extend(["/Library/LaunchAgents", "/System/Library/LaunchAgents"].map(PathBuf::from));
     v
 }

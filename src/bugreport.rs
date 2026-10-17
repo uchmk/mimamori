@@ -17,7 +17,7 @@ pub fn url(s: &Settings, scale: f32) -> String {
 }
 
 fn context(s: &Settings, scale: f32) -> String {
-    let home = dirs::home_dir();
+    let home = ito_common::home_dir();
     let files = read_files(s);
     // What the loader complained about is the first thing a report needs.
     let rows = [("Warnings", s.warnings.join("; ")), ("Backend", s.backend.clone().unwrap_or_else(|| "auto".into()))];

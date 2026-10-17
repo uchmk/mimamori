@@ -6,6 +6,15 @@
 
 ## [未リリース]
 
+## [0.68.6] - 2026-10-17
+
+### 変更
+
+- ito を v0.61.0（b9e17b2）に上げた。`dirs` をやめて `ito_common::home_dir()`（uchmk/ito#8）、
+  fleet のフレームは `ito_ipc::frame`（uchmk/ito#9）の上に載せ、`postcard` の直接の依存を外した。
+  線の上の形（長さ u32 LE + postcard）とプロトコルの番号（9）は変わらない。
+  `scripts/ito-first.allow` に残るのは `ito-testcheck` だけ。
+
 ## [0.68.5] - 2026-10-17
 
 ### 変更

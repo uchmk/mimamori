@@ -12,6 +12,7 @@
 
 use std::io::{self, Read, Write};
 
+use ito_ipc::frame as ito_frame;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::collect::Msg;
@@ -289,11 +290,7 @@ pub struct Delta {
 
 /// One message as a frame.
 pub fn frame<T: Serialize>(msg: &T) -> Vec<u8> {
-    let body = postcard::to_stdvec(msg).expect("postcard writes to a Vec");
-    let mut out = Vec::with_capacity(4 + body.len());
-    out.extend_from_slice(&(body.len() as u32).to_le_bytes());
-    out.extend_from_slice(&body);
-    out
+    ito_frame::frame(msg).expect("postcard writes to a Vec")
 }
 
 pub fn write_frame<T: Serialize>(w: &mut impl Write, msg: &T) -> io::Result<()> {
@@ -303,19 +300,14 @@ pub fn write_frame<T: Serialize>(w: &mut impl Write, msg: &T) -> io::Result<()> 
 
 /// The next frame's bytes (without the length).
 pub fn read_body(r: &mut impl Read) -> io::Result<Vec<u8>> {
-    let mut len = [0; 4];
-    r.read_exact(&mut len)?;
-    let len = u32::from_le_bytes(len) as usize;
-    if len > MAX_FRAME {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("a {len} byte frame: not a yagura agent")));
-    }
-    let mut body = vec![0; len];
-    r.read_exact(&mut body)?;
-    Ok(body)
+    ito_frame::read_body_max(r, MAX_FRAME as u32).map_err(|e| match e.kind() {
+        io::ErrorKind::InvalidData => io::Error::new(e.kind(), format!("{e}: not a yagura agent")),
+        _ => e,
+    })
 }
 
 pub fn decode<T: DeserializeOwned>(body: &[u8]) -> io::Result<T> {
-    postcard::from_bytes(body).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+    ito_frame::decode(body)
 }
 
 pub fn read_frame<T: DeserializeOwned>(r: &mut impl Read) -> io::Result<T> {
@@ -325,7 +317,7 @@ pub fn read_frame<T: DeserializeOwned>(r: &mut impl Read) -> io::Result<T> {
 /// The variant and the protocol number of a first message, whatever version
 /// sent it: `Some((0, proto))` for a `Hello`.
 pub fn head(body: &[u8]) -> Option<(u32, u16)> {
-    postcard::take_from_bytes::<(u32, u16)>(body).ok().map(|(h, _)| h)
+    ito_frame::head(body)
 }
 
 /// `addr` with `port` when it names none: `nas` → `nas:7313`, `::1` and
